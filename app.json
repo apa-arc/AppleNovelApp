@@ -12,6 +12,14 @@
     },
     "android": {
       "package": "com.apaarc.applenovelapp"
+    },
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "NEVER",
+      "fallbackToCacheTimeout": 0
     }
   }
 }
