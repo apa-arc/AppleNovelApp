@@ -32,7 +32,7 @@
 - 兼容保护：使用 fingerprint runtime version，避免将不兼容原生代码的更新下发给旧安装包
 - 限制：原生模块、权限、Expo SDK 或底层依赖变更仍需重新构建安装
 
-当前仓库尚未绑定 EAS projectId，因此更新服务暂时显示为待配置；不会伪造“已连通”或假装有更新可下载。
+当前仓库尚未绑定 EAS projectId，因此更新服务暂时显示为待配置；不会伪造“已连通”或假装有更新可下载。已加入 `eas.json` 的 preview/production 通道，以及 GitHub Actions 手动发布工作流。完成 EAS 项目绑定后，在 GitHub 仓库 Secrets 中添加 `EXPO_TOKEN`，即可从 Actions 页面选择通道并发布 OTA 更新。首次仍需构建并安装一次包含 `expo-updates` 的正式包。
 
 ## 开发环境
 
