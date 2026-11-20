@@ -21,7 +21,7 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   paragraphSpacing: 22,
   horizontalPadding: 27,
   speechVoiceIdentifier: null,
-  speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-0",
+  speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-3",
   speechRate: 0.95,
   speechPitch: 1,
 };
