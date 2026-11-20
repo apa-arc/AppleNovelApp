@@ -579,16 +579,16 @@ export default function App() {
       setOnlineResults([]);
       return;
     }
-    const enabledSources = sources.filter((source) => source.enabled);
+    const enabledSources = sources.filter((source) => source.enabled && (source.subscriptionGroup || "normal") === sourceSearchMode);
     if (enabledSources.length === 0) {
-      setSearchMessage("还没有启用的书源。请先到「书源」页面导入并启用书源。");
+      setSearchMessage((sourceSearchMode === "adult" ? "成人" : "普通") + "书源还没有启用项。请先到「书源」页面更新对应订阅并启用书源。");
       setOnlineResults([]);
       setSearchSummary("");
       return;
     }
     setSearching(true);
     setSearchMessage("");
-    setSearchSummary("正在向 " + enabledSources.length + " 个启用书源发起搜索…");
+    setSearchSummary("正在向 " + enabledSources.length + " 个" + (sourceSearchMode === "adult" ? "成人" : "普通") + "书源发起搜索…");
     setOnlineResults([]);
     const settled = await Promise.allSettled(enabledSources.map(async (source) => {
       const startedAt = Date.now();
