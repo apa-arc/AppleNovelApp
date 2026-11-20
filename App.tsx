@@ -1488,7 +1488,7 @@ export default function App() {
                 {(offlineModelStatus === "not-downloaded" || offlineModelStatus === "failed") && <Pressable onPress={requestOfflineModelDownload} style={styles.fontButton}><Text style={styles.fontButtonText}>{offlineModelStatus === "failed" ? "重新下载模型" : "下载离线模型"}</Text></Pressable>}
                 {offlineModelStatus === "downloading" && <Pressable onPress={() => void pauseOfflineModelDownload()} style={styles.fontButton}><Text style={styles.fontButtonText}>暂停下载</Text></Pressable>}
                 {offlineModelStatus === "paused" && <Pressable onPress={requestOfflineModelResume} style={styles.fontButton}><Text style={styles.fontButtonText}>继续下载</Text></Pressable>}
-                {offlineModelStatus === "installed" && <Pressable onPress={requestOfflineModelDelete} style={styles.fontButton}><Text style={styles.fontButtonText}>删除离线模型</Text></Pressable>}
+                {offlineModelStatus === "installed" && <Pressable onPress={requestOfflineModelDelete} disabled={isSpeaking} style={[styles.fontButton, isSpeaking && styles.importButtonDisabled]}><Text style={styles.fontButtonText}>删除离线模型</Text></Pressable>}
               </View>
               <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText, { marginTop: 12 }]}>在线 Kokoro 服务地址（HTTPS）</Text>
               <TextInput
@@ -1521,11 +1521,11 @@ export default function App() {
                 </>
               )}
               <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>试听和朗读使用当前选中的 Kokoro 音色；自动模式可在在线服务不可用时使用已下载的离线模型。</Text>
-              <Text style={[styles.voiceSelected, { marginTop: 6 }]}>{speechDeviceToken && speechDeviceTokenEndpoint === normalizeCloudTtsEndpoint(speechCloudEndpoint) ? "当前状态：设备已绑定，可使用在线 AI 朗读（需服务器模型正常运行）" : "当前状态：在线服务尚未绑定；离线模型尚未下载"}</Text>
+              <Text style={[styles.voiceSelected, { marginTop: 6 }]}>{"在线服务：" + (speechDeviceToken && speechDeviceTokenEndpoint === normalizeCloudTtsEndpoint(speechCloudEndpoint) ? "已绑定" : "未绑定") + "；离线模型：" + (offlineModelStatus === "installed" ? "已安装" : offlineModelStatus === "downloading" ? "下载中" : offlineModelStatus === "paused" ? "已暂停" : offlineModelStatus === "unavailable" ? "原生引擎未就绪" : "未安装")}</Text>
             </View>
             <View style={{ marginBottom: 12 }}>
               <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>选择 Kokoro 音色 · 103 种</Text>
-              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 4, marginBottom: 8 }]}>当前选择：{SPEECH_VOICES.find((voice) => voice.id === speechModelVoiceId)?.label || "声音 01"}。点击每个音色右侧的「试听」即可用在线 Kokoro AI 听效果。</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 4, marginBottom: 8 }]}>当前选择：{SPEECH_VOICES.find((voice) => voice.id === speechModelVoiceId)?.label || "声音 01"}。试听会按当前朗读方式调用在线或离线 Kokoro 模型。</Text>
               {isSpeaking && <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
                 <Pressable style={styles.fontButton} onPress={speechPaused ? resumeSpeech : pauseSpeech}><Text style={styles.fontButtonText}>{speechPaused ? "继续播放" : "暂停播放"}</Text></Pressable>
                 <Pressable style={styles.fontButton} onPress={stopSpeech}><Text style={styles.fontButtonText}>停止</Text></Pressable>
