@@ -489,7 +489,7 @@ export default function App() {
                 }} style={[styles.sourceChoice, isSelected && styles.sourceChoiceSelected]}>
                   <View style={styles.sourceChoiceInfo}>
                     <Text style={styles.sourceChoiceName}>{option.summary.sourceName}</Text>
-                    <Text style={styles.sourceChoiceLatency}>{option.chapterCount === null || option.chapterCount === undefined ? option.latencyMs + " ms · 尚未统计目录" : option.chapterCount + " 章 · " + option.latencyMs + " ms}</Text>
+                    <Text style={styles.sourceChoiceLatency}>{option.chapterCount === null || option.chapterCount === undefined ? `${option.latencyMs} ms · 尚未统计目录` : `${option.chapterCount} 章 · ${option.latencyMs} ms`}</Text>
                   </View>
                   {isRecommended && <Text style={styles.recommendTag}>综合推荐</Text>}
                   {isSelected && <Text style={styles.selectedTag}>已选择</Text>}
