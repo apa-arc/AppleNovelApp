@@ -1,11 +1,13 @@
 export type ReaderSettings = {
   fontSize: number;
   theme: "paper" | "night";
+  readingMode: "scroll" | "tap";
 };
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   fontSize: 18,
   theme: "paper",
+  readingMode: "scroll",
 };
 
 /** Normalize persisted settings so old or corrupted storage cannot break the reader. */
@@ -20,5 +22,6 @@ export function normalizeReaderSettings(value: unknown): ReaderSettings {
   return {
     fontSize: Math.min(28, Math.max(14, rawSize)),
     theme: candidate.theme === "night" ? "night" : "paper",
+    readingMode: candidate.readingMode === "tap" ? "tap" : "scroll",
   };
 }
