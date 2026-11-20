@@ -49,7 +49,7 @@ export function normalizeReaderSettings(value: unknown): ReaderSettings {
   try {
     const parsedEndpoint = new URL(rawSpeechEndpoint);
     if (parsedEndpoint.protocol === "https:" && parsedEndpoint.hostname && !parsedEndpoint.username && !parsedEndpoint.password && !parsedEndpoint.hash) {
-      speechCloudEndpoint = parsedEndpoint.toString().replace(/\\/$/, "");
+      speechCloudEndpoint = parsedEndpoint.toString().replace(/\/$/, "");
     }
   } catch {
     speechCloudEndpoint = "";
