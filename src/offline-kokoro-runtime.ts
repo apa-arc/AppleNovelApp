@@ -59,6 +59,11 @@ export async function downloadOfflineKokoroModel(
 ): Promise<string> {
   const api = loadDownloadApi();
   const category = api.ModelCategory.Tts;
+  api.configureBackgroundDownloader({ showNotificationsEnabled: false });
+  const disk = await api.checkDiskSpace(Math.max(SPEECH_MODEL.downloadBytes * 3, 450 * 1024 * 1024));
+  if (!disk.success) {
+    throw new Error(disk.message || "设备可用存储空间不足，无法安装 Kokoro 离线模型。");
+  }
   const models = await api.refreshModels(category);
   const model = models.find((entry) => entry.id === MODEL_ID);
   if (!model) {
