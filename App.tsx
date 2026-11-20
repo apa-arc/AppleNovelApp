@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Speech from "expo-speech";
 import * as Updates from "expo-updates";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { NovelSource, parseNovelSourceJsonBatch } from "./src/source";
 import { parseSourceSubscription } from "./src/source-subscription";
 import { searchNovelSource } from "./src/source-search";
@@ -12,6 +14,7 @@ import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type ReaderSettings, 
 import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } from "./src/reading-progress";
 import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
 import { SPEECH_VOICES } from "./src/speech-voice-catalog";
+import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
 import {
   SafeAreaView,
   View,
@@ -45,6 +48,9 @@ type Book = {
   onlineChapterId?: string;
   onlineLastCheckedAt?: number;
   readerParagraphIndex?: number;
+  localFileUri?: string;
+  localFileName?: string;
+  localChapterCount?: number;
 };
 
 const STORAGE_KEY = "@private_novel/books_v1";
@@ -162,6 +168,8 @@ export default function App() {
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [catalogMessage, setCatalogMessage] = useState("");
   const [onlineReading, setOnlineReading] = useState(false);
+  const [localReading, setLocalReading] = useState(false);
+  const [localChapters, setLocalChapters] = useState<LocalTextChapter[]>([]);
   const [onlineChapterIndex, setOnlineChapterIndex] = useState(0);
   const [onlineChapterContent, setOnlineChapterContent] = useState("");
   const [onlineChapterTitle, setOnlineChapterTitle] = useState("");
@@ -314,12 +322,49 @@ export default function App() {
 
   useEffect(() => {
     if (!restoreReaderPositionRef.current || readerContentHeight <= 0 || readerViewportHeight <= 0) return;
-    const text = onlineReading ? onlineChapterContent : (selectedBook?.description || "") + "\n\n" + (SAMPLE_CHAPTERS[chapterIndex]?.content || "");
+    const text = onlineReading ? onlineChapterContent : localReading ? (localChapters[chapterIndex]?.content || "") : (selectedBook?.description || "") + "\n\n" + (SAMPLE_CHAPTERS[chapterIndex]?.content || "");
     const count = splitReadingText(text).length;
     const maxOffset = Math.max(0, readerContentHeight - readerViewportHeight);
     readerScrollRef.current?.scrollTo({ y: getReadingScrollOffset(readerParagraphIndex, count, maxOffset), animated: false });
     restoreReaderPositionRef.current = false;
   }, [readerContentHeight, readerViewportHeight, readerParagraphIndex, onlineReading, onlineChapterContent, chapterIndex, selectedBook?.id]);
+
+  const importLocalTextBook = async () => {
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({ type: ["text/plain", "text/markdown"], copyToCacheDirectory: true, multiple: false });
+      if (picked.canceled || !picked.assets?.length) return;
+      const asset = picked.assets[0];
+      if (!/\\.(txt|text|md)$/i.test(asset.name)) {
+        Alert.alert("暂不支持此文件", "目前支持 TXT、TEXT 和 Markdown 文本文件。");
+        return;
+      }
+      const info = await FileSystem.getInfoAsync(asset.uri);
+      if (!info.exists) throw new Error("无法读取所选文件，请重新选择。");
+      if (typeof info.size === "number" && info.size > 20 * 1024 * 1024) throw new Error("文件超过 20 MB。请先拆分文件再导入。");
+      const rawText = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.UTF8 });
+      const parsed = parseLocalTextBook(asset.name, rawText);
+      const root = FileSystem.documentDirectory;
+      if (!root) throw new Error("当前设备暂时无法创建本地小说存储目录。");
+      const folder = root + "novels/";
+      await FileSystem.makeDirectoryAsync(folder, { intermediates: true });
+      const safeName = asset.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const storedUri = folder + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "-" + safeName;
+      await FileSystem.copyAsync({ from: asset.uri, to: storedUri });
+      const book: Book = {
+        id: "local:" + Date.now().toString() + ":" + Math.random().toString(36).slice(2, 8),
+        title: parsed.title, author: "本地导入",
+        description: "本地文本 · " + parsed.characterCount.toLocaleString() + " 字 · " + parsed.chapters.length + " 章",
+        category: "本地小说", progress: 0, color: "#E5E9DF",
+        lastChapter: parsed.chapters[0]?.title || "全文", chapterIndex: 0, readerParagraphIndex: 0,
+        localFileUri: storedUri, localFileName: asset.name, localChapterCount: parsed.chapters.length,
+      };
+      setBooks((current) => [book, ...current]);
+      setTab("书架");
+      Alert.alert("导入成功", "《" + book.title + "》已加入书架，共 " + parsed.chapters.length + " 章。文件已复制到 App 本地存储。");
+    } catch (error) {
+      Alert.alert("导入失败", error instanceof Error ? error.message : "读取文本文件失败，请重试。");
+    }
+  };
 
   const importSource = () => {
     try {
@@ -553,6 +598,8 @@ export default function App() {
       setOnlineChapterContent(result.content);
       setOnlineChapterTitle(result.title || chapter.title);
       setOnlineReading(true);
+      setLocalReading(false);
+      setLocalChapters([]);
       const onlineBookId = getOnlineBookId(option.summary.title, option.summary.author);
       const readingBook: Book = {
         id: onlineBookId,
@@ -671,6 +718,32 @@ export default function App() {
 
   const openBook = async (book: Book) => {
     stopSpeech();
+    if (book.localFileUri) {
+      try {
+        const info = await FileSystem.getInfoAsync(book.localFileUri);
+        if (!info.exists) throw new Error("本地小说文件不存在，可能已被系统清理。");
+        const rawText = await FileSystem.readAsStringAsync(book.localFileUri, { encoding: FileSystem.EncodingType.UTF8 });
+        const parsed = parseLocalTextBook(book.localFileName || book.title + ".txt", rawText);
+        const safeIndex = Math.min(Math.max(book.chapterIndex ?? 0, 0), parsed.chapters.length - 1);
+        setOpenedFromShelf(true);
+        setOnlineReading(false);
+        setLocalReading(true);
+        setLocalChapters(parsed.chapters);
+        setSelectedBook(book);
+        setChapterIndex(safeIndex);
+        setReaderParagraphIndex(Math.max(0, book.readerParagraphIndex ?? 0));
+        restoreReaderPositionRef.current = true;
+        setReaderContentHeight(0);
+        setShowCatalog(false);
+        setShowReaderSettings(false);
+        recordReading(book, parsed.chapters[safeIndex]?.title || "全文", safeIndex, book.progress);
+      } catch (error) {
+        Alert.alert("打开本地小说失败", error instanceof Error ? error.message : "请重新导入文本文件。");
+      }
+      return;
+    }
+    setLocalReading(false);
+    setLocalChapters([]);
     if (book.onlineSourceId && book.onlineSummary && book.onlineChapters?.length) {
       const source = sources.find((item) => item.id === book.onlineSourceId && item.enabled);
       if (!source) {
@@ -694,6 +767,8 @@ export default function App() {
       setShowCatalog(false);
       setShowReaderSettings(false);
       setOnlineReading(true);
+      setLocalReading(false);
+      setLocalChapters([]);
       setOnlineChapterIndex(initialIndex);
       setSelectedBook(book);
       recordReading(book, book.lastChapter || initialChapters[initialIndex]?.title || "尚未开始", initialIndex, book.progress);
@@ -729,6 +804,8 @@ export default function App() {
     }
     setOpenedFromShelf(true);
     setOnlineReading(false);
+    setLocalReading(false);
+    setLocalChapters([]);
     setSelectedBook(book);
     setChapterIndex(Math.min(Math.max(book.chapterIndex ?? 0, 0), SAMPLE_CHAPTERS.length - 1));
     setReaderParagraphIndex(Math.max(0, book.readerParagraphIndex ?? 0));
@@ -744,6 +821,8 @@ export default function App() {
     stopSpeech();
     setSelectedBook(null);
     setOnlineReading(false);
+    setLocalReading(false);
+    setLocalChapters([]);
     setShowCatalog(false);
     setShowReaderSettings(false);
     if (openedFromShelf) {
@@ -805,8 +884,8 @@ export default function App() {
       stopSpeech();
       return;
     }
-    const chapterTitle = onlineReading ? onlineChapterTitle : SAMPLE_CHAPTERS[chapterIndex].title;
-    const chapterText = onlineReading ? onlineChapterContent : SAMPLE_CHAPTERS[chapterIndex].content;
+    const chapterTitle = onlineReading ? onlineChapterTitle : localReading ? localChapters[chapterIndex]?.title || "全文" : SAMPLE_CHAPTERS[chapterIndex].title;
+    const chapterText = onlineReading ? onlineChapterContent : localReading ? localChapters[chapterIndex]?.content || "" : SAMPLE_CHAPTERS[chapterIndex].content;
     const textToRead = selectedBook.title + "。" + chapterTitle + "。" + chapterText;
     setIsSpeaking(true);
     Speech.speak(textToRead, {
@@ -821,23 +900,18 @@ export default function App() {
   };
 
   const saveReadingPosition = (bookId: string, nextChapterIndex: number) => {
-    const safeIndex = Math.min(Math.max(nextChapterIndex, 0), SAMPLE_CHAPTERS.length - 1);
+    const chapters = localReading ? localChapters : SAMPLE_CHAPTERS;
+    const chapterCount = Math.max(1, chapters.length);
+    const safeIndex = Math.min(Math.max(nextChapterIndex, 0), chapterCount - 1);
+    const chapter = chapters[safeIndex];
+    const progress = Math.round(((safeIndex + 1) / chapterCount) * 100);
     setChapterIndex(safeIndex);
     setReaderParagraphIndex(0);
     restoreReaderPositionRef.current = true;
     setReaderContentHeight(0);
-    setBooks((current) => current.map((book) => {
-      if (book.id !== bookId) return book;
-      return {
-        ...book,
-        chapterIndex: safeIndex,
-        readerParagraphIndex: 0,
-        progress: Math.round((safeIndex / SAMPLE_CHAPTERS.length) * 100),
-        lastChapter: SAMPLE_CHAPTERS[safeIndex].title,
-      };
-    }));
+    setBooks((current) => current.map((book) => book.id !== bookId ? book : ({ ...book, chapterIndex: safeIndex, readerParagraphIndex: 0, progress, lastChapter: chapter?.title || "全文" })));
     const current = books.find((book) => book.id === bookId);
-    if (current) recordReading({ ...current, chapterIndex: safeIndex }, SAMPLE_CHAPTERS[safeIndex].title, safeIndex, Math.round(((safeIndex + 1) / SAMPLE_CHAPTERS.length) * 100));
+    if (current) recordReading({ ...current, chapterIndex: safeIndex, progress, lastChapter: chapter?.title || "全文" }, chapter?.title || "全文", safeIndex, progress);
     stopSpeech();
   };
 
@@ -850,6 +924,10 @@ export default function App() {
       return;
     }
     const next = chapterIndex + delta;
+    if (localReading) {
+      if (next >= 0 && next < localChapters.length) saveReadingPosition(selectedBook.id, next);
+      return;
+    }
     if (next < 0 || next >= SAMPLE_CHAPTERS.length) return;
     saveReadingPosition(selectedBook.id, next);
     setShowCatalog(false);
@@ -956,10 +1034,10 @@ export default function App() {
 
   if (selectedBook) {
     const currentBook = books.find((book) => book.id === selectedBook.id) || selectedBook;
-    const activeChapter = onlineReading ? { title: onlineChapterTitle, content: onlineChapterContent } : SAMPLE_CHAPTERS[chapterIndex];
+    const activeChapter = onlineReading ? { title: onlineChapterTitle, content: onlineChapterContent } : localReading ? (localChapters[chapterIndex] || { title: "全文", content: "" }) : SAMPLE_CHAPTERS[chapterIndex];
     const activeChapterIndex = onlineReading ? onlineChapterIndex : chapterIndex;
-    const activeChapterCount = onlineReading ? loadedChapters.length : SAMPLE_CHAPTERS.length;
-    const activeReadingText = onlineReading ? activeChapter.content : currentBook.description + "\n\n" + activeChapter.content;
+    const activeChapterCount = onlineReading ? loadedChapters.length : localReading ? localChapters.length : SAMPLE_CHAPTERS.length;
+    const activeReadingText = onlineReading || localReading ? activeChapter.content : currentBook.description + "\n\n" + activeChapter.content;
     const readingParagraphs = splitReadingText(activeReadingText);
     const readerBackground = readerTheme === "night" ? "#20231F" : readerTheme === "green" ? "#E8EFE3" : readerTheme === "gray" ? "#E9EAEC" : "#F8F7F3";
     const readerTextColor = readerTheme === "night" ? "#E6E3D9" : readerTheme === "green" ? "#3F4A3B" : readerTheme === "gray" ? "#41464D" : "#45453D";
@@ -984,19 +1062,19 @@ export default function App() {
         {showCatalog ? (
           <ScrollView contentContainerStyle={styles.catalogContent}>
             <Text style={[styles.catalogHeading, readerTheme === "night" && styles.nightText]}>章节目录</Text>
-            <Text style={[styles.catalogSub, readerTheme === "night" && styles.nightMuted]}>{currentBook.title} · 共 {activeChapterCount} 章{onlineReading ? "" : "（演示）"}</Text>
+            <Text style={[styles.catalogSub, readerTheme === "night" && styles.nightMuted]}>{currentBook.title} · 共 {activeChapterCount} 章{onlineReading ? "" : localReading ? "（本地导入）" : "（演示）"}</Text>
             {onlineReading ? loadedChapters.map((chapter, index) => (
               <Pressable key={chapter.id} onPress={() => void openOnlineChapter(chapter)} style={[styles.chapterRow, readerTheme === "night" && styles.nightCard, index === activeChapterIndex && styles.chapterRowActive]}>
                 <Text style={[styles.chapterRowTitle, readerTheme === "night" && styles.nightText]}>{chapter.title}</Text>
                 <Text style={styles.chapterRowMeta}>{index === activeChapterIndex ? "正在阅读" : "在线章节"}</Text>
               </Pressable>
-            )) : SAMPLE_CHAPTERS.map((chapter, index) => (
-              <Pressable key={chapter.title} onPress={() => { saveReadingPosition(currentBook.id, index); setShowCatalog(false); }} style={[styles.chapterRow, readerTheme === "night" && styles.nightCard, index === activeChapterIndex && styles.chapterRowActive]}>
+            )) : (localReading ? localChapters : SAMPLE_CHAPTERS).map((chapter, index) => (
+              <Pressable key={chapter.id || chapter.title} onPress={() => { saveReadingPosition(currentBook.id, index); setShowCatalog(false); }} style={[styles.chapterRow, readerTheme === "night" && styles.nightCard, index === activeChapterIndex && styles.chapterRowActive]}>
                 <Text style={[styles.chapterRowTitle, readerTheme === "night" && styles.nightText]}>{chapter.title}</Text>
-                <Text style={styles.chapterRowMeta}>{index === activeChapterIndex ? "正在阅读" : "演示章节"}</Text>
+                <Text style={styles.chapterRowMeta}>{index === activeChapterIndex ? "正在阅读" : localReading ? "本地章节" : "演示章节"}</Text>
               </Pressable>
             ))}
-            {!onlineReading && <Text style={[styles.catalogDisclaimer, readerTheme === "night" && styles.nightMuted]}>当前为内置演示目录。</Text>}
+            {!onlineReading && !localReading && <Text style={[styles.catalogDisclaimer, readerTheme === "night" && styles.nightMuted]}>当前为内置演示目录。</Text>}
           </ScrollView>
         ) : (
           <ScrollView
@@ -1236,6 +1314,9 @@ export default function App() {
             style={styles.search}
             returnKeyType="search"
           />
+          <Pressable style={styles.importLocalButton} onPress={() => void importLocalTextBook()}>
+            <Text style={styles.importLocalButtonText}>＋ 导入本地 TXT 小说</Text>
+          </Pressable>
           <View style={styles.sectionHeading}>
             <Text style={styles.sectionTitle}>我的书架</Text>
             <Text style={styles.sectionMeta}>{filteredBooks.length} 本藏书</Text>
@@ -1545,6 +1626,8 @@ const styles = StyleSheet.create({
   exampleButtonText: { color: "#65745D", fontSize: 12, fontWeight: "700" },
   importButton: { alignItems: "center", backgroundColor: "#65745D", borderRadius: 12, paddingVertical: 13, marginTop: 12 },
   importButtonDisabled: { opacity: 0.45 },
+  importLocalButton: { minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: "#D8DED2", backgroundColor: "#EEF0E9", alignItems: "center", justifyContent: "center", marginTop: -12, marginBottom: 22 },
+  importLocalButtonText: { color: "#65745D", fontSize: 12, fontWeight: "800" },
   importButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
   sourceMessage: { color: "#65745D", fontSize: 12, lineHeight: 18, marginTop: 10 },
   sourceListHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 24 },
