@@ -6,7 +6,8 @@ test("catalog uses stable speaker IDs for cloud and offline variants of the same
   assert.equal(SPEECH_VOICES.length, 103);
   const voice = findSpeechVoice("kokoro-multi-lang-v1_1:speaker-45");
   assert.ok(voice);
-  assert.equal(voice.localModelId, voice.cloudModelId);
+  assert.equal(voice.localModelId, SPEECH_MODEL.downloadAssetId);
+  assert.equal(voice.cloudModelId, SPEECH_MODEL.id);
   assert.equal(voice.modelId, SPEECH_MODEL.id);
   assert.equal(voice.speakerId, 45);
 });
@@ -14,7 +15,7 @@ test("catalog uses stable speaker IDs for cloud and offline variants of the same
 test("voice becomes available offline only after its compatible model is installed", () => {
   const voice = SPEECH_VOICES[3];
   assert.equal(canReuseVoiceOffline(voice.id, []), false);
-  assert.equal(canReuseVoiceOffline(voice.id, [SPEECH_MODEL.id]), true);
+  assert.equal(canReuseVoiceOffline(voice.id, [SPEECH_MODEL.downloadAssetId]), true);
   assert.equal(canReuseVoiceOffline("unknown", [SPEECH_MODEL.id]), false);
 });
 
