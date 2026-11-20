@@ -123,7 +123,6 @@ export default function App() {
   const [onlineChapterContent, setOnlineChapterContent] = useState("");
   const [onlineChapterTitle, setOnlineChapterTitle] = useState("");
   const [loadingOnlineChapter, setLoadingOnlineChapter] = useState(false);
-  const [sourceSortMode, setSourceSortMode] = useState<"combined">("combined");
   const [rankingChapterCounts, setRankingChapterCounts] = useState(false);
 
   useEffect(() => {
