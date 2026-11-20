@@ -10,6 +10,7 @@ import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type Nove
 import { compareChapterUpdates } from "./src/subscription";
 import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type ReaderSettings, type ReaderTheme } from "./src/reader-settings";
 import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } from "./src/reading-progress";
+import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
 import {
   SafeAreaView,
   View,
@@ -48,6 +49,7 @@ type Book = {
 const STORAGE_KEY = "@private_novel/books_v1";
 const SOURCES_STORAGE_KEY = "@private_novel/sources_v1";
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
+const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
 const SOURCE_EXAMPLE = `{
   "name": "我的书源",
   "baseUrl": "https://example.com",
@@ -116,6 +118,7 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [books, setBooks] = useState<Book[]>(SAMPLE_BOOKS);
+  const [readingHistory, setReadingHistory] = useState<ReadingHistoryEntry[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [chapterIndex, setChapterIndex] = useState(0);
@@ -241,6 +244,8 @@ export default function App() {
           const parsedSources: unknown = JSON.parse(savedSources);
           if (Array.isArray(parsedSources)) setSources(parsedSources as NovelSource[]);
         }
+        const savedHistory = await AsyncStorage.getItem(READING_HISTORY_STORAGE_KEY);
+        if (savedHistory && active) setReadingHistory(normalizeReadingHistory(JSON.parse(savedHistory)));
         const savedReaderSettings = await AsyncStorage.getItem(READER_SETTINGS_STORAGE_KEY);
         if (savedReaderSettings && active) {
           const settings = normalizeReaderSettings(JSON.parse(savedReaderSettings));
@@ -270,6 +275,13 @@ export default function App() {
       Alert.alert("保存失败", "书架进度暂时未能保存，请检查手机存储空间。");
     });
   }, [books, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem(READING_HISTORY_STORAGE_KEY, JSON.stringify(readingHistory)).catch(() => {
+      Alert.alert("保存失败", "阅读记录暂时未能保存，请检查手机存储空间。");
+    });
+  }, [readingHistory, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -528,7 +540,7 @@ export default function App() {
       setOnlineChapterTitle(result.title || chapter.title);
       setOnlineReading(true);
       const onlineBookId = getOnlineBookId(option.summary.title, option.summary.author);
-      setSelectedBook({
+      const readingBook: Book = {
         id: onlineBookId,
         title: option.summary.title,
         author: option.summary.author,
@@ -544,7 +556,9 @@ export default function App() {
         onlineSummary: option.summary,
         onlineChapters: loadedChapters,
         onlineChapterId: chapter.id,
-      });
+      };
+      setSelectedBook(readingBook);
+      recordReading(readingBook, chapter.title, chapter.index, Math.round(((chapter.index + 1) / Math.max(1, loadedChapters.length)) * 100));
       setBooks((current) => current.map((book) => book.id !== onlineBookId ? book : ({
         ...book,
         progress: Math.round(((chapter.index + 1) / Math.max(1, loadedChapters.length)) * 100),
@@ -628,6 +642,19 @@ export default function App() {
     }
   };
 
+  const recordReading = (book: Book, chapterTitle: string, chapterIndexValue: number, progress: number) => {
+    setReadingHistory((current) => upsertReadingHistory(current, {
+      bookId: book.id, title: book.title, author: book.author, chapterTitle,
+      chapterIndex: chapterIndexValue, progress, updatedAt: Date.now(),
+    }));
+  };
+
+  const resumeReadingHistory = (entry: ReadingHistoryEntry) => {
+    const book = books.find((item) => item.id === entry.bookId);
+    if (!book) { Alert.alert("无法继续阅读", "这本书当前不在书架中，请重新搜索并添加后再继续。"); return; }
+    void openBook(book);
+  };
+
   const openBook = async (book: Book) => {
     stopSpeech();
     if (book.onlineSourceId && book.onlineSummary && book.onlineChapters?.length) {
@@ -655,6 +682,7 @@ export default function App() {
       setOnlineReading(true);
       setOnlineChapterIndex(initialIndex);
       setSelectedBook(book);
+      recordReading(book, book.lastChapter || initialChapters[initialIndex]?.title || "尚未开始", initialIndex, book.progress);
       setLoadingOnlineChapter(true);
 
       // Check the subscribed source every time a saved online novel is opened.
@@ -694,6 +722,8 @@ export default function App() {
     setReaderContentHeight(0);
     setShowCatalog(false);
     setShowReaderSettings(false);
+    const safeIndex = Math.min(Math.max(book.chapterIndex ?? 0, 0), SAMPLE_CHAPTERS.length - 1);
+    recordReading(book, SAMPLE_CHAPTERS[safeIndex].title, safeIndex, book.progress);
   };
 
   const closeReader = () => {
@@ -748,6 +778,8 @@ export default function App() {
         lastChapter: SAMPLE_CHAPTERS[safeIndex].title,
       };
     }));
+    const current = books.find((book) => book.id === bookId);
+    if (current) recordReading({ ...current, chapterIndex: safeIndex }, SAMPLE_CHAPTERS[safeIndex].title, safeIndex, Math.round(((safeIndex + 1) / SAMPLE_CHAPTERS.length) * 100));
     stopSpeech();
   };
 
@@ -956,6 +988,7 @@ export default function App() {
               setReaderParagraphIndex(nextIndex);
               const fraction = readingParagraphs.length > 1 ? nextIndex / (readingParagraphs.length - 1) : 0;
               const percent = Math.min(100, Math.round(((activeChapterIndex + fraction) / Math.max(1, activeChapterCount)) * 100));
+              recordReading(currentBook, activeChapter.title, activeChapterIndex, percent);
               setBooks((current) => current.map((book) => book.id !== currentBook.id ? book : ({
                 ...book,
                 readerParagraphIndex: nextIndex,
@@ -1179,6 +1212,21 @@ export default function App() {
             <Text style={styles.profileTitle}>我的阅读空间</Text>
             <Text style={styles.note}>本地阅读器 · 持续开发中</Text>
           </View>
+          <View style={styles.sectionHeading}>
+            <Text style={styles.sectionTitle}>最近阅读</Text>
+            <Text style={styles.sectionMeta}>{readingHistory.length} 条记录</Text>
+          </View>
+          {readingHistory.length === 0 ? <Text style={styles.emptyText}>还没有阅读记录，打开一本小说后会自动记录。</Text> : readingHistory.map((entry) => (
+            <Pressable key={entry.bookId} style={styles.historyRow} onPress={() => resumeReadingHistory(entry)}>
+              <View style={styles.historyInfo}>
+                <Text style={styles.bookTitle}>{entry.title}</Text>
+                <Text style={styles.bookAuthor}>{entry.author} · {entry.chapterTitle}</Text>
+                <View style={styles.progressTrack}><View style={[styles.progressFill, { width: entry.progress.toString() + "%" }]} /></View>
+                <Text style={styles.progressText}>已读 {entry.progress}% · {new Date(entry.updatedAt).toLocaleString()}</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+          ))}
           <View style={styles.updateCard}>
             <View style={styles.updateHeader}>
               <View style={styles.updateIcon}><Text style={styles.updateIconText}>↻</Text></View>
@@ -1368,6 +1416,8 @@ const styles = StyleSheet.create({
   sourceAction: { paddingVertical: 5, paddingHorizontal: 9, backgroundColor: "#EEF0E9", borderRadius: 8 },
   sourceActionText: { color: "#65745D", fontSize: 11, fontWeight: "700" },
   sourceDeleteText: { color: "#A66D62", fontSize: 11, fontWeight: "700" },
+  historyRow: { minHeight: 76, backgroundColor: "#FFFFFF", borderRadius: 15, padding: 14, marginBottom: 10, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#EEECE5" },
+  historyInfo: { flex: 1, paddingRight: 10 },
   updateCard: { backgroundColor: "#FFFFFF", borderRadius: 18, padding: 17, marginBottom: 16, borderWidth: 1, borderColor: "#EAE8E0" },
   updateHeader: { flexDirection: "row", alignItems: "center" },
   updateIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: "#EEF0E9", alignItems: "center", justifyContent: "center", marginRight: 12 },
