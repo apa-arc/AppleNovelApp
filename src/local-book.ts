@@ -14,7 +14,7 @@ export type ParsedLocalTextBook = {
 const CHAPTER_HEADING = /^(第[0-9零一二三四五六七八九十百千万两〇○]+[章节回卷集部篇幕].{0,60}|序章|楔子|前言|后记|番外(?:.{0,30})?)$/;
 
 export function localBookTitleFromFileName(fileName: string): string {
-  const withoutExtension = fileName.replace(/\.(txt|text|md)$/i, "").trim();
+  const withoutExtension = fileName.trim().replace(/\.(txt|text|md)$/i, "").trim();
   return withoutExtension || "未命名小说";
 }
 
