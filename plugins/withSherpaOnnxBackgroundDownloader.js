@@ -1,4 +1,4 @@
-const { withAppDelegate, IOSConfig } = require("@expo/config-plugins");
+const { withAppDelegate, withXcodeProject, IOSConfig } = require("@expo/config-plugins");
 const fs = require("fs");
 const path = require("path");
 
@@ -46,7 +46,7 @@ function addBridgingHeaderImport(projectRoot, projectName) {
 }
 
 module.exports = function withSherpaOnnxBackgroundDownloader(config) {
-  return withAppDelegate(config, (config) => {
+  config = withAppDelegate(config, (config) => {
     if (config.modResults.language === "swift") {
       config.modResults.contents = addSwiftBackgroundSessionSupport(config.modResults.contents);
       addBridgingHeaderImport(config.modRequest.projectRoot, config.modRequest.projectName || "App");
@@ -68,6 +68,31 @@ module.exports = function withSherpaOnnxBackgroundDownloader(config) {
         contents = contents.slice(0, end) + method + contents.slice(end);
       }
       config.modResults.contents = contents;
+    }
+    return config;
+  });
+
+  return withXcodeProject(config, (config) => {
+    const project = config.modResults;
+    const projectName = config.modRequest.projectName || "AppleNovelApp";
+    const iosRoot = config.modRequest.platformProjectRoot;
+    const sourceRoot = IOSConfig.Paths.getSourceRoot(config.modRequest.projectRoot);
+    const headerPath = path.join(sourceRoot, `${projectName}-Bridging-Header.h`);
+    const relativeHeaderPath = path.relative(iosRoot, headerPath).replace(/\\\\/g, "/");
+    const targets = project.pbxNativeTargetSection();
+    const appTarget = Object.values(targets).find((target) =>
+      target && target.isa === "PBXNativeTarget" && target.name === projectName
+    );
+    if (!appTarget) {
+      throw new Error(`Could not find the ${projectName} Xcode target for Sherpa background downloads.`);
+    }
+    const configurationList = project.pbxXCConfigurationList()[appTarget.buildConfigurationList];
+    const buildConfigurations = project.pbxXCBuildConfigurationSection();
+    for (const item of configurationList.buildConfigurations) {
+      const buildConfiguration = buildConfigurations[item.value];
+      if (buildConfiguration && buildConfiguration.buildSettings) {
+        buildConfiguration.buildSettings.SWIFT_OBJC_BRIDGING_HEADER = `"${relativeHeaderPath}"`;
+      }
     }
     return config;
   });
