@@ -12,6 +12,7 @@ test("cloud client sends the selected Kokoro speaker and bounded speed", async (
     voiceId: "kokoro-multi-lang-v1_1:speaker-3", text: " 你好 ", speed: 2.4,
   }, "a-valid-device-token-12345678901234567890", fakeFetch);
   assert.equal(request.url, "https://tts.example.com/v1/audio/speech");
+  assert.equal(request.init.headers.Authorization, "Bearer a-valid-device-token-12345678901234567890");
   assert.deepEqual(request.body, { model: "kokoro-multi-lang-v1_1", speaker_id: 3, text: "你好", speed: 2 });
   assert.equal(bytes.byteLength, 44);
 });
