@@ -19,6 +19,46 @@ type SourceInput = {
   chapterUrl?: unknown;
 };
 
+function isPrivateIpv4(hostname: string): boolean {
+  const parts = hostname.split(".");
+  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return false;
+  const octets = parts.map(Number);
+  if (octets.some((part) => part < 0 || part > 255)) return false;
+  const [a, b, c] = octets;
+  return (
+    a === 0 || a === 10 || a === 127 || a >= 224 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 192 && b === 0 && c === 0) ||
+    (a === 198 && (b === 18 || b === 19))
+  );
+}
+
+function isPrivateOrLocalHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal")
+  ) return true;
+
+  if (isPrivateIpv4(host)) return true;
+  if (host.includes(":")) {
+    // Block IPv6 unspecified/loopback, unique-local, link-local and
+    // IPv4-mapped addresses. Public IPv6 literals remain eligible.
+    if (
+      host === "::" || host === "::1" ||
+      /^f[cd]/i.test(host) ||
+      /^fe[89ab]/i.test(host) ||
+      /^::ffff:/i.test(host)
+    ) return true;
+  }
+  return false;
+}
+
 function isSafeHttpsUrl(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`字段「${field}」必须是非空网址`);
@@ -35,9 +75,8 @@ function isSafeHttpsUrl(value: unknown, field: string): string {
   if (parsed.username || parsed.password) {
     throw new Error(`字段「${field}」不能在网址中包含账号或密码`);
   }
-  if (parsed.hostname === "localhost" || parsed.hostname.endsWith(".local") ||
-      /^(127\\.|10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.)/.test(parsed.hostname)) {
-    throw new Error(`字段「${field}」不能指向本机或局域网地址`);
+  if (isPrivateOrLocalHost(parsed.hostname)) {
+    throw new Error(`字段「${field}」不能指向本机、局域网或内部地址`);
   }
   return parsed.toString();
 }
