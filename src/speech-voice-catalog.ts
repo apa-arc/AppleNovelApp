@@ -26,6 +26,10 @@ export const SPEECH_MODEL = {
     "https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/kokoro.html",
   licenseInfoUrl: "https://huggingface.co/hexgrad/Kokoro-82M",
   speakerCount: 103,
+  /** Compressed sherpa-onnx release asset size; includes all 103 speaker embeddings. */
+  downloadBytes: 147052523,
+  archiveUrl:
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_1.tar.bz2",
 } as const;
 
 /** Official model exposes 103 speaker IDs; friendly names require its speaker map. */
