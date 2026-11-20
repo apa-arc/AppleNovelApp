@@ -1,3 +1,5 @@
+import { normalizeCloudTtsEndpoint } from "./speech-engine";
+
 export type ReaderTheme = "paper" | "green" | "gray" | "night";
 
 export type ReaderSettings = {
@@ -44,17 +46,8 @@ export function normalizeReaderSettings(value: unknown): ReaderSettings {
   const theme: ReaderTheme = candidate.theme === "night" || candidate.theme === "green" || candidate.theme === "gray"
     ? candidate.theme
     : "paper";
-  const rawSpeechEndpoint = typeof candidate.speechCloudEndpoint === "string" ? candidate.speechCloudEndpoint.trim() : "";
-  let speechCloudEndpoint = "";
-  try {
-    const parsedEndpoint = new URL(rawSpeechEndpoint);
-    if (parsedEndpoint.protocol === "https:" && parsedEndpoint.hostname && !parsedEndpoint.username && !parsedEndpoint.password && !parsedEndpoint.hash) {
-      const endpointText = parsedEndpoint.toString();
-      speechCloudEndpoint = endpointText.endsWith("/") ? endpointText.slice(0, -1) : endpointText;
-    }
-  } catch {
-    speechCloudEndpoint = "";
-  }
+  const rawSpeechEndpoint = typeof candidate.speechCloudEndpoint === "string" ? candidate.speechCloudEndpoint : "";
+  const speechCloudEndpoint = normalizeCloudTtsEndpoint(rawSpeechEndpoint) || "";
   return {
     speechCloudEndpoint,
     fontSize: bounded("fontSize", DEFAULT_READER_SETTINGS.fontSize, 14, 28),
