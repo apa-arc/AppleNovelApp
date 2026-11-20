@@ -59,7 +59,7 @@ jobs:
           TOKEN="$(curl --silent --show-error --fail \
             -X POST http://127.0.0.1:8000/v1/devices/enroll \
             -H 'Content-Type: application/json' \
-            -d "{\\"enrollment_code\\":\\"$SPEECH_ENROLLMENT_CODE\\"}" \
+            -d "$(python -c 'import json,os; print(json.dumps({"enrollment_code": os.environ["SPEECH_ENROLLMENT_CODE"]}))')" \
             | python -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
           curl --silent --show-error --fail \
             -X POST http://127.0.0.1:8000/v1/audio/speech \
