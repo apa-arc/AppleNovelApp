@@ -22,6 +22,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Modal,
 } from "react-native";
 
 type Tab = "书架" | "发现" | "书源" | "我的";
@@ -176,7 +177,7 @@ export default function App() {
       if (result.isAvailable) {
         setAppUpdateAvailable(true);
         setAppUpdateDownloaded(false);
-        setAppUpdateStatus("发现新版本，可以下载更新");
+        setAppUpdateStatus("检测到新版本。此版本为必需更新，请完成更新后继续使用。");
       } else {
         setAppUpdateAvailable(false);
         setAppUpdateDownloaded(false);
@@ -198,13 +199,13 @@ export default function App() {
       if (result.isNew) {
         setAppUpdateDownloaded(true);
         setAppUpdateAvailable(false);
-        setAppUpdateStatus("更新包已下载完成，重启后生效");
+        setAppUpdateStatus("更新包已准备就绪。请立即重启并进入新版本。");
       } else {
         setAppUpdateAvailable(false);
         setAppUpdateStatus("没有需要下载的新内容");
       }
     } catch {
-      setAppUpdateStatus("下载失败，当前版本不会受到影响，请稍后重试");
+      setAppUpdateStatus("更新下载失败。为保证版本兼容，暂时无法继续使用旧版本，请检查网络后重试。");
     } finally {
       setAppUpdateBusy(false);
     }
@@ -1198,6 +1199,53 @@ export default function App() {
           </Pressable>
         ))}
       </View>
+
+      <Modal
+        visible={appUpdateAvailable || appUpdateDownloaded}
+        animationType="fade"
+        transparent
+        statusBarTranslucent
+        onRequestClose={() => undefined}
+      >
+        <View style={styles.forceUpdateOverlay}>
+          <View style={styles.forceUpdateCard}>
+            <View style={styles.forceUpdateIcon}>
+              <Text style={styles.forceUpdateIconText}>↑</Text>
+            </View>
+            <Text style={styles.forceUpdateTitle}>发现新版本</Text>
+            <Text style={styles.forceUpdateSubtitle}>私人小说需要更新后才能继续使用</Text>
+            <View style={styles.forceUpdateNotice}>
+              <Text style={styles.forceUpdateNoticeText}>
+                {appUpdateDownloaded
+                  ? "更新包已下载完成。重启应用后将自动切换到新版本。"
+                  : appUpdateBusy
+                    ? "正在安全下载更新内容，请保持网络连接并稍候…"
+                    : appUpdateStatus}
+              </Text>
+            </View>
+            {appUpdateBusy ? (
+              <View style={styles.forceUpdateProgress}>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+                <Text style={styles.forceUpdateProgressText}>正在更新，请勿关闭应用</Text>
+              </View>
+            ) : appUpdateDownloaded ? (
+              <Pressable style={styles.forceUpdateButton} onPress={applyAppUpdate}>
+                <Text style={styles.forceUpdateButtonText}>立即重启并更新</Text>
+              </Pressable>
+            ) : (
+              <Pressable style={styles.forceUpdateButton} onPress={downloadAppUpdate}>
+                <Text style={styles.forceUpdateButtonText}>下载并安装更新</Text>
+              </Pressable>
+            )}
+            {!appUpdateBusy && !appUpdateDownloaded ? (
+              <Pressable style={styles.forceUpdateRetry} onPress={() => void checkForAppUpdate(false)}>
+                <Text style={styles.forceUpdateRetryText}>重新检查更新</Text>
+              </Pressable>
+            ) : null}
+            <Text style={styles.forceUpdateFootnote}>这是必需更新，暂不支持跳过。更新失败时可检查网络后重试。</Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1304,6 +1352,21 @@ const styles = StyleSheet.create({
   updateSecondaryText: { color: "#65745D", fontSize: 12, fontWeight: "800" },
   updateButtonDisabled: { opacity: 0.5 },
   updateFootnote: { color: "#AAA69B", fontSize: 10, lineHeight: 16, marginTop: 11 },
+  forceUpdateOverlay: { flex: 1, backgroundColor: "rgba(24, 27, 23, 0.78)", alignItems: "center", justifyContent: "center", paddingHorizontal: 25 },
+  forceUpdateCard: { width: "100%", maxWidth: 390, backgroundColor: "#F8F7F3", borderRadius: 24, padding: 24, alignItems: "center" },
+  forceUpdateIcon: { width: 58, height: 58, borderRadius: 18, backgroundColor: "#E7ECE2", alignItems: "center", justifyContent: "center", marginBottom: 17 },
+  forceUpdateIconText: { color: "#65745D", fontSize: 34, fontWeight: "800" },
+  forceUpdateTitle: { color: "#292A24", fontSize: 22, fontWeight: "800" },
+  forceUpdateSubtitle: { color: "#77766E", fontSize: 12, marginTop: 9, textAlign: "center" },
+  forceUpdateNotice: { width: "100%", backgroundColor: "#EEEFE9", borderRadius: 13, padding: 14, marginTop: 20 },
+  forceUpdateNoticeText: { color: "#62665B", fontSize: 12, lineHeight: 19, textAlign: "center" },
+  forceUpdateProgress: { width: "100%", minHeight: 46, borderRadius: 12, backgroundColor: "#65745D", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 17 },
+  forceUpdateProgressText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
+  forceUpdateButton: { width: "100%", minHeight: 48, borderRadius: 12, backgroundColor: "#65745D", alignItems: "center", justifyContent: "center", marginTop: 17 },
+  forceUpdateButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
+  forceUpdateRetry: { paddingVertical: 12, paddingHorizontal: 18, marginTop: 4 },
+  forceUpdateRetryText: { color: "#65745D", fontSize: 12, fontWeight: "700" },
+  forceUpdateFootnote: { color: "#AAA69B", fontSize: 10, lineHeight: 16, textAlign: "center", marginTop: 12 },
   profileCard: { alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 20, padding: 25, marginBottom: 16 },
   avatarLarge: { width: 68, height: 68, borderRadius: 34, backgroundColor: "#E9E5DA", alignItems: "center", justifyContent: "center" },
   avatarLargeText: { color: "#6F695B", fontSize: 25, fontWeight: "800" },
