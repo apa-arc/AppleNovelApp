@@ -54,3 +54,11 @@ test("cloud speech endpoint only persists safe HTTPS URLs", () => {
     assert.equal(normalizeReaderSettings({ speechCloudEndpoint: value }).speechCloudEndpoint, "");
   }
 });
+
+
+test("speech engine mode defaults to hybrid and accepts explicit modes", () => {
+  assert.equal(normalizeReaderSettings({}).speechEngineMode, "hybrid");
+  assert.equal(normalizeReaderSettings({ speechEngineMode: "offline" }).speechEngineMode, "offline");
+  assert.equal(normalizeReaderSettings({ speechEngineMode: "cloud" }).speechEngineMode, "cloud");
+  assert.equal(normalizeReaderSettings({ speechEngineMode: "unknown" }).speechEngineMode, "hybrid");
+});
