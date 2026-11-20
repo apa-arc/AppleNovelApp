@@ -306,7 +306,6 @@ export default function App() {
         } else if (active) {
           setSources([BUILTIN_MOCK_SOURCE]);
         }
-        }
         const savedHistory = await AsyncStorage.getItem(READING_HISTORY_STORAGE_KEY);
         if (savedHistory && active) setReadingHistory(normalizeReadingHistory(JSON.parse(savedHistory)));
         const savedReaderSettings = await AsyncStorage.getItem(READER_SETTINGS_STORAGE_KEY);
@@ -612,7 +611,7 @@ export default function App() {
     try {
       const [detail, chapters] = await Promise.all([
         fetchNovelDetail(source, option.summary, getSourceClient(source)),
-        fetchNovelChapterList(source, option.summary),
+        fetchNovelChapterList(source, option.summary, getSourceClient(source)),
       ]);
       setLoadedNovelDetail(detail);
       setLoadedChapters(chapters);
@@ -906,7 +905,7 @@ export default function App() {
         return;
       }
       try {
-        const result = await fetchNovelChapterContent(source, targetChapter);
+        const result = await fetchNovelChapterContent(source, targetChapter, getSourceClient(source));
         setOnlineChapterIndex(targetChapter.index);
         const savedParagraph = refreshedBook?.onlineChapterId === targetChapter.id ? (refreshedBook.readerParagraphIndex ?? 0) : 0;
         setReaderParagraphIndex(savedParagraph);
