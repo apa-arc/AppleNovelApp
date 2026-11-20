@@ -22,3 +22,12 @@ test("rejects empty or invalid audio", () => {
   assert.throws(() => encodePcm16Wav([], 24000), /无效/);
   assert.throws(() => encodePcm16Wav([0], 0), /无效/);
 });
+
+test("WAV encoder accepts Float32Array samples from sherpa-onnx", () => {
+  const wav = encodePcm16Wav(new Float32Array([-1, 0, 1]), 24000);
+  assert.equal(wav.length, 50);
+  const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
+  assert.equal(view.getInt16(44, true), -32768);
+  assert.equal(view.getInt16(46, true), 0);
+  assert.equal(view.getInt16(48, true), 32767);
+});
