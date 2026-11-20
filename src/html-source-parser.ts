@@ -54,7 +54,7 @@ export function selectHtmlNodes(root:Node,selector:string):Node[]{assertSupporte
 export function htmlNodeText(n:Node):string{const walk=(x:Node):string=>x.children.map(c=>typeof c==="string"?c:(["script","style","noscript"].includes(c.tag)?"":(BLOCK.has(c.tag)?"\n":"")+walk(c)+(BLOCK.has(c.tag)?"\n":""))).join("");return walk(n).replace(/[\t\f\v ]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").trim();}
 function attr(n:Node,name:string):string{return n.attrs[name.toLowerCase()]||"";}
 function textAt(n:Node,selector?:string):string{const x=selector?selectHtmlNodes(n,selector)[0]:undefined;return x?htmlNodeText(x):"";}
-function safeUrl(v:string,base:string):string{try{const u=new URL(v,base);return u.protocol==="https:"&&!u.username&&!u.password?u.toString():"";}catch{return"";}}
+function safeUrl(v:string,base:string):string{try{const origin=new URL(base).origin,u=new URL(v,base);return u.protocol==="https:"&&!u.username&&!u.password&&u.origin===origin?u.toString():"";}catch{return"";}}
 
 export type HtmlSearchRules={itemSelector:string;titleSelector:string;urlSelector:string;authorSelector?:string;descriptionSelector?:string;urlAttribute?:string;coverSelector?:string;coverAttribute?:string};
 export type HtmlDetailRules={titleSelector?:string;authorSelector?:string;descriptionSelector?:string};
