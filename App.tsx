@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Speech from "expo-speech";
 import { NovelSource, parseNovelSourceJson } from "./src/source";
 import { searchNovelSource } from "./src/source-search";
-import { mergeNovelSearchResults, type NovelSummary, type NovelSearchPage } from "./src/novel";
+import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage } from "./src/novel";
 import {
   SafeAreaView,
   View,
@@ -40,6 +40,8 @@ const SOURCE_EXAMPLE = `{
   "chapterListUrl": "https://example.com/chapters",
   "chapterUrl": "https://example.com/chapter"
 }`;
+type SearchSourceOption = { summary: NovelSummary; latencyMs: number };
+type SearchNovelGroup = { id: string; title: string; author: string; description: string; sources: SearchSourceOption[] };
 type Chapter = { title: string; content: string };
 const SAMPLE_CHAPTERS: Chapter[] = [
   { title: "第一章 · 故事的开始", content: "清晨的光从窗边慢慢铺开，新的旅程也在这一刻开始。\n\n这是用于测试阅读器的演示章节。正式接入书源后，这里会显示所选小说的真实章节正文。\n\n阅读器会记录你读到的章节，方便下次从上次的位置继续。\n\n请注意：当前内容仅为应用内置演示文本，并非真实小说正文。" },
@@ -105,7 +107,9 @@ export default function App() {
   const [sourceDraft, setSourceDraft] = useState("");
   const [sourceMessage, setSourceMessage] = useState("");
   const [onlineQuery, setOnlineQuery] = useState("");
-  const [onlineResults, setOnlineResults] = useState<NovelSummary[]>([]);
+  const [onlineResults, setOnlineResults] = useState<SearchNovelGroup[]>([]);
+  const [selectedSearchNovel, setSelectedSearchNovel] = useState<SearchNovelGroup | null>(null);
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState("");
   const [searchSummary, setSearchSummary] = useState("");
@@ -191,18 +195,49 @@ export default function App() {
     setSearchMessage("");
     setSearchSummary("正在向 " + enabledSources.length + " 个启用书源发起搜索…");
     setOnlineResults([]);
-    const settled = await Promise.allSettled(enabledSources.map((source) => searchNovelSource(source, keyword)));
-    const pages: NovelSearchPage[] = [];
+    const settled = await Promise.allSettled(enabledSources.map(async (source) => {
+      const startedAt = Date.now();
+      const page = await searchNovelSource(source, keyword);
+      return { page, latencyMs: Date.now() - startedAt };
+    }));
+    const groups = new Map<string, SearchNovelGroup>();
     let failed = 0;
     settled.forEach((result) => {
-      if (result.status === "fulfilled") pages.push(result.value);
-      else failed += 1;
+      if (result.status !== "fulfilled") {
+        failed += 1;
+        return;
+      }
+      const { page, latencyMs } = result.value;
+      page.items.forEach((item) => {
+        const key = [normalizeNovelTitle(item.title), normalizeNovelTitle(item.author)].join("::");
+        const existing = groups.get(key);
+        const option = { summary: item, latencyMs };
+        if (!existing) {
+          groups.set(key, { id: key, title: item.title, author: item.author, description: item.description, sources: [option] });
+        } else {
+          if (item.description.length > existing.description.length) existing.description = item.description;
+          if (!existing.sources.some((entry) => entry.summary.sourceId === item.sourceId)) existing.sources.push(option);
+        }
+      });
     });
-    const merged = mergeNovelSearchResults(pages);
-    setOnlineResults(merged);
+    const groupedResults = [...groups.values()].map((group) => ({
+      ...group,
+      sources: [...group.sources].sort((a, b) => a.latencyMs - b.latencyMs),
+    }));
+    setOnlineResults(groupedResults);
     setSearching(false);
-    setSearchSummary("搜索完成：成功 " + pages.length + " 个，失败 " + failed + " 个书源，共找到 " + merged.length + " 本（已去重）。");
-    setSearchMessage(merged.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（目前仅支持常见 JSON 列表）。" : "");
+    setSearchSummary("搜索完成：成功 " + (enabledSources.length - failed) + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。");
+    setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（目前仅支持常见 JSON 列表）。" : "点击小说名称查看介绍并选择阅读源；系统会优先推荐本次响应最快的来源。");
+  };
+
+  const openSearchNovel = (novel: SearchNovelGroup) => {
+    setSelectedSearchNovel(novel);
+    setSelectedSourceId(novel.sources[0]?.summary.sourceId ?? null);
+  };
+
+  const closeSearchNovel = () => {
+    setSelectedSearchNovel(null);
+    setSelectedSourceId(null);
   };
 
   const stopSpeech = () => {
@@ -281,6 +316,50 @@ export default function App() {
       <SafeAreaView style={[styles.safe, styles.loading]}>
         <ActivityIndicator size="large" color="#65745D" />
         <Text style={styles.loadingText}>正在打开你的书架…</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (selectedSearchNovel && !selectedBook) {
+    const recommended = selectedSearchNovel.sources[0];
+    const activeSource = selectedSearchNovel.sources.find((item) => item.summary.sourceId === selectedSourceId) || recommended;
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar barStyle="dark-content" />
+        <View style={styles.detailHeader}>
+          <Pressable onPress={closeSearchNovel}><Text style={styles.backText}>‹ 返回搜索</Text></Pressable>
+          <Text style={styles.readerHeaderTitle}>小说详情</Text>
+          <View style={{ width: 64 }} />
+        </View>
+        <ScrollView contentContainerStyle={styles.pageContent}>
+          <View style={styles.detailHero}>
+            <Text style={styles.detailTitle}>{selectedSearchNovel.title}</Text>
+            <Text style={styles.detailAuthor}>{selectedSearchNovel.author || "未知作者"}</Text>
+          </View>
+          <View style={styles.detailSection}>
+            <Text style={styles.sectionTitle}>小说介绍</Text>
+            <Text style={styles.detailDescription}>{selectedSearchNovel.description || "这个书源没有提供小说简介。"}</Text>
+          </View>
+          <View style={styles.detailSection}>
+            <Text style={styles.sectionTitle}>选择阅读源</Text>
+            <Text style={styles.note}>已按本次搜索响应时间从快到慢排列，第一项为自动推荐。速度会随网络和站点状态变化。</Text>
+            {selectedSearchNovel.sources.map((option, index) => {
+              const isRecommended = index === 0;
+              const isSelected = option.summary.sourceId === activeSource?.summary.sourceId;
+              return (
+                <Pressable key={option.summary.sourceId} onPress={() => setSelectedSourceId(option.summary.sourceId)} style={[styles.sourceChoice, isSelected && styles.sourceChoiceSelected]}>
+                  <View style={styles.sourceChoiceInfo}>
+                    <Text style={styles.sourceChoiceName}>{option.summary.sourceName}</Text>
+                    <Text style={styles.sourceChoiceLatency}>{option.latencyMs} ms · {isRecommended ? "本次最快" : "响应时间"}</Text>
+                  </View>
+                  {isRecommended && <Text style={styles.recommendTag}>推荐</Text>}
+                  {isSelected && <Text style={styles.selectedTag}>已选择</Text>}
+                </Pressable>
+              );
+            })}
+          </View>
+          {!!activeSource && <Text style={styles.note}>当前选择：{activeSource.summary.sourceName}。下一阶段将接入该来源的真实目录与正文。</Text>}
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -429,14 +508,12 @@ export default function App() {
           {searching && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={styles.note}>正在搜索，请稍候…</Text></View>}
           {!!searchMessage && <Text style={styles.searchFeedback}>{searchMessage}</Text>}
           {onlineResults.map((item) => (
-            <View key={item.id} style={styles.onlineResultCard}>
+            <Pressable key={item.id} style={styles.onlineResultCard} onPress={() => openSearchNovel(item)}>
               <View style={styles.onlineResultInfo}>
                 <Text style={styles.onlineResultTitle}>{item.title}</Text>
-                <Text style={styles.onlineResultAuthor}>{item.author} · {item.sourceName}</Text>
-                {!!item.description && <Text style={styles.onlineResultDescription} numberOfLines={3}>{item.description}</Text>}
-                <Text style={styles.onlineResultUrl} numberOfLines={1}>{item.bookUrl}</Text>
               </View>
-            </View>
+              <Text style={styles.resultChevron}>›</Text>
+            </Pressable>
           ))}
           {!searching && onlineResults.length === 0 && !searchMessage && (
             <Text style={styles.emptyText}>输入书名开始搜索。需要先在「书源」页导入并启用可用书源。</Text>
@@ -565,6 +642,20 @@ const styles = StyleSheet.create({
   searchLoading: { alignItems: "center", paddingVertical: 18 },
   searchFeedback: { color: "#9A6A50", fontSize: 12, lineHeight: 19, marginBottom: 12 },
   onlineResultCard: { backgroundColor: "#FFFFFF", borderRadius: 15, padding: 15, marginBottom: 10, borderWidth: 1, borderColor: "#EEECE5" },
+  detailHeader: { height: 54, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  detailHero: { backgroundColor: "#343B32", borderRadius: 20, padding: 22, marginBottom: 18 },
+  detailTitle: { color: "#FFFFFF", fontSize: 24, lineHeight: 32, fontWeight: "800" },
+  detailAuthor: { color: "#D0D4C9", fontSize: 13, marginTop: 10 },
+  detailSection: { backgroundColor: "#FFFFFF", borderRadius: 17, padding: 18, marginBottom: 14, borderWidth: 1, borderColor: "#EEECE5" },
+  detailDescription: { color: "#66665D", fontSize: 14, lineHeight: 24 },
+  sourceChoice: { minHeight: 62, backgroundColor: "#F8F7F3", borderRadius: 12, paddingHorizontal: 13, paddingVertical: 10, marginTop: 10, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#EEECE5" },
+  sourceChoiceSelected: { borderColor: "#829078", backgroundColor: "#F0F2EC" },
+  sourceChoiceInfo: { flex: 1 },
+  sourceChoiceName: { color: "#33352D", fontSize: 13, fontWeight: "700" },
+  sourceChoiceLatency: { color: "#8D897F", fontSize: 10, marginTop: 5 },
+  recommendTag: { color: "#65745D", fontSize: 10, fontWeight: "800", marginRight: 8 },
+  selectedTag: { color: "#65745D", fontSize: 10, fontWeight: "800" },
+  resultChevron: { color: "#A39F94", fontSize: 24, marginLeft: 10 },
   onlineResultInfo: { flex: 1 },
   onlineResultTitle: { color: "#292A24", fontSize: 16, fontWeight: "800" },
   onlineResultAuthor: { color: "#8D897F", fontSize: 11, marginTop: 5 },
