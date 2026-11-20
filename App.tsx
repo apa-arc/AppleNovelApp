@@ -124,6 +124,13 @@ export default function App() {
   const [chapterIndex, setChapterIndex] = useState(0);
   const [showCatalog, setShowCatalog] = useState(false);
   const [showReaderSettings, setShowReaderSettings] = useState(false);
+  const [showSpeechSettings, setShowSpeechSettings] = useState(false);
+  const [availableSpeechVoices, setAvailableSpeechVoices] = useState<Awaited<ReturnType<typeof Speech.getAvailableVoicesAsync>>>([]);
+  const [loadingSpeechVoices, setLoadingSpeechVoices] = useState(false);
+  const [speechVoiceMessage, setSpeechVoiceMessage] = useState("");
+  const [speechVoiceIdentifier, setSpeechVoiceIdentifier] = useState<string | null>(null);
+  const [speechRate, setSpeechRate] = useState(DEFAULT_READER_SETTINGS.speechRate);
+  const [speechPitch, setSpeechPitch] = useState(DEFAULT_READER_SETTINGS.speechPitch);
   const [readerFontSize, setReaderFontSize] = useState(DEFAULT_READER_SETTINGS.fontSize);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(DEFAULT_READER_SETTINGS.theme);
   const [readerLineSpacing, setReaderLineSpacing] = useState(DEFAULT_READER_SETTINGS.lineSpacing);
@@ -255,6 +262,9 @@ export default function App() {
           setReaderLineSpacing(settings.lineSpacing);
           setReaderParagraphSpacing(settings.paragraphSpacing);
           setReaderHorizontalPadding(settings.horizontalPadding);
+          setSpeechVoiceIdentifier(settings.speechVoiceIdentifier);
+          setSpeechRate(settings.speechRate);
+          setSpeechPitch(settings.speechPitch);
         }
       } catch {
         Alert.alert("读取失败", "本地书架数据暂时无法读取，已使用默认书架。");
@@ -292,11 +302,11 @@ export default function App() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    const settings: ReaderSettings = normalizeReaderSettings({ fontSize: readerFontSize, theme: readerTheme, readingMode: readerMode, lineSpacing: readerLineSpacing, paragraphSpacing: readerParagraphSpacing, horizontalPadding: readerHorizontalPadding });
+    const settings: ReaderSettings = normalizeReaderSettings({ fontSize: readerFontSize, theme: readerTheme, readingMode: readerMode, lineSpacing: readerLineSpacing, paragraphSpacing: readerParagraphSpacing, horizontalPadding: readerHorizontalPadding, speechVoiceIdentifier, speechRate, speechPitch });
     AsyncStorage.setItem(READER_SETTINGS_STORAGE_KEY, JSON.stringify(settings)).catch(() => {
       Alert.alert("保存失败", "阅读设置暂时未能保存，请检查手机存储空间。");
     });
-  }, [readerFontSize, readerTheme, readerMode, readerLineSpacing, readerParagraphSpacing, readerHorizontalPadding, isLoaded]);
+  }, [readerFontSize, readerTheme, readerMode, readerLineSpacing, readerParagraphSpacing, readerHorizontalPadding, speechVoiceIdentifier, speechRate, speechPitch, isLoaded]);
 
   useEffect(() => {
     if (!restoreReaderPositionRef.current || readerContentHeight <= 0 || readerViewportHeight <= 0) return;
@@ -743,6 +753,47 @@ export default function App() {
     setOpenedFromShelf(false);
   };
 
+  const loadAvailableSpeechVoices = async () => {
+    if (availableSpeechVoices.length > 0 || loadingSpeechVoices) return;
+    setLoadingSpeechVoices(true);
+    setSpeechVoiceMessage("正在读取 iPhone 可用语音…");
+    try {
+      const voices = await Speech.getAvailableVoicesAsync();
+      const sorted = [...voices].sort((a, b) => {
+        const aChinese = a.language.toLowerCase().startsWith("zh") ? 0 : 1;
+        const bChinese = b.language.toLowerCase().startsWith("zh") ? 0 : 1;
+        return aChinese - bChinese || a.language.localeCompare(b.language) || a.name.localeCompare(b.name);
+      });
+      setAvailableSpeechVoices(sorted);
+      setSpeechVoiceMessage(sorted.length > 0 ? `找到 ${sorted.length} 种系统语音。中文语音已排在前面。` : "设备暂未提供可用语音，请检查 iPhone 的语音下载设置。");
+    } catch {
+      setSpeechVoiceMessage("读取系统语音失败，请稍后重试。");
+    } finally {
+      setLoadingSpeechVoices(false);
+    }
+  };
+
+  const openSpeechSettings = () => {
+    setShowReaderSettings(false);
+    setShowSpeechSettings((visible) => {
+      const next = !visible;
+      if (next) void loadAvailableSpeechVoices();
+      return next;
+    });
+  };
+
+  const previewSpeechVoice = () => {
+    Speech.stop();
+    const voice = availableSpeechVoices.find((item) => item.identifier === speechVoiceIdentifier);
+    Speech.speak("你好，欢迎使用小说阅读器。你可以在这里试听不同的声音。", {
+      language: voice?.language || "zh-CN",
+      voice: voice?.identifier,
+      rate: speechRate,
+      pitch: speechPitch,
+      onError: () => setSpeechVoiceMessage("试听失败，这个语音可能尚未下载或暂不可用。"),
+    });
+  };
+
   const speakCurrentBook = () => {
     if (!selectedBook) return;
     if (isSpeaking) {
@@ -754,8 +805,10 @@ export default function App() {
     const textToRead = selectedBook.title + "。" + chapterTitle + "。" + chapterText;
     setIsSpeaking(true);
     Speech.speak(textToRead, {
-      language: "zh-CN",
-      rate: 0.95,
+      language: availableSpeechVoices.find((voice) => voice.identifier === speechVoiceIdentifier)?.language || "zh-CN",
+      voice: availableSpeechVoices.find((voice) => voice.identifier === speechVoiceIdentifier)?.identifier,
+      rate: speechRate,
+      pitch: speechPitch,
       onDone: () => setIsSpeaking(false),
       onStopped: () => setIsSpeaking(false),
       onError: () => setIsSpeaking(false),
@@ -1048,6 +1101,48 @@ export default function App() {
             </View>
           </View>
         )}
+        {showSpeechSettings && !showCatalog && (
+          <View style={[styles.readerSettings, styles.speechSettings, readerTheme === "night" && styles.nightCard]}>
+            <View style={styles.speechHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>朗读声音</Text>
+                <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>使用 iPhone 已安装的系统语音；可在系统设置中下载更多声音。</Text>
+              </View>
+              <Pressable style={styles.fontButton} onPress={() => { setAvailableSpeechVoices([]); void loadAvailableSpeechVoices(); }}>
+                <Text style={styles.fontButtonText}>{loadingSpeechVoices ? "读取中" : "刷新"}</Text>
+              </Pressable>
+              <Pressable style={styles.fontButton} onPress={previewSpeechVoice}>
+                <Text style={styles.fontButtonText}>试听</Text>
+              </Pressable>
+            </View>
+            {!!speechVoiceMessage && <Text style={[styles.speechMessage, readerTheme === "night" && styles.nightMuted]}>{speechVoiceMessage}</Text>}
+            <ScrollView style={styles.voiceList} nestedScrollEnabled>
+              {availableSpeechVoices.map((voice) => {
+                const selected = speechVoiceIdentifier === voice.identifier;
+                return (
+                  <Pressable key={voice.identifier} style={[styles.voiceOption, selected && styles.voiceOptionSelected, readerTheme === "night" && styles.nightVoiceOption]} onPress={() => { setSpeechVoiceIdentifier(voice.identifier); Speech.stop(); }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>{voice.name}</Text>
+                      <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>{voice.language} · {voice.quality === "Enhanced" ? "增强音质" : voice.quality === "Premium" ? "高级音质" : "标准音质"}</Text>
+                    </View>
+                    <Text style={styles.voiceSelected}>{selected ? "已选择" : "选择"}</Text>
+                  </Pressable>
+                );
+              })}
+              {!loadingSpeechVoices && availableSpeechVoices.length === 0 && <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>没有读取到语音。可以点刷新重试。</Text>}
+            </ScrollView>
+            <View style={styles.readerSettingRow}>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>语速</Text>
+              <Pressable style={styles.fontButton} onPress={() => setSpeechRate((v) => Math.max(0.5, Math.round((v - 0.1) * 10) / 10))}><Text style={styles.fontButtonText}>−</Text></Pressable>
+              <Text style={[styles.fontSizeValue, readerTheme === "night" && styles.nightText]}>{speechRate.toFixed(1)}×</Text>
+              <Pressable style={styles.fontButton} onPress={() => setSpeechRate((v) => Math.min(2, Math.round((v + 0.1) * 10) / 10))}><Text style={styles.fontButtonText}>＋</Text></Pressable>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>音调</Text>
+              <Pressable style={styles.fontButton} onPress={() => setSpeechPitch((v) => Math.max(0.5, Math.round((v - 0.1) * 10) / 10))}><Text style={styles.fontButtonText}>−</Text></Pressable>
+              <Text style={[styles.fontSizeValue, readerTheme === "night" && styles.nightText]}>{speechPitch.toFixed(1)}</Text>
+              <Pressable style={styles.fontButton} onPress={() => setSpeechPitch((v) => Math.min(2, Math.round((v + 0.1) * 10) / 10))}><Text style={styles.fontButtonText}>＋</Text></Pressable>
+            </View>
+          </View>
+        )}
         {readerChromeVisible && <View style={[styles.readerBottomBar, readerTheme === "night" && styles.nightCard]}>
           <View style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, backgroundColor: readerTheme === "night" ? "#3A4038" : "#EEECE5" }}>
             <View style={{ height: 2, width: `${readingProgressPercent}%`, backgroundColor: "#7D8B70" }} />
@@ -1055,8 +1150,11 @@ export default function App() {
           <Pressable disabled={activeChapterIndex === 0 || showCatalog || loadingOnlineChapter} onPress={() => changeChapter(-1)} style={styles.chapterNavButton}>
             <Text style={[styles.chapterNavText, (activeChapterIndex === 0 || showCatalog || loadingOnlineChapter) && styles.disabledText]}>上一章</Text>
           </Pressable>
-          <Pressable onPress={() => setShowReaderSettings((value) => !value)} style={styles.playerButton}>
+          <Pressable onPress={() => { setShowSpeechSettings(false); setShowReaderSettings((value) => !value); }} style={styles.playerButton}>
             <Text style={styles.playerAction}>Aa 设置</Text>
+          </Pressable>
+          <Pressable onPress={openSpeechSettings} style={styles.playerButton}>
+            <Text style={styles.playerAction}>声音</Text>
           </Pressable>
           <Pressable onPress={speakCurrentBook} style={styles.playerButton}>
             <Text style={styles.playerAction}>{isSpeaking ? "停止朗读" : "听书"}</Text>
@@ -1470,8 +1568,18 @@ const styles = StyleSheet.create({
   chapterRowTitle: { color: "#383A32", fontSize: 14, fontWeight: "600", flex: 1 },
   chapterRowMeta: { color: "#87917E", fontSize: 10, marginLeft: 8 },
   catalogDisclaimer: { color: "#A09B8E", fontSize: 11, lineHeight: 18, marginTop: 10 },
-  readerSettings: { maxHeight: 240, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#EEECE5", paddingHorizontal: 14, paddingVertical: 9 },
+  readerSettings: { maxHeight: 300, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#EEECE5", paddingHorizontal: 14, paddingVertical: 9 },
   readerSettingRow: { minHeight: 38, flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  speechSettings: { maxHeight: 370 },
+  speechHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  speechMessage: { color: "#65745D", fontSize: 11, marginVertical: 7 },
+  voiceList: { maxHeight: 150, marginVertical: 5 },
+  voiceOption: { minHeight: 48, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, backgroundColor: "#F8F7F3", flexDirection: "row", alignItems: "center", marginBottom: 6 },
+  voiceOptionSelected: { borderWidth: 1, borderColor: "#829078", backgroundColor: "#EEF0E9" },
+  nightVoiceOption: { backgroundColor: "#353B33" },
+  voiceName: { color: "#33352D", fontSize: 12, fontWeight: "700" },
+  voiceLanguage: { color: "#8D897F", fontSize: 10, marginTop: 3 },
+  voiceSelected: { color: "#65745D", fontSize: 10, fontWeight: "800" },
   settingsLabel: { color: "#777368", fontSize: 11 },
   fontButton: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: "#EEF0E9" },
   fontButtonText: { color: "#65745D", fontWeight: "800", fontSize: 12 },
