@@ -7,10 +7,16 @@ This is a self-hosted HTTP service for the app's online Kokoro speech mode. The 
 From the repository root:
 
 ```bash
-cp .env.example .env
-# Replace SPEECH_ENROLLMENT_CODE in .env with a strong random value.
-# Example generator: openssl rand -hex 24
+# Windows PowerShell:
+Copy-Item .env.example .env
+# Generate a random code:
+[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
+# Paste the generated value into SPEECH_ENROLLMENT_CODE in .env, then:
 docker compose up -d --build
+
+# macOS/Linux alternative:
+# cp .env.example .env
+# openssl rand -hex 24
 ```
 
 The Compose file keeps model weights and enrolled-device token hashes in persistent Docker volumes. By default, the HTTP port is bound to localhost only. Put it behind an HTTPS reverse proxy or access it through your private VPN; do not expose port 8000 directly to the public internet.
