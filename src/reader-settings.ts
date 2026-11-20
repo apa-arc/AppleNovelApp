@@ -1,6 +1,7 @@
 export type ReaderTheme = "paper" | "green" | "gray" | "night";
 
 export type ReaderSettings = {
+  speechCloudEndpoint: string;
   fontSize: number;
   theme: ReaderTheme;
   readingMode: "scroll" | "tap";
@@ -14,6 +15,7 @@ export type ReaderSettings = {
 };
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
+  speechCloudEndpoint: "",
   fontSize: 18,
   theme: "paper",
   readingMode: "scroll",
@@ -42,7 +44,18 @@ export function normalizeReaderSettings(value: unknown): ReaderSettings {
   const theme: ReaderTheme = candidate.theme === "night" || candidate.theme === "green" || candidate.theme === "gray"
     ? candidate.theme
     : "paper";
+  const rawSpeechEndpoint = typeof candidate.speechCloudEndpoint === "string" ? candidate.speechCloudEndpoint.trim() : "";
+  let speechCloudEndpoint = "";
+  try {
+    const parsedEndpoint = new URL(rawSpeechEndpoint);
+    if (parsedEndpoint.protocol === "https:" && parsedEndpoint.hostname && !parsedEndpoint.username && !parsedEndpoint.password && !parsedEndpoint.hash) {
+      speechCloudEndpoint = parsedEndpoint.toString().replace(/\\/$/, "");
+    }
+  } catch {
+    speechCloudEndpoint = "";
+  }
   return {
+    speechCloudEndpoint,
     fontSize: bounded("fontSize", DEFAULT_READER_SETTINGS.fontSize, 14, 28),
     theme,
     readingMode: candidate.readingMode === "tap" ? "tap" : "scroll",
