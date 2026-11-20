@@ -30,7 +30,7 @@
 
 - App 当前在线书源运行时支持受限 HTTPS JSON 接口；不执行上游 JavaScript。
 - 目前尚无通用 HTML/CSS/XPath 解析器，因此 Legado 选择器脚本不能直接运行。
-- 云端 Kokoro TTS 服务端代码、App HTTPS 客户端和 WAV 播放队列已接入；需部署服务端并在 App「声音」设置填写 HTTPS 地址后才可实际联网朗读。
+- 云端 Kokoro TTS 服务端代码、App HTTPS 客户端和 WAV 播放队列已接入；设备授权凭据通过 iOS SecureStore 保存，服务端支持撤销。需部署服务端并在 App「声音」设置填写 HTTPS 地址、管理员绑定码后才可实际联网朗读。
 - 后台/锁屏音频配置已加入 Expo 项目，但必须经 EAS 原生构建后才能验证。
 - 离线 Kokoro 原生推理、模型真实下载/解压尚未完成。候选 React Native 模块在 Expo 54 / RN 0.81.5 新架构下存在未解决的 TurboModule 注册问题，暂不接入生产主线。
 - OTA 更新需要 EAS projectId、首次原生构建和发布凭据；仅有工作流文件不代表更新服务已上线。
