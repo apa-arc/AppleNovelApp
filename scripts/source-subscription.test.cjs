@@ -9,7 +9,8 @@ const compatible = {
     searchUrl: "https://books.example/search?q={keyword}",
     bookUrl: "https://books.example/book",
     chapterListUrl: "https://books.example/toc",
-    chapterUrl: "https://books.example/chapter"
+    chapterUrl: "https://books.example/chapter",
+    htmlRules: { search: { itemSelector: ".book", titleSelector: "a.title", urlSelector: "a.title" } }
   }
 };
 
@@ -21,6 +22,7 @@ test("imports only entries with explicit safe JSON endpoint configuration", () =
   assert.equal(result.compatible.length, 1);
   assert.equal(result.compatible[0].name, "JSON 源");
   assert.equal(result.compatible[0].version, "1.2.0");
+  assert.equal(result.compatible[0].htmlRules.search.itemSelector, ".book");
   assert.equal(result.unsupported.length, 1);
   assert.match(result.unsupported[0].reason, /脚本规则暂不执行/);
 });
