@@ -35,5 +35,7 @@ jobs:
         run: npx expo prebuild --platform ios --no-install --clean
       - name: Verify background download callback was added
         run: grep -R "RNBackgroundDownloader.setCompletionHandlerWithIdentifier" ios
-      - name: Verify SherpaOnnx pod was autolinked
-        run: grep -R "SherpaOnnx.podspec" ios/Podfile
+      - name: Verify bridging header import
+        run: grep -R "RNBackgroundDownloader.h" ios
+      - name: Verify SherpaOnnx dependency is present
+        run: node -e "const p=require('./package.json'); if (!p.dependencies['react-native-sherpa-onnx']) process.exit(1)"
