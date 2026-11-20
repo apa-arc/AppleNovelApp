@@ -23,6 +23,7 @@ function firstString(record: JsonRecord, keys: string[]): string {
 function findCandidateArray(value: unknown, depth = 0): unknown[] | null {
   if (depth > 5 || !value || typeof value !== "object") return null;
   if (Array.isArray(value)) {
+    if (value.length === 0) return value;
     if (value.some((item) => item && typeof item === "object" && !Array.isArray(item))) return value;
     for (const item of value) {
       const found = findCandidateArray(item, depth + 1);
