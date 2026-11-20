@@ -26,3 +26,9 @@ jobs:
         run: sh -n server/download-model.sh
       - name: Run server unit tests
         run: python -m unittest server.tests.test_tts_core server.tests.test_auth
+      - name: Validate Docker Compose configuration
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+      - name: Build Kokoro TTS server image
+        run: docker build -f server/Dockerfile -t private-novel-kokoro-tts .
