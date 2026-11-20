@@ -12,3 +12,66 @@ index 577a40b..80c3df0 100644
 +RCT_EXPORT_MODULE(SherpaOnnx)
  
  - (instancetype)init
+
+diff --git a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect.h b/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect.h
+index 7c21fe7..0000000 100644
+--- a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect.h
++++ b/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect.h
+@@ -167,7 +167,8 @@
+ struct TtsModelPaths {
+     std::string ttsModel;
+     std::string tokens;
+     std::string lexicon;
+     std::string dataDir;
++    std::string dictDir;
+     std::string voices;
+     std::string acousticModel;
+     std::string vocoder;
+diff --git a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-tts.mm b/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-tts.mm
+index ddb542f..0000000 100644
+--- a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-tts.mm
++++ b/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-tts.mm
+@@ -143,7 +143,8 @@
+     std::string tokensFile = FindFileByName(files, "tokens.txt");
+     std::vector<LexiconCandidate> lexiconCandidates = FindLexiconCandidates(files, modelDir);
+     std::string dataDirPath = FindDirectoryUnderRoot(files, modelDir, "espeak-ng-data");
++    std::string dictDirPath = FindDirectoryUnderRoot(files, modelDir, "dict");
+     TTS_DETECT_LOGI("DetectTtsModel: modelDir=%s espeak-ng dataDir=%s (empty=%d)",
+                     modelDir.c_str(),
+                     dataDirPath.empty() ? "(empty)" : dataDirPath.c_str(),
+@@ -291,11 +292,16 @@
+     std::string lexiconPath;
+     for (const auto& c : lexiconCandidates) {
+         result.lexiconLanguageCandidates.push_back(c.languageId);
+     }
+-    if (!lexiconCandidates.empty()) {
++    if (selected == TtsModelKind::kKokoro) {
++        for (size_t i = 0; i < lexiconCandidates.size(); ++i) {
++            if (i > 0) lexiconPath += ",";
++            lexiconPath += lexiconCandidates[i].path;
++        }
++    } else if (!lexiconCandidates.empty()) {
+         lexiconPath = lexiconCandidates[0].path;
+     }
+ 
+@@ -303,6 +309,7 @@
+     result.paths.tokens = tokensFile;
+     result.paths.lexicon = lexiconPath;
+     result.paths.dataDir = dataDirPath;
++    result.paths.dictDir = dictDirPath;
+     result.paths.voices = voicesFile;
+     result.paths.acousticModel = acousticModel;
+     result.paths.vocoder = vocoder;
+diff --git a/node_modules/react-native-sherpa-onnx/ios/tts/sherpa-onnx-tts-wrapper.mm b/node_modules/react-native-sherpa-onnx/ios/tts/sherpa-onnx-tts-wrapper.mm
+index 31b15f5..0000000 100644
+--- a/node_modules/react-native-sherpa-onnx/ios/tts/sherpa-onnx-tts-wrapper.mm
++++ b/node_modules/react-native-sherpa-onnx/ios/tts/sherpa-onnx-tts-wrapper.mm
+@@ -125,9 +125,10 @@
+             case TtsModelKind::kKokoro:
+                 config.model.kokoro.model = detect.paths.ttsModel;
+                 config.model.kokoro.tokens = detect.paths.tokens;
+                 config.model.kokoro.data_dir = detect.paths.dataDir;
++                config.model.kokoro.dict_dir = detect.paths.dictDir;
+                 config.model.kokoro.voices = detect.paths.voices;
+                 if (!detect.paths.lexicon.empty()) {
+                     config.model.kokoro.lexicon = detect.paths.lexicon;
