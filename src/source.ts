@@ -8,6 +8,8 @@ export type NovelSource = {
   chapterUrl: string;
   enabled: boolean;
   importedAt: number;
+  /** Built-in offline fixture; never imported from untrusted source JSON. */
+  isBuiltinMock?: boolean;
 };
 
 type SourceInput = {
