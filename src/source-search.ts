@@ -44,6 +44,7 @@ function findCandidateArray(value: unknown, depth = 0): unknown[] | null {
 }
 
 function resolvePublicResultUrl(value: string, responseUrl: string): string {
+  if (!value.trim()) return "";
   try {
     const resolved = new URL(value, responseUrl);
     if (resolved.protocol !== "https:" || resolved.username || resolved.password) return "";
