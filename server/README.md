@@ -7,11 +7,13 @@ This is a self-hosted HTTP service for the app's online Kokoro speech mode. The 
 From the repository root:
 
 ```bash
-docker build -f server/Dockerfile -t private-novel-tts .
-docker run --rm -p 8000:8000 \\
-  -e SPEECH_ENROLLMENT_CODE="$(openssl rand -hex 24)" \\
-  -v kokoro-models:/models -v kokoro-data:/data private-novel-tts
+cp .env.example .env
+# Replace SPEECH_ENROLLMENT_CODE in .env with a strong random value.
+# Example generator: openssl rand -hex 24
+docker compose up -d --build
 ```
+
+The Compose file keeps model weights and enrolled-device token hashes in persistent Docker volumes. By default, the HTTP port is bound to localhost only. Put it behind an HTTPS reverse proxy or access it through your private VPN; do not expose port 8000 directly to the public internet.
 
 The first start downloads the upstream sherpa-onnx Kokoro int8 archive (about 147 MB) into the volume, then starts the service. Later starts reuse the downloaded model.
 
