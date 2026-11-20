@@ -15,7 +15,7 @@ import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } fr
 import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
 import { SPEECH_VOICES } from "./src/speech-voice-catalog";
 import { splitSpeechText, normalizeCloudTtsEndpoint } from "./src/speech-engine";
-import { requestCloudSpeech } from "./src/cloud-tts";
+import { requestCloudSpeech, checkCloudTtsServer } from "./src/cloud-tts";
 import { playCloudWav, type CloudAudioPlayback } from "./src/cloud-audio-playback";
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
 import {
@@ -141,6 +141,7 @@ export default function App() {
   const [speechVoiceIdentifier, setSpeechVoiceIdentifier] = useState<string | null>(null);
   const [speechModelVoiceId, setSpeechModelVoiceId] = useState(DEFAULT_READER_SETTINGS.speechModelVoiceId);
   const [speechCloudEndpoint, setSpeechCloudEndpoint] = useState(DEFAULT_READER_SETTINGS.speechCloudEndpoint);
+  const [checkingSpeechServer, setCheckingSpeechServer] = useState(false);
   const [speechPaused, setSpeechPaused] = useState(false);
   const speechPausedRef = useRef(false);
   const speechRunIdRef = useRef(0);
@@ -670,6 +671,19 @@ export default function App() {
     setSpeechPaused(false);
     speechPausedRef.current = false;
     cloudPlaybackRef.current?.resume();
+  };
+
+  const testSpeechServer = async () => {
+    if (checkingSpeechServer) return;
+    setCheckingSpeechServer(true);
+    try {
+      const status = await checkCloudTtsServer(speechCloudEndpoint);
+      Alert.alert("连接成功", "Kokoro 服务正常，模型已加载，" + status.speakerCount + " 种音色可用。");
+    } catch (error) {
+      Alert.alert("连接失败", error instanceof Error ? error.message : "无法连接 AI 语音服务。");
+    } finally {
+      setCheckingSpeechServer(false);
+    }
   };
 
   const checkOnlineSubscription = async (book: Book, showNoUpdates = false): Promise<Book | null> => {
@@ -1267,6 +1281,9 @@ export default function App() {
                 style={[styles.searchInput, { width: "100%", marginTop: 7 }]}
               />
               <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>服务端部署完成后填入 HTTPS 地址。服务端保存模型，App 不保存服务端密钥。</Text>
+              <Pressable onPress={() => void testSpeechServer()} disabled={checkingSpeechServer || !speechCloudEndpoint.trim()} style={[styles.catalogLoadButton, (checkingSpeechServer || !speechCloudEndpoint.trim()) && styles.importButtonDisabled]}>
+                {checkingSpeechServer ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>测试 AI 服务器连接</Text>}
+              </Pressable>
               <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>一个模型包包含全部 103 个音色。先选好声音；模型下载与 AI 试听接入后，才会真正生成语音。</Text>
               <Text style={[styles.voiceSelected, { marginTop: 6 }]}>当前状态：模型尚未下载，AI 朗读尚未启用</Text>
             </View>
