@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-native-sherpa-onnx/ios/SherpaOnnx.mm b/node_modules/react-native-sherpa-onnx/ios/SherpaOnnx.mm
+--- a/node_modules/react-native-sherpa-onnx/ios/SherpaOnnx.mm
++++ b/node_modules/react-native-sherpa-onnx/ios/SherpaOnnx.mm
+@@
+ @implementation SherpaOnnx
+-
+-+ (NSString *)moduleName
+-{
+-    return @"SherpaOnnx";
+-}
++RCT_EXPORT_MODULE(SherpaOnnx)
+ 
+ - (instancetype)init
