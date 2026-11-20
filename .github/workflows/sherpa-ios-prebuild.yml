@@ -1,0 +1,39 @@
+name: Sherpa iOS prebuild spike
+
+on:
+  push:
+    branches:
+      - experiment/sherpa-onnx-ios-registration
+    paths:
+      - "app.json"
+      - "package.json"
+      - "app.config.js"
+      - "plugins/**"
+      - "patches/**"
+      - ".github/workflows/sherpa-ios-prebuild.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "app.json"
+      - "package.json"
+      - "app.config.js"
+      - "plugins/**"
+      - "patches/**"
+
+jobs:
+  prebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies and apply native patch
+        run: npm install
+      - name: Generate iOS native project
+        run: npx expo prebuild --platform ios --no-install --clean
+      - name: Verify background download callback was added
+        run: grep -R "RNBackgroundDownloader.setCompletionHandlerWithIdentifier" ios
+      - name: Verify SherpaOnnx pod was autolinked
+        run: grep -R "SherpaOnnx.podspec" ios/Podfile
