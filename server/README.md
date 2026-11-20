@@ -34,4 +34,4 @@ curl -X POST http://localhost:8000/v1/audio/speech \
 
 Do not expose this service directly to the public internet without an authenticated reverse proxy, HTTPS, request limits, and monitoring. The app must only be configured with the HTTPS URL of a deployment you control. Do not put a provider API key or server credential in the iOS app. This service runs Kokoro itself, so it does not need a paid upstream TTS API key.
 
-This service is an independently deployable backend; creating the files does not deploy it or make cloud speech available in the app. The app-side endpoint setting and audio queue still need to be connected, and the backend must be deployed before online synthesis can be used.
+This service is an independently deployable backend; creating the files does not deploy it. The app already includes the HTTPS endpoint setting, chunked request client, WAV cache writer, and audio playback queue. Deploy this backend first, then enter its HTTPS base URL in the app's Voice settings before online synthesis can be used.
