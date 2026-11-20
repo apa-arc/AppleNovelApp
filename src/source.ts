@@ -104,3 +104,37 @@ export function parseNovelSourceJson(raw: string): Omit<NovelSource, "id" | "ena
     chapterUrl: isSafeHttpsUrl(input.chapterUrl, "chapterUrl"),
   };
 }
+
+
+/** Parse one source object or a batch of up to 100 source objects. */
+export function parseNovelSourceJsonBatch(raw: string): Array<Omit<NovelSource, "id" | "enabled" | "importedAt">> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("JSON 格式错误，请检查逗号、引号和括号。");
+  }
+  const entries = Array.isArray(parsed) ? parsed : [parsed];
+  if (entries.length === 0) throw new Error("批量书源列表不能为空。");
+  if (entries.length > 100) throw new Error("单次最多导入 100 个书源，请分批导入。");
+  const result = entries.map((entry, index) => {
+    try {
+      return parseNovelSourceJson(JSON.stringify(entry));
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "书源校验失败。";
+      throw new Error("第 " + (index + 1) + " 个书源校验失败：" + reason);
+    }
+  });
+  const names = new Set<string>();
+  const urls = new Set<string>();
+  for (const source of result) {
+    const name = source.name.toLocaleLowerCase();
+    const url = source.baseUrl.toLocaleLowerCase();
+    if (names.has(name) || urls.has(url)) {
+      throw new Error("批量列表中存在重复的书源名称或网址，请先去重。");
+    }
+    names.add(name);
+    urls.add(url);
+  }
+  return result;
+}
