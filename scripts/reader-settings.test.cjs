@@ -4,19 +4,19 @@ const { DEFAULT_READER_SETTINGS, normalizeReaderSettings } = require("../.test-b
 
 test("reader settings use stable defaults", () => {
   assert.deepEqual(DEFAULT_READER_SETTINGS, {
-    fontSize: 18, theme: "paper", readingMode: "scroll", lineSpacing: 1.9, paragraphSpacing: 22, horizontalPadding: 27, speechVoiceIdentifier: null, speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-3", speechRate: 0.95, speechPitch: 1,
+    speechCloudEndpoint: "", fontSize: 18, theme: "paper", readingMode: "scroll", lineSpacing: 1.9, paragraphSpacing: 22, horizontalPadding: 27, speechVoiceIdentifier: null, speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-3", speechRate: 0.95, speechPitch: 1,
   });
 });
 
 test("reader settings preserve valid user preferences", () => {
   assert.deepEqual(normalizeReaderSettings({ fontSize: 24, theme: "night", readingMode: "tap", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32 }), {
-    fontSize: 24, theme: "night", readingMode: "tap", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32, speechVoiceIdentifier: null, speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-3", speechRate: 0.95, speechPitch: 1,
+    speechCloudEndpoint: "", fontSize: 24, theme: "night", readingMode: "tap", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32, speechVoiceIdentifier: null, speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-3", speechRate: 0.95, speechPitch: 1,
   });
 });
 
 test("reader settings clamp numeric values and reject unknown choices", () => {
   assert.deepEqual(normalizeReaderSettings({ fontSize: 99, theme: "neon", readingMode: "unknown", lineSpacing: 9, paragraphSpacing: 100, horizontalPadding: 2 }), {
-    fontSize: 28, theme: "paper", readingMode: "scroll", lineSpacing: 2.4, paragraphSpacing: 32, horizontalPadding: 16, speechVoiceIdentifier: null, speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-3", speechRate: 0.95, speechPitch: 1,
+    speechCloudEndpoint: "", fontSize: 28, theme: "paper", readingMode: "scroll", lineSpacing: 2.4, paragraphSpacing: 32, horizontalPadding: 16, speechVoiceIdentifier: null, speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-3", speechRate: 0.95, speechPitch: 1,
   });
   assert.equal(normalizeReaderSettings({ fontSize: 5, theme: "green", lineSpacing: 1.43 }).fontSize, 14);
   assert.equal(normalizeReaderSettings({ lineSpacing: 1.43 }).lineSpacing, 1.4);
@@ -57,4 +57,12 @@ test("Kokoro speaker selection is persisted and rejects unknown speaker IDs", ()
   assert.equal(selected.speechModelVoiceId, "kokoro-multi-lang-v1_1:speaker-72");
   assert.equal(normalizeReaderSettings({ speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-103" }).speechModelVoiceId, DEFAULT_READER_SETTINGS.speechModelVoiceId);
   assert.equal(normalizeReaderSettings({ speechModelVoiceId: "other-model:speaker-1" }).speechModelVoiceId, DEFAULT_READER_SETTINGS.speechModelVoiceId);
+});
+
+
+test("cloud speech endpoint only persists safe HTTPS URLs", () => {
+  assert.equal(normalizeReaderSettings({ speechCloudEndpoint: "https://tts.example.com/" }).speechCloudEndpoint, "https://tts.example.com");
+  for (const value of ["http://tts.example.com", "https://user:pass@tts.example.com", "javascript:alert(1)", "not a url"]) {
+    assert.equal(normalizeReaderSettings({ speechCloudEndpoint: value }).speechCloudEndpoint, "");
+  }
 });
