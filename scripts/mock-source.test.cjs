@@ -20,7 +20,7 @@ test("built-in offline mock source exercises the real app JSON pipeline", async 
 
   const content = await fetchNovelChapterContent(BUILTIN_MOCK_SOURCE, chapters[0], client);
   assert.equal(content.title, "第一章 漂流瓶");
-  assert.match(content.content, /抬头看星星/);
+  assert.match(content.content, /还能看见星星/);
 });
 
 test("mock source never makes a real network request and rejects external URLs", async () => {
