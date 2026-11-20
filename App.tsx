@@ -25,6 +25,7 @@ import {
   pauseOfflineKokoroModel,
   resumeOfflineKokoroModel,
   synthesizeOfflineKokoro,
+  verifyOfflineKokoroNativeModule,
   type OfflineKokoroEngine,
   type OfflineKokoroProgress,
 } from "./src/offline-kokoro-runtime";
@@ -381,8 +382,9 @@ export default function App() {
   useEffect(() => {
     if (!isLoaded) return;
     let active = true;
-    void getOfflineKokoroModel().then((model) => {
+    void verifyOfflineKokoroNativeModule().then(() => getOfflineKokoroModel()).then((model) => {
       if (!active) return;
+      console.log("[KOKORO_NATIVE_READY] SherpaOnnx TurboModule is registered and responsive.");
       if (model.installed && model.localPath) {
         setOfflineModelPath(model.localPath);
         setOfflineModelStatus("installed");
@@ -396,6 +398,7 @@ export default function App() {
       }
     }).catch((error) => {
       if (!active) return;
+      console.error("[KOKORO_NATIVE_UNAVAILABLE]", error instanceof Error ? error.message : String(error));
       setOfflineModelStatus("unavailable");
       setOfflineModelError(error instanceof Error ? error.message : "当前构建暂未包含离线语音原生模块。");
     });
