@@ -13,6 +13,8 @@ test("cloud client sends the selected Kokoro speaker and bounded speed", async (
   }, "a-valid-device-token-12345678901234567890", fakeFetch);
   assert.equal(request.url, "https://tts.example.com/v1/audio/speech");
   assert.equal(request.init.headers.Authorization, "Bearer a-valid-device-token-12345678901234567890");
+  assert.equal(request.init.credentials, "omit");
+  assert.equal(request.init.redirect, "error");
   assert.deepEqual(request.body, { model: "kokoro-multi-lang-v1_1", speaker_id: 3, text: "你好", speed: 2 });
   assert.equal(bytes.byteLength, 44);
 });
@@ -46,6 +48,8 @@ test("health check confirms the expected Kokoro model and all speakers", async (
   const status = await checkCloudTtsServer("https://tts.example.com", async (url, init) => {
     assert.equal(url, "https://tts.example.com/health");
     assert.equal(init.method, "GET");
+    assert.equal(init.credentials, "omit");
+    assert.equal(init.redirect, "error");
     return new Response(JSON.stringify({ status: "ok", model: "kokoro-multi-lang-v1_1", speaker_count: 103 }), { status: 200, headers: { "content-type": "application/json" } });
   });
   assert.deepEqual(status, { model: "kokoro-multi-lang-v1_1", speakerCount: 103 });
@@ -61,12 +65,16 @@ test("device enrollment returns a secure token and revocation sends it as bearer
   const enrolled = await enrollCloudSpeechDevice("https://tts.example.com", "server-enrollment-code", async (url, init) => {
     assert.equal(url, "https://tts.example.com/v1/devices/enroll");
     assert.equal(JSON.parse(init.body).enrollment_code, "server-enrollment-code");
+    assert.equal(init.credentials, "omit");
+    assert.equal(init.redirect, "error");
     return new Response(JSON.stringify({ access_token: token, token_type: "bearer" }), { status: 200, headers: { "content-type": "application/json" } });
   });
   assert.equal(enrolled, token);
   await revokeCloudSpeechDevice("https://tts.example.com", token, async (url, init) => {
     assert.equal(url, "https://tts.example.com/v1/devices/revoke");
     assert.equal(init.headers.Authorization, "Bearer " + token);
+    assert.equal(init.credentials, "omit");
+    assert.equal(init.redirect, "error");
     return new Response(JSON.stringify({ revoked: true }), { status: 200 });
   });
 });
