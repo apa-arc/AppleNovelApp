@@ -11,6 +11,7 @@ export type CompatibleSubscriptionSource = {
     bookUrl?: string;
     chapterListUrl?: string;
     chapterUrl?: string;
+    htmlRules?: unknown;
   };
 };
 
@@ -80,6 +81,7 @@ export function parseSourceSubscription(raw: string): ParsedSourceSubscription {
         bookUrl: config.bookUrl,
         chapterListUrl: config.chapterListUrl,
         chapterUrl: config.chapterUrl,
+        ...(config.htmlRules !== undefined ? { htmlRules: config.htmlRules } : {}),
       }));
       compatible.push({
         ...normalized,
