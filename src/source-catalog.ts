@@ -38,6 +38,17 @@ function findRecord(value: unknown, depth = 0): JsonRecord | null {
   return null;
 }
 
+function findContentRecord(value: unknown, depth = 0): JsonRecord | null {
+  if (depth > 6 || !value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as JsonRecord;
+  if (firstString(record, CONTENT_KEYS)) return record;
+  for (const child of Object.values(record)) {
+    const found = findContentRecord(child, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
 function findChapterArray(value: unknown, depth = 0): unknown[] | null {
   if (depth > 6 || !value || typeof value !== "object") return null;
   if (Array.isArray(value)) {
@@ -118,7 +129,7 @@ export function parseJsonChapterList(body: string, novelId: string, responseUrl:
 
 export function parseJsonChapterContent(body: string, fallbackTitle: string): NovelContent {
   const payload = parseJson(body);
-  const record = findRecord(payload) || (payload && typeof payload === "object" && !Array.isArray(payload) ? payload as JsonRecord : null);
+  const record = findContentRecord(payload);
   if (!record) throw new Error("没有在 JSON 响应中找到章节正文。");
   const content = firstString(record, CONTENT_KEYS);
   if (!content) throw new Error("书源返回的数据中没有可识别的正文文本。");
