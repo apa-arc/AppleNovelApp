@@ -53,6 +53,8 @@ def find_model_assets(root: str | Path) -> dict[str, str]:
         raise FileNotFoundError("Missing Kokoro espeak-ng-data directory")
 
     dict_dirs = sorted(path for path in base.rglob("dict") if path.is_dir())
+    if not dict_dirs:
+        raise FileNotFoundError("Missing Chinese Kokoro dictionary directory")
     lexicons = []
     for name in ("lexicon-zh.txt", "lexicon-us-en.txt"):
         matches = sorted(base.rglob(name))
