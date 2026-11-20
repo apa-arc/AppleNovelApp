@@ -6,6 +6,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as SecureStore from "expo-secure-store";
 import { NovelSource, parseNovelSourceJsonBatch } from "./src/source";
+import { BUILTIN_MOCK_SOURCE, createBuiltinMockSourceClient } from "./src/mock-source";
 import { parseSourceSubscription } from "./src/source-subscription";
 import { searchNovelSource } from "./src/source-search";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
@@ -109,6 +110,10 @@ const SAMPLE_BOOKS: Book[] = [
     lastChapter: "尚未开始",
   },
 ];
+
+function getSourceClient(source: NovelSource) {
+  return source.isBuiltinMock ? createBuiltinMockSourceClient(source) : undefined;
+}
 
 function getOnlineBookId(title: string, author: string): string {
   return "online:" + normalizeNovelTitle(title) + "::" + normalizeNovelTitle(author);
@@ -288,7 +293,19 @@ export default function App() {
         const savedSources = await AsyncStorage.getItem(SOURCES_STORAGE_KEY);
         if (savedSources && active) {
           const parsedSources: unknown = JSON.parse(savedSources);
-          if (Array.isArray(parsedSources)) setSources(parsedSources as NovelSource[]);
+          if (Array.isArray(parsedSources)) {
+            const storedSources = parsedSources as NovelSource[];
+            const storedMock = storedSources.find((item) => item.id === BUILTIN_MOCK_SOURCE.id);
+            setSources([
+              storedMock ? { ...BUILTIN_MOCK_SOURCE, enabled: storedMock.enabled !== false } : BUILTIN_MOCK_SOURCE,
+              ...storedSources.filter((item) => item.id !== BUILTIN_MOCK_SOURCE.id),
+            ]);
+          } else {
+            setSources([BUILTIN_MOCK_SOURCE]);
+          }
+        } else if (active) {
+          setSources([BUILTIN_MOCK_SOURCE]);
+        }
         }
         const savedHistory = await AsyncStorage.getItem(READING_HISTORY_STORAGE_KEY);
         if (savedHistory && active) setReadingHistory(normalizeReadingHistory(JSON.parse(savedHistory)));
@@ -464,7 +481,7 @@ export default function App() {
     setOnlineResults([]);
     const settled = await Promise.allSettled(enabledSources.map(async (source) => {
       const startedAt = Date.now();
-      const page = await searchNovelSource(source, keyword);
+      const page = await searchNovelSource(source, keyword, getSourceClient(source));
       return { page, latencyMs: Date.now() - startedAt };
     }));
     const groups = new Map<string, SearchNovelGroup>();
@@ -510,7 +527,7 @@ export default function App() {
       const source = sources.find((item) => item.id === option.summary.sourceId);
       if (!source || !source.enabled) return { ...option, chapterCount: null };
       try {
-        const chapters = await fetchNovelChapterList(source, option.summary);
+        const chapters = await fetchNovelChapterList(source, option.summary, getSourceClient(source));
         return { ...option, chapterCount: chapters.length };
       } catch {
         return { ...option, chapterCount: null };
@@ -594,7 +611,7 @@ export default function App() {
     setLoadedChapters([]);
     try {
       const [detail, chapters] = await Promise.all([
-        fetchNovelDetail(source, option.summary),
+        fetchNovelDetail(source, option.summary, getSourceClient(source)),
         fetchNovelChapterList(source, option.summary),
       ]);
       setLoadedNovelDetail(detail);
@@ -619,7 +636,7 @@ export default function App() {
     setLoadingOnlineChapter(true);
     setCatalogMessage("");
     try {
-      const result = await fetchNovelChapterContent(source, chapter);
+      const result = await fetchNovelChapterContent(source, chapter, getSourceClient(source));
       setOnlineChapterIndex(chapter.index);
       setReaderParagraphIndex(0);
       restoreReaderPositionRef.current = true;
@@ -748,7 +765,7 @@ export default function App() {
     }
     setCheckingSubscription(true);
     try {
-      const latestChapters = await fetchNovelChapterList(source, book.onlineSummary);
+      const latestChapters = await fetchNovelChapterList(source, book.onlineSummary, getSourceClient(source));
       if (latestChapters.length === 0) throw new Error("书源返回了空目录，已保留原有订阅目录。");
       const previousChapters = book.onlineChapters || [];
       const update = compareChapterUpdates(
@@ -1585,16 +1602,16 @@ export default function App() {
             <View key={source.id} style={styles.sourceItem}>
               <View style={styles.sourceItemInfo}>
                 <Text style={styles.sourceItemTitle}>{source.name}</Text>
-                <Text style={styles.sourceItemUrl} numberOfLines={1}>{source.baseUrl}</Text>
-                <Text style={styles.sourceItemStatus}>{source.enabled ? "已启用" : "已停用"} · 搜索和目录请求会使用此书源</Text>
+                <Text style={styles.sourceItemUrl} numberOfLines={1}>{source.isBuiltinMock ? "本地模拟 · 不访问网络" : source.baseUrl}</Text>
+                <Text style={styles.sourceItemStatus}>{source.isBuiltinMock ? "内置测试源 · 搜索“星海来信”可体验完整阅读流程" : source.enabled ? "已启用 · 搜索和目录请求会使用此书源" : "已停用"}</Text>
               </View>
               <View style={styles.sourceItemActions}>
                 <Pressable onPress={() => setSources((current) => current.map((item) => item.id === source.id ? { ...item, enabled: !item.enabled } : item))} style={styles.sourceAction}>
                   <Text style={styles.sourceActionText}>{source.enabled ? "停用" : "启用"}</Text>
                 </Pressable>
-                <Pressable onPress={() => Alert.alert("删除书源", "确定删除「" + source.name + "」吗？", [{ text: "取消", style: "cancel" }, { text: "删除", style: "destructive", onPress: () => setSources((current) => current.filter((item) => item.id !== source.id)) }])} style={styles.sourceAction}>
+                {!source.isBuiltinMock && <Pressable onPress={() => Alert.alert("删除书源", "确定删除「" + source.name + "」吗？", [{ text: "取消", style: "cancel" }, { text: "删除", style: "destructive", onPress: () => setSources((current) => current.filter((item) => item.id !== source.id)) }])} style={styles.sourceAction}>
                   <Text style={styles.sourceDeleteText}>删除</Text>
-                </Pressable>
+                </Pressable>}
               </View>
             </View>
           ))}
