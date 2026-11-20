@@ -32,11 +32,16 @@ jobs:
       - name: Publish Expo Update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
           UPDATE_CHANNEL: ${{ inputs.channel }}
           UPDATE_MESSAGE: ${{ inputs.message }}
         run: |
           if [ -z "$EXPO_TOKEN" ]; then
             echo "Missing EXPO_TOKEN repository secret."
+            exit 1
+          fi
+          if [ -z "$EAS_PROJECT_ID" ]; then
+            echo "Missing EAS_PROJECT_ID repository variable."
             exit 1
           fi
           npx eas-cli update --channel "$UPDATE_CHANNEL" --message "$UPDATE_MESSAGE" --non-interactive
