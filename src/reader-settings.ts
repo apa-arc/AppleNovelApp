@@ -8,6 +8,7 @@ export type ReaderSettings = {
   paragraphSpacing: number;
   horizontalPadding: number;
   speechVoiceIdentifier: string | null;
+  speechModelVoiceId: string;
   speechRate: number;
   speechPitch: number;
 };
@@ -20,6 +21,7 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   paragraphSpacing: 22,
   horizontalPadding: 27,
   speechVoiceIdentifier: null,
+  speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-0",
   speechRate: 0.95,
   speechPitch: 1,
 };
@@ -48,6 +50,7 @@ export function normalizeReaderSettings(value: unknown): ReaderSettings {
     paragraphSpacing: bounded("paragraphSpacing", DEFAULT_READER_SETTINGS.paragraphSpacing, 8, 32),
     horizontalPadding: bounded("horizontalPadding", DEFAULT_READER_SETTINGS.horizontalPadding, 16, 40),
     speechVoiceIdentifier: typeof candidate.speechVoiceIdentifier === "string" && candidate.speechVoiceIdentifier.trim() ? candidate.speechVoiceIdentifier : null,
+    speechModelVoiceId: typeof candidate.speechModelVoiceId === "string" && /^kokoro-multi-lang-v1_1:speaker-(?:[0-9]|[1-9][0-9]|10[0-2])$/.test(candidate.speechModelVoiceId) ? candidate.speechModelVoiceId : DEFAULT_READER_SETTINGS.speechModelVoiceId,
     speechRate: bounded("speechRate", DEFAULT_READER_SETTINGS.speechRate, 0.5, 2, 2),
     speechPitch: bounded("speechPitch", DEFAULT_READER_SETTINGS.speechPitch, 0.5, 2, 1),
   };
