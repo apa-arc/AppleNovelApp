@@ -38,36 +38,43 @@ def find_model_assets(root: str | Path) -> dict[str, str]:
     if not base.exists():
         raise FileNotFoundError(f"Model directory does not exist: {base}")
 
-    def find_file(name: str) -> Path:
-        matches = sorted(base.rglob(name))
-        if not matches:
-            raise FileNotFoundError(f"Missing Kokoro model asset: {name}")
-        return matches[0]
+    def find_file(*names: str) -> Path:
+        for name in names:
+            matches = sorted(base.rglob(name))
+            if matches:
+                return matches[0]
+        raise FileNotFoundError(f"Missing Kokoro model asset: one of {', '.join(names)}")
 
-    model = find_file("model.onnx")
+    model = find_file("model.int8.onnx", "model.onnx", "kokoro.onnx")
     voices = find_file("voices.bin")
     tokens = find_file("tokens.txt")
     espeak_dirs = sorted(path for path in base.rglob("espeak-ng-data") if path.is_dir())
     if not espeak_dirs:
         raise FileNotFoundError("Missing Kokoro espeak-ng-data directory")
 
+    dict_dirs = sorted(path for path in base.rglob("dict") if path.is_dir())
     lexicons = []
     for name in ("lexicon-zh.txt", "lexicon-us-en.txt"):
         matches = sorted(base.rglob(name))
         if matches:
             lexicons.append(str(matches[0]))
+    if len(lexicons) < 2:
+        raise FileNotFoundError("Missing Chinese and English Kokoro lexicons")
 
     rule_fsts = []
-    for name in ("date-zh.fst", "number-zh.fst"):
+    for name in ("phone-zh.fst", "date-zh.fst", "number-zh.fst"):
         matches = sorted(base.rglob(name))
         if matches:
             rule_fsts.append(str(matches[0]))
+    if len(rule_fsts) < 3:
+        raise FileNotFoundError("Missing Chinese phone/date/number rule FST files")
 
     return {
         "model": str(model),
         "voices": str(voices),
         "tokens": str(tokens),
         "data_dir": str(espeak_dirs[0]),
+        "dict_dir": str(dict_dirs[0]) if dict_dirs else "",
         "lexicon": ",".join(lexicons),
         "rule_fsts": ",".join(rule_fsts),
     }
