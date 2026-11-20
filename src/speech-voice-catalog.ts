@@ -16,6 +16,8 @@ export type SpeechVoice = {
  */
 export const SPEECH_MODEL = {
   id: "kokoro-multi-lang-v1_1",
+  /** Exact sherpa-onnx release asset basename used by its model downloader. */
+  downloadAssetId: "kokoro-int8-multi-lang-v1_1",
   displayName: "Kokoro 中文多音色",
   localRuntime: "sherpa-onnx",
   cloudRuntime: "sherpa-onnx",
@@ -40,7 +42,7 @@ export const SPEECH_VOICES: SpeechVoice[] = Array.from(
     modelId: SPEECH_MODEL.id,
     label: `声音 ${String(speakerId + 1).padStart(2, "0")}`,
     language: "zh-en",
-    localModelId: SPEECH_MODEL.id,
+    localModelId: SPEECH_MODEL.downloadAssetId,
     cloudModelId: SPEECH_MODEL.id,
     speakerId,
   })
