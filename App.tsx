@@ -753,8 +753,8 @@ export default function App() {
     setOpenedFromShelf(false);
   };
 
-  const loadAvailableSpeechVoices = async () => {
-    if (availableSpeechVoices.length > 0 || loadingSpeechVoices) return;
+  const loadAvailableSpeechVoices = async (force = false) => {
+    if ((!force && availableSpeechVoices.length > 0) || loadingSpeechVoices) return;
     setLoadingSpeechVoices(true);
     setSpeechVoiceMessage("正在读取 iPhone 可用语音…");
     try {
@@ -1108,7 +1108,7 @@ export default function App() {
                 <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>朗读声音</Text>
                 <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>使用 iPhone 已安装的系统语音；可在系统设置中下载更多声音。</Text>
               </View>
-              <Pressable style={styles.fontButton} onPress={() => { setAvailableSpeechVoices([]); void loadAvailableSpeechVoices(); }}>
+              <Pressable style={styles.fontButton} onPress={() => { void loadAvailableSpeechVoices(true); }}>
                 <Text style={styles.fontButtonText}>{loadingSpeechVoices ? "读取中" : "刷新"}</Text>
               </Pressable>
               <Pressable style={styles.fontButton} onPress={previewSpeechVoice}>
