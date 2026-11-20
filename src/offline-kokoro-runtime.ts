@@ -23,6 +23,41 @@ export type OfflineKokoroEngine = Awaited<ReturnType<TtsApi["createTTS"]>>;
 
 const MODEL_ID = SPEECH_MODEL.downloadAssetId;
 
+type FileSystemApi = typeof import("@dr.pogodin/react-native-fs");
+
+function loadFileSystemApi(): FileSystemApi {
+  return require("@dr.pogodin/react-native-fs") as FileSystemApi;
+}
+
+async function findModelFile(
+  directory: string,
+  fileName: string,
+  depth = 0
+): Promise<string | null> {
+  if (depth > 6) return null;
+  const entries = await loadFileSystemApi().readDir(directory);
+  for (const entry of entries) {
+    if (entry.isFile() && entry.name === fileName) return entry.path;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      const found = await findModelFile(entry.path, fileName, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+async function findKokoroRuleFsts(modelDirectory: string): Promise<string> {
+  const names = ["phone-zh.fst", "date-zh.fst", "number-zh.fst"];
+  const paths = await Promise.all(names.map((name) => findModelFile(modelDirectory, name)));
+  const missing = names.filter((_, index) => !paths[index]);
+  if (missing.length > 0) {
+    throw new Error("离线模型缺少中文规则文件：" + missing.join("、"));
+  }
+  return paths.join(",");
+}
+
 export async function getOfflineKokoroModel(): Promise<{
   installed: boolean;
   localPath: string | null;
@@ -129,16 +164,13 @@ export function isOfflineKokoroPause(error: unknown): boolean {
 export async function createOfflineKokoroEngine(
   modelDirectory: string
 ): Promise<OfflineKokoroEngine> {
+  const ruleFsts = await findKokoroRuleFsts(modelDirectory);
   const engine = await loadTtsApi().createTTS({
     modelPath: { type: "file", path: modelDirectory },
     modelType: "kokoro",
     provider: "cpu",
     numThreads: 2,
-    ruleFsts: [
-      modelDirectory + "/phone-zh.fst",
-      modelDirectory + "/date-zh.fst",
-      modelDirectory + "/number-zh.fst",
-    ].join(","),
+    ruleFsts,
     maxNumSentences: 1,
   });
   const speakers = await engine.getNumSpeakers();
