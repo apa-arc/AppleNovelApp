@@ -25,8 +25,26 @@ function simple(n:Node,s:string):boolean{
  const siblings=n.parent?.children.filter(x=>typeof x!=="string")||[],nth=s.match(/:nth-child\((\d+)\)/);if(nth&&siblings.indexOf(n)!==Number(nth[1])-1)return false;if(/:first-child/.test(s)&&siblings[0]!==n)return false;if(/:last-child/.test(s)&&siblings[siblings.length-1]!==n)return false;return true;
 }
 function matches(n:Node,s:string):boolean{
- const parts=s.trim().replace(/\s*>\s*/g," > ").split(/\s+/).filter(Boolean);if(!parts.length||!simple(n,parts.pop()!))return false;let cur:Node|null=n;
- for(let i=parts.length-1;i>=0;){if(parts[i]===">"){i--;if(i<0)return false;cur=cur.parent;if(!cur||!simple(cur,parts[i]))return false;i--;}else{let p=cur.parent;while(p&&!simple(p,parts[i]))p=p.parent;if(!p)return false;cur=p;i--;}}return true;
+ const parts=s.trim().replace(/\\s*>\\s*/g," > ").split(/\\s+/).filter(Boolean);
+ if(!parts.length||!simple(n,parts.pop()!))return false;
+ let cur:Node|null=n;
+ for(let i=parts.length-1;i>=0;){
+  if(parts[i]===">"){
+   i--;
+   if(i<0||!cur)return false;
+   const parent:Node|null=cur.parent;
+   if(!parent||!simple(parent,parts[i]))return false;
+   cur=parent;
+   i--;
+  }else{
+   let parent:Node|null=cur?.parent??null;
+   while(parent&&!simple(parent,parts[i]))parent=parent.parent;
+   if(!parent)return false;
+   cur=parent;
+   i--;
+  }
+ }
+ return true;
 }
 export function selectHtmlNodes(root:Node,selector:string):Node[]{return selector.trim()?all(root).filter(n=>selector.split(",").some(s=>matches(n,s.trim()))):[];}
 export function htmlNodeText(n:Node):string{const walk=(x:Node):string=>x.children.map(c=>typeof c==="string"?c:(["script","style","noscript"].includes(c.tag)?"":(BLOCK.has(c.tag)?"\n":"")+walk(c)+(BLOCK.has(c.tag)?"\n":""))).join("");return walk(n).replace(/[\t\f\v ]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").trim();}
