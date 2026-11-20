@@ -1670,7 +1670,22 @@ export default function App() {
           <View style={styles.welcomeCard}>
             <Text style={styles.welcomeEyebrow}>SOURCES</Text>
             <Text style={styles.welcomeTitle}>管理你的阅读来源。</Text>
-            <Text style={styles.welcomeSub}>导入 JSON 配置，书源保存在本机。</Text>
+            <Text style={styles.welcomeSub}>管理普通与成人订阅，书源保存在本机。</Text>
+          </View>
+          <View style={styles.sourceCard}>
+            <Text style={styles.sourceTitle}>订阅管理</Text>
+            <Text style={styles.note}>普通和成人订阅完全分开。更新订阅只更新对应来源，保留你手动启用/停用的状态；成人源不会混入普通搜索。</Text>
+            <Text style={styles.settingsLabel}>普通书源订阅</Text>
+            <TextInput value={normalSubscriptionUrl} onChangeText={setNormalSubscriptionUrl} placeholder="普通订阅 HTTPS 地址" placeholderTextColor="#A39F94" autoCapitalize="none" autoCorrect={false} keyboardType="url" style={[styles.searchInput, { marginTop: 6 }]} />
+            <Pressable style={[styles.importButton, subscriptionLoading !== null && styles.importButtonDisabled]} disabled={subscriptionLoading !== null} onPress={() => void importSubscriptionFromUrl("normal")}>
+              {subscriptionLoading === "normal" ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>更新普通订阅</Text>}
+            </Pressable>
+            <Text style={[styles.settingsLabel, { marginTop: 14 }]}>成人书源订阅（独立）</Text>
+            <TextInput value={adultSubscriptionUrl} onChangeText={setAdultSubscriptionUrl} placeholder="成人订阅 HTTPS 地址" placeholderTextColor="#A39F94" autoCapitalize="none" autoCorrect={false} keyboardType="url" style={[styles.searchInput, { marginTop: 6 }]} />
+            <Pressable style={[styles.importButton, subscriptionLoading !== null && styles.importButtonDisabled]} disabled={subscriptionLoading !== null} onPress={() => void importSubscriptionFromUrl("adult")}>
+              {subscriptionLoading === "adult" ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>更新成人订阅</Text>}
+            </Pressable>
+            {!!subscriptionUrlMessage && <Text style={styles.sourceMessage}>{subscriptionUrlMessage}</Text>}
           </View>
           <View style={styles.sourceCard}>
             <Text style={styles.sourceTitle}>导入 JSON 书源</Text>
@@ -1693,7 +1708,7 @@ export default function App() {
           ) : sources.map((source) => (
             <View key={source.id} style={styles.sourceItem}>
               <View style={styles.sourceItemInfo}>
-                <Text style={styles.sourceItemTitle}>{source.name}</Text>
+                <Text style={styles.sourceItemTitle}>{source.name} · {source.subscriptionGroup === "adult" ? "成人" : "普通"}</Text>
                 <Text style={styles.sourceItemUrl} numberOfLines={1}>{source.isBuiltinMock ? "本地模拟 · 不访问网络" : source.baseUrl}</Text>
                 <Text style={styles.sourceItemStatus}>{source.isBuiltinMock ? "内置测试源 · 搜索“星海来信”可体验完整阅读流程" : source.enabled ? "已启用 · 搜索和目录请求会使用此书源" : "已停用"}</Text>
               </View>
