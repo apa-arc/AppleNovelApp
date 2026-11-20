@@ -42,5 +42,25 @@ jobs:
             -scheme AppleNovelApp \
             -sdk iphonesimulator \
             -configuration Debug \
+            -derivedDataPath build/ios \
             CODE_SIGNING_ALLOWED=NO \
             build
+      - name: Launch simulator and verify SherpaOnnx TurboModule registration
+        run: |
+          APP_PATH="$(find build/ios/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' -print -quit)"
+          DEVICE_ID="$(xcrun simctl list devices available | awk -F'[()]' '/iPhone/ && !seen++ {print $2; exit}')"
+          if [ -z "$APP_PATH" ] || [ -z "$DEVICE_ID" ]; then
+            echo "::error::Unable to locate the built iOS app or an available iPhone simulator."
+            exit 1
+          fi
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          xcrun simctl install "$DEVICE_ID" "$APP_PATH"
+          xcrun simctl launch "$DEVICE_ID" com.apaarc.applenovelapp
+          sleep 15
+          LOG="$(xcrun simctl spawn "$DEVICE_ID" log show --style compact --last 2m --predicate 'eventMessage CONTAINS "KOKORO_NATIVE_READY" OR eventMessage CONTAINS "KOKORO_NATIVE_UNAVAILABLE"')"
+          echo "$LOG"
+          if ! echo "$LOG" | grep -q "KOKORO_NATIVE_READY"; then
+            echo "::error::SherpaOnnx TurboModule did not report a successful native registration check."
+            exit 1
+          fi
