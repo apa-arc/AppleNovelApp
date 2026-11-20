@@ -775,11 +775,12 @@ export default function App() {
 
   const openSpeechSettings = () => {
     setShowReaderSettings(false);
-    setShowSpeechSettings((visible) => {
-      const next = !visible;
-      if (next) void loadAvailableSpeechVoices();
-      return next;
-    });
+    if (showSpeechSettings) {
+      setShowSpeechSettings(false);
+      return;
+    }
+    setShowSpeechSettings(true);
+    void loadAvailableSpeechVoices();
   };
 
   const previewSpeechVoice = () => {
@@ -1117,6 +1118,13 @@ export default function App() {
             </View>
             {!!speechVoiceMessage && <Text style={[styles.speechMessage, readerTheme === "night" && styles.nightMuted]}>{speechVoiceMessage}</Text>}
             <ScrollView style={styles.voiceList} nestedScrollEnabled>
+              <Pressable style={[styles.voiceOption, speechVoiceIdentifier === null && styles.voiceOptionSelected, readerTheme === "night" && styles.nightVoiceOption]} onPress={() => { setSpeechVoiceIdentifier(null); Speech.stop(); }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>系统默认</Text>
+                  <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>跟随 iPhone 默认中文声音</Text>
+                </View>
+                <Text style={styles.voiceSelected}>{speechVoiceIdentifier === null ? "已选择" : "选择"}</Text>
+              </Pressable>
               {availableSpeechVoices.map((voice) => {
                 const selected = speechVoiceIdentifier === voice.identifier;
                 return (
