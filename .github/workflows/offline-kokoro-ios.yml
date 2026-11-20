@@ -11,6 +11,7 @@ on:
       - "src/offline-kokoro-runtime.ts"
       - "src/wav-encoder.ts"
       - "scripts/wav-encoder.test.cjs"
+      - "scripts/patch-sherpa-native.js"
       - "plugins/**"
       - "patches/**"
       - ".github/workflows/offline-kokoro-ios.yml"
@@ -38,7 +39,7 @@ jobs:
           grep -R "RNBackgroundDownloader.setCompletionHandlerWithIdentifier" ios
           grep -R "RNBackgroundDownloader.h" ios
           grep -R "SWIFT_OBJC_BRIDGING_HEADER" ios/*.xcodeproj/project.pbxproj
-          grep -R "SherpaOnnx" ios/Podfile
+          grep -Ri "sherpa-onnx" ios/Podfile
       - name: Install CocoaPods
         run: |
           cd ios
