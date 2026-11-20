@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { requestCloudSpeech } = require("../.test-build/cloud-tts.js");
+const { requestCloudSpeech, checkCloudTtsServer } = require("../.test-build/cloud-tts.js");
 
 test("cloud client sends the selected Kokoro speaker and bounded speed", async () => {
   let request;
@@ -38,4 +38,18 @@ test("cloud client rejects invalid voices, non-audio responses and oversized tex
 test("cloud client surfaces server errors without exposing request secrets", async () => {
   const fakeFetch = async () => new Response(JSON.stringify({ detail: "model not ready" }), { status: 503, headers: { "content-type": "application/json" } });
   await assert.rejects(requestCloudSpeech("https://tts.example.com", { voiceId: "kokoro-multi-lang-v1_1:speaker-3", text: "你好", speed: 1 }, fakeFetch), /model not ready/);
+});
+
+
+test("health check confirms the expected Kokoro model and all speakers", async () => {
+  const status = await checkCloudTtsServer("https://tts.example.com", async (url, init) => {
+    assert.equal(url, "https://tts.example.com/health");
+    assert.equal(init.method, "GET");
+    return new Response(JSON.stringify({ status: "ok", model: "kokoro-multi-lang-v1_1", speaker_count: 103 }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+  assert.deepEqual(status, { model: "kokoro-multi-lang-v1_1", speakerCount: 103 });
+});
+
+test("health check rejects a server without the expected model", async () => {
+  await assert.rejects(checkCloudTtsServer("https://tts.example.com", async () => new Response(JSON.stringify({ status: "model-not-ready", model: "kokoro-multi-lang-v1_1", speaker_count: 103 }), { status: 200 })), /尚未就绪/);
 });
