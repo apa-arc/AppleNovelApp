@@ -11,10 +11,11 @@
     "typecheck": "tsc --noEmit",
     "test:source-runtime": "tsc src/source.ts src/source-runtime.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-runtime.test.cjs",
     "test:novel-model": "tsc src/novel.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/novel-model.test.cjs",
-    "test": "npm run test:source-runtime && npm run test:novel-model && npm run test:source-search && npm run test:source-catalog && npm run test:subscription",
+    "test": "npm run test:source-runtime && npm run test:novel-model && npm run test:source-search && npm run test:source-catalog && npm run test:subscription && npm run test:source-subscription",
     "test:source-search": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/source-search.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-search.test.cjs",
     "test:source-catalog": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/source-catalog.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-catalog.test.cjs",
-    "test:subscription": "tsc src/novel.ts src/subscription.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/subscription.test.cjs"
+    "test:subscription": "tsc src/novel.ts src/subscription.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/subscription.test.cjs",
+    "test:source-subscription": "tsc src/source.ts src/source-subscription.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-subscription.test.cjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
