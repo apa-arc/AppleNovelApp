@@ -33,6 +33,12 @@ npm install
 npx expo start
 ```
 
+运行书源网络边界测试：
+
+```bash
+npm test
+```
+
 iPhone 安装 Expo Go 后，扫描终端中的二维码进行开发预览。
 
 ## 数据与听书
