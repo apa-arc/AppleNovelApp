@@ -6,6 +6,8 @@ on:
     paths:
       - "package.json"
       - "app.json"
+      - "App.tsx"
+      - "src/reader-settings.ts"
       - "src/offline-kokoro-runtime.ts"
       - "src/wav-encoder.ts"
       - "scripts/wav-encoder.test.cjs"
