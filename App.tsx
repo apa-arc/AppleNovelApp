@@ -135,8 +135,14 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    void SecureStore.getItemAsync("kokoro_speech_device_token").then((token) => {
-      if (active) setSpeechDeviceToken(token);
+    void Promise.all([
+      SecureStore.getItemAsync("kokoro_speech_device_token"),
+      SecureStore.getItemAsync("kokoro_speech_device_endpoint"),
+    ]).then(([token, endpoint]) => {
+      if (active) {
+        setSpeechDeviceToken(token);
+        setSpeechDeviceTokenEndpoint(endpoint);
+      }
     }).catch(() => undefined);
     return () => { active = false; };
   }, []);
@@ -153,6 +159,7 @@ export default function App() {
   const [checkingSpeechServer, setCheckingSpeechServer] = useState(false);
   const [speechEnrollmentCode, setSpeechEnrollmentCode] = useState("");
   const [speechDeviceToken, setSpeechDeviceToken] = useState<string | null>(null);
+  const [speechDeviceTokenEndpoint, setSpeechDeviceTokenEndpoint] = useState<string | null>(null);
   const [bindingSpeechDevice, setBindingSpeechDevice] = useState(false);
   const [speechPaused, setSpeechPaused] = useState(false);
   const speechPausedRef = useRef(false);
@@ -689,9 +696,13 @@ export default function App() {
     if (bindingSpeechDevice) return;
     setBindingSpeechDevice(true);
     try {
-      const token = await enrollCloudSpeechDevice(speechCloudEndpoint, speechEnrollmentCode);
+      const endpoint = normalizeCloudTtsEndpoint(speechCloudEndpoint);
+      if (!endpoint) throw new Error("请先填写有效的 HTTPS 服务器地址。");
+      const token = await enrollCloudSpeechDevice(endpoint, speechEnrollmentCode);
       await SecureStore.setItemAsync("kokoro_speech_device_token", token);
+      await SecureStore.setItemAsync("kokoro_speech_device_endpoint", endpoint);
       setSpeechDeviceToken(token);
+      setSpeechDeviceTokenEndpoint(endpoint);
       setSpeechEnrollmentCode("");
       Alert.alert("绑定成功", "此设备已安全绑定到你的 Kokoro 语音服务器。设备凭据保存在 iPhone 安全存储中。");
     } catch (error) {
@@ -704,9 +715,11 @@ export default function App() {
   const unbindSpeechDevice = async () => {
     if (!speechDeviceToken) return;
     try {
-      await revokeCloudSpeechDevice(speechCloudEndpoint, speechDeviceToken);
+      await revokeCloudSpeechDevice(speechDeviceTokenEndpoint || speechCloudEndpoint, speechDeviceToken);
       await SecureStore.deleteItemAsync("kokoro_speech_device_token");
+      await SecureStore.deleteItemAsync("kokoro_speech_device_endpoint");
       setSpeechDeviceToken(null);
+      setSpeechDeviceTokenEndpoint(null);
       Alert.alert("已解绑", "此设备已从语音服务器撤销授权。");
     } catch (error) {
       Alert.alert("解绑失败", error instanceof Error ? error.message : "无法撤销设备授权，请检查服务器连接。");
@@ -977,7 +990,12 @@ export default function App() {
     }
     const endpoint = normalizeCloudTtsEndpoint(speechCloudEndpoint);
     if (!speechDeviceToken) {
-      Alert.alert("需要先绑定设备", "请在「声音」设置中输入服务器管理员提供的服务器管理员绑定码，绑定本设备后才能使用 AI 朗读。");
+      Alert.alert("需要先绑定设备", "请在「声音」设置中输入服务器管理员绑定码，绑定本设备后才能使用 AI 朗读。");
+      setShowSpeechSettings(true);
+      return;
+    }
+    if (speechDeviceTokenEndpoint !== endpoint) {
+      Alert.alert("服务器地址已更改", "当前设备凭据属于另一台服务器。请先撤销旧授权，再使用新服务器的绑定码重新绑定。");
       setShowSpeechSettings(true);
       return;
     }
@@ -1332,12 +1350,12 @@ export default function App() {
               <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText, { marginTop: 12 }]}>设备授权</Text>
               {speechDeviceToken ? (
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 6 }}>
-                  <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>此设备已绑定</Text>
+                  <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>{speechDeviceTokenEndpoint === normalizeCloudTtsEndpoint(speechCloudEndpoint) ? "此设备已绑定当前服务器" : "此设备已绑定其他服务器"}</Text>
                   <Pressable onPress={() => void unbindSpeechDevice()}><Text style={styles.sourceActionText}>撤销授权并解绑</Text></Pressable>
                 </View>
               ) : (
                 <>
-                  <TextInput value={speechEnrollmentCode} onChangeText={setSpeechEnrollmentCode} placeholder="输入服务器管理员提供的服务器管理员绑定码" placeholderTextColor="#A39F94" secureTextEntry autoCapitalize="none" autoCorrect={false} style={[styles.searchInput, { width: "100%", marginTop: 7 }]} />
+                  <TextInput value={speechEnrollmentCode} onChangeText={setSpeechEnrollmentCode} placeholder="输入服务器管理员绑定码" placeholderTextColor="#A39F94" secureTextEntry autoCapitalize="none" autoCorrect={false} style={[styles.searchInput, { width: "100%", marginTop: 7 }]} />
                   <Pressable onPress={() => void bindSpeechDevice()} disabled={bindingSpeechDevice || !speechCloudEndpoint.trim() || speechEnrollmentCode.trim().length < 8} style={[styles.catalogLoadButton, (bindingSpeechDevice || !speechCloudEndpoint.trim() || speechEnrollmentCode.trim().length < 8) && styles.importButtonDisabled]}>
                     {bindingSpeechDevice ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>绑定此设备</Text>}
                   </Pressable>
