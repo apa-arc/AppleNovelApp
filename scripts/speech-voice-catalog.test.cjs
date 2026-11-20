@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { SPEECH_MODEL, SPEECH_VOICES, findSpeechVoice, canReuseVoiceOffline, buildSpeechSynthesisRequest } = require("../.test-build/speech-voice-catalog.js");
+const { SPEECH_MODEL, SPEECH_VOICES, findSpeechVoice, canReuseVoiceOffline, buildSpeechSynthesisRequest, getSpeechVoiceCategory } = require("../.test-build/speech-voice-catalog.js");
 
 test("catalog uses stable speaker IDs for cloud and offline variants of the same model", () => {
   assert.equal(SPEECH_VOICES.length, 103);
@@ -29,4 +29,15 @@ test("cloud request preserves the same model and speaker identity used offline",
   assert.equal(buildSpeechSynthesisRequest("invalid", "hello"), null);
   assert.equal(buildSpeechSynthesisRequest(SPEECH_VOICES[0].id, "  "), null);
   assert.equal(buildSpeechSynthesisRequest(SPEECH_VOICES[0].id, "hello", 9).speed, 2);
+});
+
+
+test("official speaker map exposes accurate Chinese and English voice groups", () => {
+  assert.equal(findSpeechVoice("kokoro-multi-lang-v1_1:speaker-0").speakerName, "af_maple");
+  assert.equal(findSpeechVoice("kokoro-multi-lang-v1_1:speaker-2").category, "英式女声");
+  assert.equal(findSpeechVoice("kokoro-multi-lang-v1_1:speaker-3").speakerName, "zf_001");
+  assert.equal(findSpeechVoice("kokoro-multi-lang-v1_1:speaker-57").category, "中文女声");
+  assert.equal(findSpeechVoice("kokoro-multi-lang-v1_1:speaker-58").speakerName, "zm_009");
+  assert.equal(findSpeechVoice("kokoro-multi-lang-v1_1:speaker-102").category, "中文男声");
+  assert.equal(getSpeechVoiceCategory(1), "美式女声");
 });
