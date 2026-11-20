@@ -462,7 +462,7 @@ export default function App() {
         Alert.alert(
           "发现新章节",
           "《" + book.title + "》更新了 " + update.newChapters.length + " 章。" +
-          (latestTitles ? "\\n最新章节：" + latestTitles : "") +
+          (latestTitles ? "\n最新章节：" + latestTitles : "") +
           "\\n已自动更新订阅目录。"
         );
       } else if (showNoUpdates) {
@@ -472,7 +472,7 @@ export default function App() {
     } catch (error) {
       Alert.alert(
         "订阅检查失败",
-        (error instanceof Error ? error.message : "暂时无法读取最新目录。") + "\\n已保留本地目录，可以稍后重试。"
+        (error instanceof Error ? error.message : "暂时无法读取最新目录。") + "\n已保留本地目录，可以稍后重试。"
       );
       return null;
     } finally {
