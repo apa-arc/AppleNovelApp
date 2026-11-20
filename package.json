@@ -38,7 +38,8 @@
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.24",
     "expo-audio": "~1.1.1",
-    "base64-arraybuffer": "^1.0.2"
+    "base64-arraybuffer": "^1.0.2",
+    "expo-secure-store": "~15.0.8"
   },
   "devDependencies": {
     "@types/react": "~19.1.10",
