@@ -20,5 +20,7 @@ jobs:
         run: npm install
       - name: TypeScript check
         run: npm run typecheck
+      - name: Source runtime tests
+        run: npm test
       - name: Expo project diagnostics
         run: npx expo-doctor
