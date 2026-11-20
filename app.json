@@ -36,6 +36,7 @@
         }
       ],
       "./plugins/withSherpaOnnxBackgroundDownloader"
-    ]
+    ],
+    "newArchEnabled": true
   }
 }
