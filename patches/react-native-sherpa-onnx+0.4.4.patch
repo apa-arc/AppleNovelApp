@@ -31,7 +31,7 @@ diff --git a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-
 index ddb542f..0000000 100644
 --- a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-tts.mm
 +++ b/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-tts.mm
-@@ -143,7 +143,8 @@
+@@ -144,6 +144,7 @@
      std::string tokensFile = FindFileByName(files, "tokens.txt");
      std::vector<LexiconCandidate> lexiconCandidates = FindLexiconCandidates(files, modelDir);
      std::string dataDirPath = FindDirectoryUnderRoot(files, modelDir, "espeak-ng-data");
@@ -39,7 +39,7 @@ index ddb542f..0000000 100644
      TTS_DETECT_LOGI("DetectTtsModel: modelDir=%s espeak-ng dataDir=%s (empty=%d)",
                      modelDir.c_str(),
                      dataDirPath.empty() ? "(empty)" : dataDirPath.c_str(),
-@@ -291,11 +292,16 @@
+@@ -291,8 +292,13 @@
      std::string lexiconPath;
      for (const auto& c : lexiconCandidates) {
          result.lexiconLanguageCandidates.push_back(c.languageId);
