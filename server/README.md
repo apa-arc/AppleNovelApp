@@ -21,7 +21,7 @@ docker compose up -d --build
 
 The Compose file keeps model weights and enrolled-device token hashes in persistent Docker volumes. By default, the HTTP port is bound to localhost only. Put it behind an HTTPS reverse proxy or access it through your private VPN; do not expose port 8000 directly to the public internet.
 
-The first start downloads the upstream sherpa-onnx Kokoro int8 archive (about 147 MB) into the volume, then starts the service. Later starts reuse the downloaded model.
+The first start downloads the upstream sherpa-onnx Kokoro int8 archive (about 147 MB), verifies its pinned SHA-256 digest, extracts it into the volume, and checks that all model, dictionary, lexicon, and rule-FST assets exist before starting the service. Later starts reuse the verified model.
 
 - Health: `GET /health`
 - Device enrollment: `POST /v1/devices/enroll` (server enrollment code required)
