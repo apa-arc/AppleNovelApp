@@ -1,10 +1,21 @@
 import {
   ModelCategory,
-  ensureModel,
+  deleteIncompleteDownload,
+  deleteIncompleteExtraction,
+  deleteModel,
+  downloadModel,
+  getIncompleteDownloads,
+  getIncompleteExtractions,
   getModelPath,
   isModelDownloaded,
+  isPauseError,
+  pauseDownload,
+  pauseExtraction,
   refreshModels,
+  resumeDownload,
+  resumeExtraction,
   type Progress,
+  type ProgressPhase,
 } from "react-native-sherpa-onnx/download";
 import { createTTS } from "react-native-sherpa-onnx/tts";
 import { encodePcm16Wav } from "./wav-encoder";
@@ -22,18 +33,32 @@ const MODEL_ID = SPEECH_MODEL.downloadAssetId;
 export async function getOfflineKokoroModel(): Promise<{
   installed: boolean;
   localPath: string | null;
+  pendingPhase: ProgressPhase | null;
 }> {
   const installed = await isModelDownloaded(ModelCategory.Tts, MODEL_ID);
   const localPath = installed
     ? await getModelPath(ModelCategory.Tts, MODEL_ID)
     : null;
-  return { installed: installed && Boolean(localPath), localPath };
+  if (installed && localPath) {
+    return { installed: true, localPath, pendingPhase: null };
+  }
+  const [downloads, extractions] = await Promise.all([
+    getIncompleteDownloads(ModelCategory.Tts),
+    getIncompleteExtractions(ModelCategory.Tts),
+  ]);
+  const extraction = extractions.find((entry) => entry.modelId === MODEL_ID);
+  if (extraction) {
+    return { installed: false, localPath: null, pendingPhase: "extracting" };
+  }
+  const download = downloads.find((entry) => entry.modelId === MODEL_ID);
+  return {
+    installed: false,
+    localPath: null,
+    pendingPhase: download?.phase ?? null,
+  };
 }
 
-/**
- * Download and extract the exact Kokoro int8 multilingual release asset.
- * Call this only after an explicit user confirmation in the UI.
- */
+/** Starts only after the UI has obtained explicit user confirmation. */
 export async function downloadOfflineKokoroModel(
   onProgress?: (progress: OfflineKokoroProgress) => void
 ): Promise<string> {
@@ -42,7 +67,7 @@ export async function downloadOfflineKokoroModel(
   if (!model) {
     throw new Error("Kokoro 官方模型列表中没有找到预期的 int8 多语言模型。");
   }
-  const result = await ensureModel(ModelCategory.Tts, MODEL_ID, {
+  const result = await downloadModel(ModelCategory.Tts, MODEL_ID, {
     verifyChecksum: true,
     deleteArchiveAfterExtract: true,
     onProgress: (progress) => onProgress?.({
@@ -53,6 +78,44 @@ export async function downloadOfflineKokoroModel(
     }),
   });
   return result.localPath;
+}
+
+export async function pauseOfflineKokoroModel(phase: ProgressPhase): Promise<void> {
+  if (phase === "extracting" || phase === "extracting_resume_skipping") {
+    await pauseExtraction(ModelCategory.Tts, MODEL_ID);
+  } else {
+    await pauseDownload(ModelCategory.Tts, MODEL_ID);
+  }
+}
+
+export async function resumeOfflineKokoroModel(
+  phase: ProgressPhase,
+  onProgress?: (progress: OfflineKokoroProgress) => void
+): Promise<string> {
+  const options = {
+    verifyChecksum: true,
+    deleteArchiveAfterExtract: true,
+    onProgress: (progress: Progress) => onProgress?.({
+      phase: progress.phase,
+      percent: Math.max(0, Math.min(100, progress.percent)),
+      bytesProcessed: progress.bytesProcessed,
+      totalBytes: progress.totalBytes,
+    }),
+  };
+  const result = phase === "extracting" || phase === "extracting_resume_skipping"
+    ? await resumeExtraction(ModelCategory.Tts, MODEL_ID, options)
+    : await resumeDownload(ModelCategory.Tts, MODEL_ID, options);
+  return result.localPath;
+}
+
+export async function deleteOfflineKokoroModel(): Promise<void> {
+  await deleteIncompleteDownload(ModelCategory.Tts, MODEL_ID);
+  await deleteIncompleteExtraction(ModelCategory.Tts, MODEL_ID);
+  await deleteModel(ModelCategory.Tts, MODEL_ID);
+}
+
+export function isOfflineKokoroPause(error: unknown): boolean {
+  return isPauseError(error);
 }
 
 export async function createOfflineKokoroEngine(
