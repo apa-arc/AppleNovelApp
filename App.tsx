@@ -24,9 +24,16 @@ type Book = {
   progress: number;
   color: string;
   lastChapter?: string;
+  chapterIndex?: number;
 };
 
 const STORAGE_KEY = "@private_novel/books_v1";
+type Chapter = { title: string; content: string };
+const SAMPLE_CHAPTERS: Chapter[] = [
+  { title: "第一章 · 故事的开始", content: "清晨的光从窗边慢慢铺开，新的旅程也在这一刻开始。\n\n这是用于测试阅读器的演示章节。正式接入书源后，这里会显示所选小说的真实章节正文。\n\n阅读器会记录你读到的章节，方便下次从上次的位置继续。\n\n请注意：当前内容仅为应用内置演示文本，并非真实小说正文。" },
+  { title: "第二章 · 远方来信", content: "桌面上多了一封没有署名的信。信纸很薄，字迹却清晰。\n\n这是一段演示文本，用来检查章节切换、目录跳转和阅读位置保存是否正常。\n\n真正的章节内容将在后续接入经过授权的在线书源或用户导入的本地文本后展示。" },
+  { title: "第三章 · 向前一步", content: "有些答案需要亲自走出去才能找到。合上信纸，他决定在今天启程。\n\n你现在看到的是第三段演示内容。可以通过底部按钮切换章节，也可以打开目录直接跳转。\n\n章节阅读进度会保存在当前设备。" },
+];
 const SAMPLE_BOOKS: Book[] = [
   {
     id: "1",
@@ -77,6 +84,11 @@ export default function App() {
   const [books, setBooks] = useState<Book[]>(SAMPLE_BOOKS);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [chapterIndex, setChapterIndex] = useState(0);
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [showReaderSettings, setShowReaderSettings] = useState(false);
+  const [readerFontSize, setReaderFontSize] = useState(18);
+  const [readerTheme, setReaderTheme] = useState<"paper" | "night">("paper");
 
   useEffect(() => {
     let active = true;
@@ -122,11 +134,16 @@ export default function App() {
   const openBook = (book: Book) => {
     stopSpeech();
     setSelectedBook(book);
+    setChapterIndex(Math.min(Math.max(book.chapterIndex ?? 0, 0), SAMPLE_CHAPTERS.length - 1));
+    setShowCatalog(false);
+    setShowReaderSettings(false);
   };
 
   const closeReader = () => {
     stopSpeech();
     setSelectedBook(null);
+    setShowCatalog(false);
+    setShowReaderSettings(false);
   };
 
   const speakCurrentBook = () => {
@@ -135,8 +152,7 @@ export default function App() {
       stopSpeech();
       return;
     }
-    const textToRead = selectedBook.title + "。" + selectedBook.description +
-      "。这是私人小说阅读器的演示章节。后续将接入真实章节内容。";
+    const textToRead = selectedBook.title + "。" + SAMPLE_CHAPTERS[chapterIndex].title + "。" + SAMPLE_CHAPTERS[chapterIndex].content;
     setIsSpeaking(true);
     Speech.speak(textToRead, {
       language: "zh-CN",
@@ -145,6 +161,29 @@ export default function App() {
       onStopped: () => setIsSpeaking(false),
       onError: () => setIsSpeaking(false),
     });
+  };
+
+  const saveReadingPosition = (bookId: string, nextChapterIndex: number) => {
+    const safeIndex = Math.min(Math.max(nextChapterIndex, 0), SAMPLE_CHAPTERS.length - 1);
+    setChapterIndex(safeIndex);
+    setBooks((current) => current.map((book) => {
+      if (book.id !== bookId) return book;
+      return {
+        ...book,
+        chapterIndex: safeIndex,
+        progress: Math.max(book.progress, Math.round(((safeIndex + 1) / SAMPLE_CHAPTERS.length) * 100)),
+        lastChapter: SAMPLE_CHAPTERS[safeIndex].title,
+      };
+    }));
+    stopSpeech();
+  };
+
+  const changeChapter = (delta: number) => {
+    if (!selectedBook) return;
+    const next = chapterIndex + delta;
+    if (next < 0 || next >= SAMPLE_CHAPTERS.length) return;
+    saveReadingPosition(selectedBook.id, next);
+    setShowCatalog(false);
   };
 
   const updateProgress = (bookId: string, amount: number) => {
@@ -169,42 +208,65 @@ export default function App() {
 
   if (selectedBook) {
     const currentBook = books.find((book) => book.id === selectedBook.id) || selectedBook;
+    const activeChapter = SAMPLE_CHAPTERS[chapterIndex];
+    const readerBackground = readerTheme === "night" ? "#20231F" : "#F8F7F3";
+    const readerTextColor = readerTheme === "night" ? "#E6E3D9" : "#45453D";
     return (
-      <SafeAreaView style={styles.safe}>
-        <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={[styles.safe, { backgroundColor: readerBackground }]}>
+        <StatusBar barStyle={readerTheme === "night" ? "light-content" : "dark-content"} />
         <View style={styles.readerHeader}>
           <Pressable onPress={closeReader}><Text style={styles.backText}>‹ 返回</Text></Pressable>
-          <Text style={styles.readerHeaderTitle}>正在阅读</Text>
-          <Text style={styles.headerAction}>Aa</Text>
+          <Text style={[styles.readerHeaderTitle, readerTheme === "night" && styles.nightMuted]}>正在阅读</Text>
+          <Pressable onPress={() => { setShowCatalog((value) => !value); setShowReaderSettings(false); }}>
+            <Text style={styles.headerAction}>{showCatalog ? "返回正文" : "目录"}</Text>
+          </Pressable>
         </View>
-        <ScrollView
-          contentContainerStyle={styles.readerContent}
-          onScrollBeginDrag={() => updateProgress(currentBook.id, 37)}
-          scrollEventThrottle={300}
-        >
-          <Text style={styles.chapterLabel}>第一章 · 故事的开始</Text>
-          <Text style={styles.readerTitle}>{currentBook.title}</Text>
-          <Text style={styles.readerParagraph}>
-            {currentBook.description}
-            {"\n\n"}
-            这是私人小说阅读器的第一版阅读页面。接下来我们会加入真正的章节内容、目录跳转、字体设置、阅读背景和更精确的阅读进度记录。
-            {"\n\n"}
-            阅读器会尽量保持清爽，让文字成为页面的主角。你可以在这里继续阅读，也可以随时返回书架。
-            {"\n\n"}
-            当前显示的是内置演示文本，不代表真实小说内容。
-          </Text>
-          <View style={styles.readerFooter}>
-            <Text style={styles.muted}>第 1 章</Text>
-            <Text style={styles.muted}>已读 {currentBook.progress}%</Text>
+        {showCatalog ? (
+          <ScrollView contentContainerStyle={styles.catalogContent}>
+            <Text style={[styles.catalogHeading, readerTheme === "night" && styles.nightText]}>章节目录</Text>
+            <Text style={[styles.catalogSub, readerTheme === "night" && styles.nightMuted]}>{currentBook.title} · 共 {SAMPLE_CHAPTERS.length} 章（演示）</Text>
+            {SAMPLE_CHAPTERS.map((chapter, index) => (
+              <Pressable key={chapter.title} onPress={() => { saveReadingPosition(currentBook.id, index); setShowCatalog(false); }} style={[styles.chapterRow, readerTheme === "night" && styles.nightCard, index === chapterIndex && styles.chapterRowActive]}>
+                <Text style={[styles.chapterRowTitle, readerTheme === "night" && styles.nightText]}>{chapter.title}</Text>
+                <Text style={styles.chapterRowMeta}>{index === chapterIndex ? "正在阅读" : "演示章节"}</Text>
+              </Pressable>
+            ))}
+            <Text style={[styles.catalogDisclaimer, readerTheme === "night" && styles.nightMuted]}>当前为内置演示目录，接入书源后将替换为小说真实章节。</Text>
+          </ScrollView>
+        ) : (
+          <ScrollView contentContainerStyle={styles.readerContent}>
+            <Text style={styles.chapterLabel}>{activeChapter.title}</Text>
+            <Text style={[styles.readerTitle, readerTheme === "night" && styles.nightText]}>{currentBook.title}</Text>
+            <Text style={[styles.readerParagraph, { fontSize: readerFontSize, lineHeight: Math.round(readerFontSize * 1.9), color: readerTextColor }]}>
+              {currentBook.description}{"\n\n"}{activeChapter.content}
+            </Text>
+            <View style={styles.readerFooter}>
+              <Text style={[styles.muted, readerTheme === "night" && styles.nightMuted]}>第 {chapterIndex + 1} / {SAMPLE_CHAPTERS.length} 章</Text>
+              <Text style={[styles.muted, readerTheme === "night" && styles.nightMuted]}>已读 {currentBook.progress}%</Text>
+            </View>
+          </ScrollView>
+        )}
+        {showReaderSettings && !showCatalog && (
+          <View style={[styles.readerSettings, readerTheme === "night" && styles.nightCard]}>
+            <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>字体</Text>
+            <Pressable style={styles.fontButton} onPress={() => setReaderFontSize((size) => Math.max(14, size - 1))}><Text style={styles.fontButtonText}>A−</Text></Pressable>
+            <Text style={[styles.fontSizeValue, readerTheme === "night" && styles.nightText]}>{readerFontSize}</Text>
+            <Pressable style={styles.fontButton} onPress={() => setReaderFontSize((size) => Math.min(28, size + 1))}><Text style={styles.fontButtonText}>A+</Text></Pressable>
+            <Pressable style={styles.themeButton} onPress={() => setReaderTheme((theme) => theme === "paper" ? "night" : "paper")}><Text style={styles.fontButtonText}>{readerTheme === "paper" ? "夜间" : "日间"}</Text></Pressable>
           </View>
-        </ScrollView>
-        <View style={styles.playerBar}>
-          <View>
-            <Text style={styles.playerHint}>系统中文语音朗读</Text>
-            <Text style={styles.playerSub}>可使用 iPhone 系统语音</Text>
-          </View>
+        )}
+        <View style={[styles.readerBottomBar, readerTheme === "night" && styles.nightCard]}>
+          <Pressable disabled={chapterIndex === 0 || showCatalog} onPress={() => changeChapter(-1)} style={styles.chapterNavButton}>
+            <Text style={[styles.chapterNavText, (chapterIndex === 0 || showCatalog) && styles.disabledText]}>上一章</Text>
+          </Pressable>
+          <Pressable onPress={() => setShowReaderSettings((value) => !value)} style={styles.playerButton}>
+            <Text style={styles.playerAction}>Aa 设置</Text>
+          </Pressable>
           <Pressable onPress={speakCurrentBook} style={styles.playerButton}>
-            <Text style={styles.playerAction}>{isSpeaking ? "停止朗读" : "开始朗读"}</Text>
+            <Text style={styles.playerAction}>{isSpeaking ? "停止朗读" : "听书"}</Text>
+          </Pressable>
+          <Pressable disabled={chapterIndex === SAMPLE_CHAPTERS.length - 1 || showCatalog} onPress={() => changeChapter(1)} style={styles.chapterNavButton}>
+            <Text style={[styles.chapterNavText, (chapterIndex === SAMPLE_CHAPTERS.length - 1 || showCatalog) && styles.disabledText]}>下一章</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -380,6 +442,27 @@ const styles = StyleSheet.create({
   tabIconActive: { color: "#65745D" },
   tabLabel: { color: "#AAA69B", fontSize: 10, marginTop: 2 },
   tabLabelActive: { color: "#65745D", fontWeight: "800" },
+  catalogContent: { paddingHorizontal: 22, paddingTop: 22, paddingBottom: 35 },
+  catalogHeading: { color: "#292A24", fontSize: 23, fontWeight: "800" },
+  catalogSub: { color: "#999486", fontSize: 12, marginTop: 8, marginBottom: 20 },
+  chapterRow: { minHeight: 62, backgroundColor: "#FFFFFF", borderRadius: 13, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  chapterRowActive: { borderWidth: 1, borderColor: "#829078", backgroundColor: "#F0F2EC" },
+  chapterRowTitle: { color: "#383A32", fontSize: 14, fontWeight: "600", flex: 1 },
+  chapterRowMeta: { color: "#87917E", fontSize: 10, marginLeft: 8 },
+  catalogDisclaimer: { color: "#A09B8E", fontSize: 11, lineHeight: 18, marginTop: 10 },
+  readerSettings: { minHeight: 58, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#EEECE5", paddingHorizontal: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  settingsLabel: { color: "#777368", fontSize: 11 },
+  fontButton: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: "#EEF0E9" },
+  fontButtonText: { color: "#65745D", fontWeight: "800", fontSize: 12 },
+  fontSizeValue: { color: "#45453D", fontSize: 12, minWidth: 18, textAlign: "center" },
+  themeButton: { paddingVertical: 8, paddingHorizontal: 13, borderRadius: 12, backgroundColor: "#EEF0E9" },
+  readerBottomBar: { minHeight: 64, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#EEECE5", paddingHorizontal: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  chapterNavButton: { paddingVertical: 10, paddingHorizontal: 7 },
+  chapterNavText: { color: "#65745D", fontSize: 11, fontWeight: "700" },
+  disabledText: { color: "#C5C2B9" },
+  nightCard: { backgroundColor: "#2B2F29", borderColor: "#3A4038" },
+  nightText: { color: "#E6E3D9" },
+  nightMuted: { color: "#A9AA9F" },
   readerHeader: { height: 54, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   backText: { color: "#68765F", fontSize: 15, fontWeight: "600" },
   readerHeaderTitle: { color: "#777368", fontSize: 12 },
