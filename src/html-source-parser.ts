@@ -2,8 +2,8 @@ import type { NovelChapter, NovelContent, NovelDetail, NovelSummary } from "./no
 
 type Node = { tag: string; attrs: Record<string,string>; children: Array<Node|string>; parent: Node|null };
 const VOID = new Set(["area","base","br","col","embed","hr","img","input","link","meta","param","source","track","wbr"]);
-const BLOCK = new Set(["article","blockquote","div","footer","h1","h2","h3","h4","header","li","main","ol","p","section","table","tr","ul"]);
-const decode = (s:string) => s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi,(a,e:string)=>{const k=e.toLowerCase();if(k==="amp")return"&";if(k==="lt")return"<";if(k==="gt")return">";if(k==="quot")return'"';if(k==="apos")return"'";if(k==="nbsp")return" ";const n=k.startsWith("#x")?parseInt(k.slice(2),16):parseInt(k.slice(1),10);return Number.isFinite(n)&&n>0&&n<=0x10ffff?String.fromCodePoint(n):a;});
+const BLOCK = new Set(["article","blockquote","div","footer","h1","h2","h3","h4","header","li","main","ol","p","section","table","tr","td","th","ul"]);
+const decode = (s:string) => s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi,(a,e:string)=>{const k=e.toLowerCase();if(k==="amp")return"&";if(k==="lt")return"<";if(k==="gt")return">";if(k==="quot")return'"';if(k==="apos")return"'";if(k==="nbsp")return" ";if(k==="mdash")return"—";if(k==="ndash")return"–";if(k==="hellip")return"…";if(k==="ldquo")return"“";if(k==="rdquo")return"”";if(k==="lsquo")return"‘";if(k==="rsquo")return"’";if(k==="middot")return"·";if(k==="bull")return"•";if(k==="copy")return"©";const n=k.startsWith("#x")?parseInt(k.slice(2),16):parseInt(k.slice(1),10);return Number.isFinite(n)&&n>0&&n<=0x10ffff?String.fromCodePoint(n):a;});
 
 export function parseHtmlDocument(html:string):Node {
  if(html.length>1_000_000) throw new Error("HTML 页面超过 1 MB，已停止解析。");
@@ -51,7 +51,7 @@ function assertSupportedSelector(selector:string):void{
  }
 }
 export function selectHtmlNodes(root:Node,selector:string):Node[]{assertSupportedSelector(selector);return all(root).filter(n=>selector.split(",").some(s=>matches(n,s.trim())));}
-export function htmlNodeText(n:Node):string{const walk=(x:Node):string=>x.children.map(c=>typeof c==="string"?c:(["script","style","noscript"].includes(c.tag)?"":(BLOCK.has(c.tag)?"\n":"")+walk(c)+(BLOCK.has(c.tag)?"\n":""))).join("");return walk(n).replace(/[\t\f\v ]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").trim();}
+export function htmlNodeText(n:Node):string{const walk=(x:Node):string=>x.children.map(c=>typeof c==="string"?c:(["script","style","noscript"].includes(c.tag)?"":(["br","hr"].includes(c.tag)?"\n":(BLOCK.has(c.tag)?"\n":"")+walk(c)+(BLOCK.has(c.tag)?"\n":"")))).join("");return walk(n).replace(/[\t\f\v ]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").trim();}
 function attr(n:Node,name:string):string{return n.attrs[name.toLowerCase()]||"";}
 function textAt(n:Node,selector?:string):string{const x=selector?selectHtmlNodes(n,selector)[0]:undefined;return x?htmlNodeText(x):"";}
 function safeUrl(v:string,base:string):string{try{const origin=new URL(base).origin,u=new URL(v,base);return u.protocol==="https:"&&!u.username&&!u.password&&u.origin===origin?u.toString():"";}catch{return"";}}
