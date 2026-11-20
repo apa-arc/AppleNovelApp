@@ -39,6 +39,7 @@ function validateHtmlRules(value: unknown): HtmlSourceRules {
     const raw=input[key];if(raw===undefined)return undefined;
     if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new Error("htmlRules."+key+" 必须是对象。");
     const obj=raw as Record<string,unknown>,out:Record<string,string>={};
+    if(Object.keys(obj).some((field)=>!allowed.includes(field))) throw new Error("htmlRules."+key+" 包含不支持的字段。");
     for(const field of allowed){if(obj[field]===undefined)continue;if(typeof obj[field]!=="string"||!(obj[field] as string).trim()||(obj[field] as string).length>300)throw new Error("htmlRules."+key+"."+field+" 无效。");out[field]=(obj[field] as string).trim();}
     for(const field of required)if(!out[field])throw new Error("htmlRules."+key+" 缺少 "+field+"。");return out;
   };
