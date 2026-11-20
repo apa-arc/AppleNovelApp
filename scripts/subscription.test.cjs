@@ -35,7 +35,10 @@ test("preserves current chapter by URL even when chapter IDs and indexes change"
 });
 
 test("falls back to matching normalized chapter title when URL changes", () => {
-  const previous = [chapter("old", "第二章 远方", "https://books.example/old", 1)];
+  const previous = [
+    chapter("first-old", "第一章", "https://books.example/1", 0),
+    chapter("old", "第二章 远方", "https://books.example/old", 1),
+  ];
   const latest = [
     chapter("first", "第一章", "https://books.example/1", 0),
     chapter("new", "第二章远方", "https://books.example/new", 1),
