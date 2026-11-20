@@ -370,7 +370,6 @@ export default function App() {
       return;
     }
     stopSpeech();
-    setOpenedFromShelf(false);
     setLoadingOnlineChapter(true);
     setCatalogMessage("");
     try {
