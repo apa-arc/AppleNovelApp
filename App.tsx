@@ -20,6 +20,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Dimensions,
 } from "react-native";
 
 type Tab = "书架" | "发现" | "书源" | "我的";
@@ -843,9 +844,9 @@ export default function App() {
               const { pageX, pageY } = event.nativeEvent;
               const elapsed = Date.now() - start.time;
               const moved = Math.abs(pageX - start.x) + Math.abs(pageY - start.y);
-              const centerTap = pageX > 90 && pageX < 330;
+              const screenWidth = Dimensions.get("window").width;
+              const centerTap = pageX > screenWidth * 0.28 && pageX < screenWidth * 0.72;
               if (elapsed >= 280 || moved >= 14) return;
-              const screenWidth = require("react-native").Dimensions.get("window").width;
               if (readerMode === "tap") {
                 if (pageX < screenWidth * 0.28) {
                   readerScrollRef.current?.scrollTo({ y: Math.max(0, readerScrollOffset - readerViewportHeight * 0.88), animated: true });
