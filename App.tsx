@@ -1622,9 +1622,17 @@ export default function App() {
           <View style={styles.welcomeCard}>
             <Text style={styles.welcomeEyebrow}>DISCOVER</Text>
             <Text style={styles.welcomeTitle}>搜索你想读的小说。</Text>
-            <Text style={styles.welcomeSub}>通过已启用的 JSON 书源搜索，结果会自动去重。</Text>
+            <Text style={styles.welcomeSub}>普通与成人书源分开搜索，结果会自动去重。</Text>
           </View>
           <View style={styles.onlineSearchCard}>
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+              <Pressable style={[styles.themeButton, sourceSearchMode === "normal" && styles.modeButtonActive]} onPress={() => { setSourceSearchMode("normal"); setOnlineResults([]); setSearchMessage(""); }}>
+                <Text style={styles.fontButtonText}>普通书源</Text>
+              </Pressable>
+              <Pressable style={[styles.themeButton, sourceSearchMode === "adult" && styles.modeButtonActive]} onPress={() => { setSourceSearchMode("adult"); setOnlineResults([]); setSearchMessage(""); }}>
+                <Text style={styles.fontButtonText}>成人书源</Text>
+              </Pressable>
+            </View>
             <TextInput
               value={onlineQuery}
               onChangeText={(value) => { setOnlineQuery(value); setSearchMessage(""); }}
@@ -1638,7 +1646,7 @@ export default function App() {
             <Pressable style={[styles.onlineSearchButton, searching && styles.importButtonDisabled]} onPress={searchOnlineNovels} disabled={searching}>
               {searching ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>搜索小说</Text>}
             </Pressable>
-            <Text style={styles.note}>当前支持返回常见 JSON 列表的书源；HTML 页面和复杂脚本规则尚未支持。</Text>
+            <Text style={styles.note}>支持 JSON 接口与声明式 CSS HTML 规则；不会执行第三方 JavaScript。普通和成人来源互相隔离。</Text>
           </View>
           {!!searchSummary && <Text style={styles.searchSummary}>{searchSummary}</Text>}
           {searching && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={styles.note}>正在搜索，请稍候…</Text></View>}
