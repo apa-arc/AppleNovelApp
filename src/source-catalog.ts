@@ -155,7 +155,8 @@ export async function fetchNovelChapterList(
   summary: NovelSummary,
   client: SourceHttpClient = createSourceHttpClient(source)
 ): Promise<NovelChapter[]> {
-  const templated = replaceTemplate(source.chapterListUrl, { bookUrl: summary.bookUrl, book: summary.bookUrl });
+  const bookPathId = new URL(summary.bookUrl).pathname.split("/").filter(Boolean).pop() || summary.id;
+  const templated = replaceTemplate(source.chapterListUrl, { bookUrl: summary.bookUrl, book: summary.bookUrl, bookId: bookPathId });
   const response = await client.get("chapterListUrl", templated || source.chapterListUrl);
   if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
     if (!source.htmlRules?.chapters) throw new Error("该书源目录返回 HTML，但未配置 CSS 章节规则。");
@@ -169,7 +170,8 @@ export async function fetchNovelChapterContent(
   chapter: NovelChapter,
   client: SourceHttpClient = createSourceHttpClient(source)
 ): Promise<NovelContent> {
-  const templated = replaceTemplate(source.chapterUrl, { chapterUrl: chapter.url, url: chapter.url });
+  const chapterPathId = new URL(chapter.url).pathname.split("/").filter(Boolean).pop() || chapter.id;
+  const templated = replaceTemplate(source.chapterUrl, { chapterUrl: chapter.url, url: chapter.url, chapterId: chapterPathId });
   const response = await client.get("chapterUrl", templated || chapter.url);
   if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
     if (!source.htmlRules?.content) throw new Error("该书源正文返回 HTML，但未配置 CSS 正文规则。");
