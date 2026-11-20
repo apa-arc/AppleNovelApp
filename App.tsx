@@ -989,6 +989,11 @@ export default function App() {
       return;
     }
     const endpoint = normalizeCloudTtsEndpoint(speechCloudEndpoint);
+    if (!endpoint) {
+      Alert.alert("AI 朗读服务未配置", "先在「声音」设置中填写你部署的 Kokoro 服务 HTTPS 地址。AI 朗读不会偷偷切换成 iPhone 系统语音。");
+      setShowSpeechSettings(true);
+      return;
+    }
     if (!speechDeviceToken) {
       Alert.alert("需要先绑定设备", "请在「声音」设置中输入服务器管理员绑定码，绑定本设备后才能使用 AI 朗读。");
       setShowSpeechSettings(true);
@@ -996,11 +1001,6 @@ export default function App() {
     }
     if (speechDeviceTokenEndpoint !== endpoint) {
       Alert.alert("服务器地址已更改", "当前设备凭据属于另一台服务器。请先撤销旧授权，再使用新服务器的绑定码重新绑定。");
-      setShowSpeechSettings(true);
-      return;
-    }
-    if (!endpoint) {
-      Alert.alert("AI 朗读服务未配置", "先在「声音」设置中填写你部署的 Kokoro 服务 HTTPS 地址。AI 朗读不会偷偷切换成 iPhone 系统语音。");
       setShowSpeechSettings(true);
       return;
     }
@@ -1361,8 +1361,8 @@ export default function App() {
                   </Pressable>
                 </>
               )}
-              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>一个模型包包含全部 103 个音色。先选好声音；模型下载与 AI 试听接入后，才会真正生成语音。</Text>
-              <Text style={[styles.voiceSelected, { marginTop: 6 }]}>当前状态：模型尚未下载，AI 朗读尚未启用</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>在线 AI 试听和朗读使用当前选中的 Kokoro 音色。离线模型下载与本地原生推理仍在接入中。</Text>
+              <Text style={[styles.voiceSelected, { marginTop: 6 }]}>{speechDeviceToken && speechDeviceTokenEndpoint === normalizeCloudTtsEndpoint(speechCloudEndpoint) ? "当前状态：设备已绑定，可使用在线 AI 朗读（需服务器模型正常运行）" : "当前状态：在线服务尚未绑定；离线模型尚未下载"}</Text>
             </View>
             <View style={{ marginBottom: 12 }}>
               <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>选择 Kokoro 音色 · 103 种</Text>
