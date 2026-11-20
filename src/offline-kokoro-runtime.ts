@@ -78,10 +78,12 @@ export async function downloadOfflineKokoroModel(
 }
 
 export async function pauseOfflineKokoroModel(phase: ProgressPhase): Promise<void> {
+  const api = loadDownloadApi();
+  const category = api.ModelCategory.Tts;
   if (phase === "extracting" || phase === "extracting_resume_skipping") {
-    await loadDownloadApi().pauseExtraction(loadDownloadApi().ModelCategory.Tts, MODEL_ID);
+    await api.pauseExtraction(category, MODEL_ID);
   } else {
-    await loadDownloadApi().pauseDownload(loadDownloadApi().ModelCategory.Tts, MODEL_ID);
+    await api.pauseDownload(category, MODEL_ID);
   }
 }
 
