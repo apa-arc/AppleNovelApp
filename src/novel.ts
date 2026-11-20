@@ -51,7 +51,7 @@ export type NovelSearchPage = {
 };
 
 export function normalizeNovelTitle(value: string): string {
-  return value.trim().replace(/\\s+/g, "").toLocaleLowerCase();
+  return value.trim().replace(/\s+/g, "").toLocaleLowerCase();
 }
 
 /** Merge duplicate books from different sources while retaining every source result. */
