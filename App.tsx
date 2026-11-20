@@ -131,6 +131,7 @@ export default function App() {
   const [speechVoiceMessage, setSpeechVoiceMessage] = useState("");
   const [speechVoiceIdentifier, setSpeechVoiceIdentifier] = useState<string | null>(null);
   const [speechModelVoiceId, setSpeechModelVoiceId] = useState(DEFAULT_READER_SETTINGS.speechModelVoiceId);
+  const [speechVoiceCategoryFilter, setSpeechVoiceCategoryFilter] = useState<"全部" | "中文女声" | "中文男声" | "英语女声">("全部");
   const [speechRate, setSpeechRate] = useState(DEFAULT_READER_SETTINGS.speechRate);
   const [speechPitch, setSpeechPitch] = useState(DEFAULT_READER_SETTINGS.speechPitch);
   const [readerFontSize, setReaderFontSize] = useState(DEFAULT_READER_SETTINGS.fontSize);
@@ -1116,8 +1117,15 @@ export default function App() {
             <View style={{ marginBottom: 12 }}>
               <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>选择 Kokoro 音色 · 103 种</Text>
               <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 4, marginBottom: 8 }]}>当前选择：{SPEECH_VOICES.find((voice) => voice.id === speechModelVoiceId)?.label || "声音 01"}。音色试听将在 AI 引擎接入后开放。</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                {(["全部", "中文女声", "中文男声", "英语女声"] as const).map((category) => (
+                  <Pressable key={category} style={[styles.themeButton, speechVoiceCategoryFilter === category && styles.modeButtonActive]} onPress={() => setSpeechVoiceCategoryFilter(category)}>
+                    <Text style={styles.fontButtonText}>{category}</Text>
+                  </Pressable>
+                ))}
+              </View>
               <ScrollView style={styles.voiceList} nestedScrollEnabled>
-                {SPEECH_VOICES.map((voice) => {
+                {SPEECH_VOICES.filter((voice) => speechVoiceCategoryFilter === "全部" || (speechVoiceCategoryFilter === "英语女声" ? voice.category === "美式女声" || voice.category === "英式女声" : voice.category === speechVoiceCategoryFilter)).map((voice) => {
                   const selected = speechModelVoiceId === voice.id;
                   return (
                     <Pressable key={voice.id} style={[styles.voiceOption, selected && styles.voiceOptionSelected, readerTheme === "night" && styles.nightVoiceOption]} onPress={() => setSpeechModelVoiceId(voice.id)}>
