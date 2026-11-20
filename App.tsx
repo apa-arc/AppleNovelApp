@@ -998,6 +998,42 @@ export default function App() {
     });
   };
 
+  const previewKokoroVoice = async (voiceId: string) => {
+    const endpoint = normalizeCloudTtsEndpoint(speechCloudEndpoint);
+    if (!endpoint || !speechDeviceToken || speechDeviceTokenEndpoint !== endpoint) {
+      Alert.alert("先配置 AI 语音服务", "填写 Kokoro HTTPS 地址并绑定此设备后，就可以试听 103 种 AI 音色。");
+      setShowSpeechSettings(true);
+      return;
+    }
+    if (isSpeaking) stopSpeech();
+    const runId = ++speechRunIdRef.current;
+    setIsSpeaking(true);
+    setSpeechPaused(false);
+    speechPausedRef.current = false;
+    try {
+      const voice = SPEECH_VOICES.find((item) => item.id === voiceId);
+      const bytes = await requestCloudSpeech(endpoint, {
+        voiceId,
+        text: "你好，欢迎使用私人小说。这是一段 Kokoro AI 音色试听。",
+        speed: speechRate,
+      }, speechDeviceToken);
+      if (runId !== speechRunIdRef.current) return;
+      const playback = await playCloudWav(bytes, { title: "Kokoro 音色试听", artist: voice?.label || "私人小说" });
+      cloudPlaybackRef.current = playback;
+      if (speechPausedRef.current) playback.pause();
+      await playback.finished;
+    } catch (error) {
+      if (runId === speechRunIdRef.current) Alert.alert("音色试听失败", error instanceof Error ? error.message : "请检查 AI 语音服务。");
+    } finally {
+      if (runId === speechRunIdRef.current) {
+        cloudPlaybackRef.current = null;
+        setIsSpeaking(false);
+        setSpeechPaused(false);
+        speechPausedRef.current = false;
+      }
+    }
+  };
+
   const speakCurrentBook = async () => {
     if (!selectedBook) return;
     if (isSpeaking) {
@@ -1382,7 +1418,7 @@ export default function App() {
             </View>
             <View style={{ marginBottom: 12 }}>
               <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>选择 Kokoro 音色 · 103 种</Text>
-              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 4, marginBottom: 8 }]}>当前选择：{SPEECH_VOICES.find((voice) => voice.id === speechModelVoiceId)?.label || "声音 01"}。音色试听将在 AI 引擎接入后开放。</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 4, marginBottom: 8 }]}>当前选择：{SPEECH_VOICES.find((voice) => voice.id === speechModelVoiceId)?.label || "声音 01"}。点击每个音色右侧的「试听」即可用在线 Kokoro AI 听效果。</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
                 {(["全部", "中文女声", "中文男声", "英语女声"] as const).map((category) => (
                   <Pressable key={category} style={[styles.themeButton, speechVoiceCategoryFilter === category && styles.modeButtonActive]} onPress={() => setSpeechVoiceCategoryFilter(category)}>
@@ -1399,7 +1435,12 @@ export default function App() {
                         <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>{voice.label}</Text>
                         <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>speaker ID · {voice.speakerId}</Text>
                       </View>
-                      <Text style={styles.voiceSelected}>{selected ? "已选择" : "选择"}</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <Text style={styles.voiceSelected}>{selected ? "已选择" : "选择"}</Text>
+                        <Pressable style={styles.fontButton} onPress={() => { setSpeechModelVoiceId(voice.id); void previewKokoroVoice(voice.id); }}>
+                          <Text style={styles.fontButtonText}>试听</Text>
+                        </Pressable>
+                      </View>
                     </Pressable>
                   );
                 })}
