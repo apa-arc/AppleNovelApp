@@ -8,7 +8,12 @@
     "scheme": "applenovelapp",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.apaarc.applenovelapp"
+      "bundleIdentifier": "com.apaarc.applenovelapp",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      }
     },
     "android": {
       "package": "com.apaarc.applenovelapp"
@@ -20,6 +25,15 @@
       "enabled": true,
       "checkAutomatically": "NEVER",
       "fallbackToCacheTimeout": 0
-    }
+    },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ]
+    ]
   }
 }
