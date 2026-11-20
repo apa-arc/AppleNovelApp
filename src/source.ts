@@ -8,11 +8,20 @@ export type NovelSource = {
   chapterUrl: string;
   enabled: boolean;
   importedAt: number;
+  htmlRules?: HtmlSourceRules;
   /** Built-in offline fixture; never imported from untrusted source JSON. */
   isBuiltinMock?: boolean;
 };
 
+export type HtmlSourceRules = {
+  search?: { itemSelector:string; titleSelector:string; urlSelector:string; authorSelector?:string; descriptionSelector?:string; urlAttribute?:string; coverSelector?:string; coverAttribute?:string };
+  detail?: { titleSelector?:string; authorSelector?:string; descriptionSelector?:string };
+  chapters?: { itemSelector:string; titleSelector:string; urlSelector:string; urlAttribute?:string };
+  content?: { contentSelector:string; titleSelector?:string };
+};
+
 type SourceInput = {
+  htmlRules?: unknown;
   name?: unknown;
   baseUrl?: unknown;
   searchUrl?: unknown;
@@ -20,6 +29,23 @@ type SourceInput = {
   chapterListUrl?: unknown;
   chapterUrl?: unknown;
 };
+
+function validateHtmlRules(value: unknown): HtmlSourceRules {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("htmlRules 必须是对象。");
+  const input=value as Record<string,unknown>;
+  const read=(key:string,required:string[],allowed:string[])=>{
+    const raw=input[key];if(raw===undefined)return undefined;
+    if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new Error("htmlRules."+key+" 必须是对象。");
+    const obj=raw as Record<string,unknown>,out:Record<string,string>={};
+    for(const field of allowed){if(obj[field]===undefined)continue;if(typeof obj[field]!=="string"||!(obj[field] as string).trim()||(obj[field] as string).length>300)throw new Error("htmlRules."+key+"."+field+" 无效。");out[field]=(obj[field] as string).trim();}
+    for(const field of required)if(!out[field])throw new Error("htmlRules."+key+" 缺少 "+field+"。");return out;
+  };
+  const search=read("search",["itemSelector","titleSelector","urlSelector"],["itemSelector","titleSelector","urlSelector","authorSelector","descriptionSelector","urlAttribute","coverSelector","coverAttribute"]);
+  const detail=read("detail",[],["titleSelector","authorSelector","descriptionSelector"]);
+  const chapters=read("chapters",["itemSelector","titleSelector","urlSelector"],["itemSelector","titleSelector","urlSelector","urlAttribute"]);
+  const content=read("content",["contentSelector"],["contentSelector","titleSelector"]);
+  return {...(search?{search:search as NonNullable<HtmlSourceRules["search"]>}:{}),...(detail?{detail:detail as NonNullable<HtmlSourceRules["detail"]>}:{}),...(chapters?{chapters:chapters as NonNullable<HtmlSourceRules["chapters"]>}:{}),...(content?{content:content as NonNullable<HtmlSourceRules["content"]>}:{})};
+}
 
 function isPrivateIpv4(hostname: string): boolean {
   const parts = hostname.split(".");
@@ -104,6 +130,7 @@ export function parseNovelSourceJson(raw: string): Omit<NovelSource, "id" | "ena
     bookUrl: isSafeHttpsUrl(input.bookUrl, "bookUrl"),
     chapterListUrl: isSafeHttpsUrl(input.chapterListUrl, "chapterListUrl"),
     chapterUrl: isSafeHttpsUrl(input.chapterUrl, "chapterUrl"),
+    ...(input.htmlRules !== undefined ? { htmlRules: validateHtmlRules(input.htmlRules) } : {}),
   };
 }
 
