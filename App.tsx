@@ -120,6 +120,7 @@ export default function App() {
   const [showReaderSettings, setShowReaderSettings] = useState(false);
   const [readerFontSize, setReaderFontSize] = useState(DEFAULT_READER_SETTINGS.fontSize);
   const [readerTheme, setReaderTheme] = useState<"paper" | "night">(DEFAULT_READER_SETTINGS.theme);
+  const [readerMode, setReaderMode] = useState<"scroll" | "tap">(DEFAULT_READER_SETTINGS.readingMode);
   const [readerParagraphIndex, setReaderParagraphIndex] = useState(0);
   const [readerChromeVisible, setReaderChromeVisible] = useState(true);
   const readerTapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -169,6 +170,7 @@ export default function App() {
           const settings = normalizeReaderSettings(JSON.parse(savedReaderSettings));
           setReaderFontSize(settings.fontSize);
           setReaderTheme(settings.theme);
+          setReaderMode(settings.readingMode);
         }
       } catch {
         Alert.alert("读取失败", "本地书架数据暂时无法读取，已使用默认书架。");
@@ -199,11 +201,11 @@ export default function App() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    const settings: ReaderSettings = normalizeReaderSettings({ fontSize: readerFontSize, theme: readerTheme });
+    const settings: ReaderSettings = normalizeReaderSettings({ fontSize: readerFontSize, theme: readerTheme, readingMode: readerMode });
     AsyncStorage.setItem(READER_SETTINGS_STORAGE_KEY, JSON.stringify(settings)).catch(() => {
       Alert.alert("保存失败", "阅读设置暂时未能保存，请检查手机存储空间。");
     });
-  }, [readerFontSize, readerTheme, isLoaded]);
+  }, [readerFontSize, readerTheme, readerMode, isLoaded]);
 
   useEffect(() => {
     if (!restoreReaderPositionRef.current || readerContentHeight <= 0 || readerViewportHeight <= 0) return;
@@ -793,6 +795,8 @@ export default function App() {
     const readerBackground = readerTheme === "night" ? "#20231F" : "#F8F7F3";
     const readerTextColor = readerTheme === "night" ? "#E6E3D9" : "#45453D";
     const readingProgressPercent = Math.min(100, Math.max(0, Math.round(((activeChapterIndex + (readingParagraphs.length > 1 ? readerParagraphIndex / (readingParagraphs.length - 1) : 0)) / Math.max(1, activeChapterCount)) * 100)));
+    const readerScrollOffset = getReadingScrollOffset(readerParagraphIndex, readingParagraphs.length, Math.max(0, readerContentHeight - readerViewportHeight));
+    const readerMaxScrollOffset = Math.max(0, readerContentHeight - readerViewportHeight);
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: readerBackground }]}>
         <StatusBar barStyle={readerTheme === "night" ? "light-content" : "dark-content"} />
@@ -840,7 +844,17 @@ export default function App() {
               const elapsed = Date.now() - start.time;
               const moved = Math.abs(pageX - start.x) + Math.abs(pageY - start.y);
               const centerTap = pageX > 90 && pageX < 330;
-              if (elapsed < 280 && moved < 14 && centerTap) setReaderChromeVisible((visible) => !visible);
+              if (elapsed >= 280 || moved >= 14) return;
+              const screenWidth = require("react-native").Dimensions.get("window").width;
+              if (readerMode === "tap") {
+                if (pageX < screenWidth * 0.28) {
+                  readerScrollRef.current?.scrollTo({ y: Math.max(0, readerScrollOffset - readerViewportHeight * 0.88), animated: true });
+                } else if (pageX > screenWidth * 0.72) {
+                  readerScrollRef.current?.scrollTo({ y: Math.min(readerMaxScrollOffset, readerScrollOffset + readerViewportHeight * 0.88), animated: true });
+                } else {
+                  setReaderChromeVisible((visible) => !visible);
+                }
+              } else if (centerTap) setReaderChromeVisible((visible) => !visible);
             }}
             contentContainerStyle={styles.readerContent}
             scrollEventThrottle={250}
@@ -877,6 +891,9 @@ export default function App() {
         )}
         {showReaderSettings && !showCatalog && (
           <View style={[styles.readerSettings, readerTheme === "night" && styles.nightCard]}>
+            <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>阅读方式</Text>
+            <Pressable style={[styles.themeButton, readerMode === "scroll" && styles.modeButtonActive]} onPress={() => setReaderMode("scroll")}><Text style={styles.fontButtonText}>上下滚动</Text></Pressable>
+            <Pressable style={[styles.themeButton, readerMode === "tap" && styles.modeButtonActive]} onPress={() => setReaderMode("tap")}><Text style={styles.fontButtonText}>点击翻页</Text></Pressable>
             <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>字体</Text>
             <Pressable style={styles.fontButton} onPress={() => setReaderFontSize((size) => Math.max(14, size - 1))}><Text style={styles.fontButtonText}>A−</Text></Pressable>
             <Text style={[styles.fontSizeValue, readerTheme === "night" && styles.nightText]}>{readerFontSize}</Text>
@@ -1192,6 +1209,7 @@ const styles = StyleSheet.create({
   fontButtonText: { color: "#65745D", fontWeight: "800", fontSize: 12 },
   fontSizeValue: { color: "#45453D", fontSize: 12, minWidth: 18, textAlign: "center" },
   themeButton: { paddingVertical: 8, paddingHorizontal: 13, borderRadius: 12, backgroundColor: "#EEF0E9" },
+  modeButtonActive: { backgroundColor: "#DDE5D6", borderWidth: 1, borderColor: "#8A9A7C" },
   readerBottomBar: { minHeight: 64, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#EEECE5", paddingHorizontal: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   chapterNavButton: { paddingVertical: 10, paddingHorizontal: 7 },
   chapterNavText: { color: "#65745D", fontSize: 11, fontWeight: "700" },
