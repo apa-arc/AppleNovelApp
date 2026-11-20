@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Speech from "expo-speech";
-import { NovelSource, parseNovelSourceJson } from "./src/source";
+import { NovelSource, parseNovelSourceJsonBatch } from "./src/source";
 import { searchNovelSource } from "./src/source-search";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
@@ -181,14 +181,27 @@ export default function App() {
 
   const importSource = () => {
     try {
-      const parsed = parseNovelSourceJson(sourceDraft);
-      if (sources.some((item) => item.name.toLowerCase() === parsed.name.toLowerCase() || item.baseUrl === parsed.baseUrl)) {
-        setSourceMessage("导入失败：相同名称或网址的书源已经存在。");
+      const parsed = parseNovelSourceJsonBatch(sourceDraft);
+      const existingNames = new Set(sources.map((item) => item.name.trim().toLocaleLowerCase()));
+      const existingUrls = new Set(sources.map((item) => item.baseUrl.toLocaleLowerCase()));
+      const duplicate = parsed.find((item) =>
+        existingNames.has(item.name.toLocaleLowerCase()) ||
+        existingUrls.has(item.baseUrl.toLocaleLowerCase())
+      );
+      if (duplicate) {
+        setSourceMessage("导入失败：「" + duplicate.name + "」与已导入书源名称或网址重复；本批次未导入任何内容。");
         return;
       }
-      setSources((current) => [...current, { ...parsed, id: String(Date.now()), enabled: true, importedAt: Date.now() }]);
+      const importedAt = Date.now();
+      const additions: NovelSource[] = parsed.map((item, index) => ({
+        ...item,
+        id: importedAt.toString() + "-" + index.toString(),
+        enabled: true,
+        importedAt,
+      }));
+      setSources((current) => [...current, ...additions]);
       setSourceDraft("");
-      setSourceMessage("书源导入成功，已默认启用。");
+      setSourceMessage("批量导入成功：已校验并导入 " + additions.length + " 个书源。");
     } catch (error) {
       setSourceMessage(error instanceof Error ? error.message : "书源校验失败。");
     }
@@ -881,13 +894,13 @@ export default function App() {
           </View>
           <View style={styles.sourceCard}>
             <Text style={styles.sourceTitle}>导入 JSON 书源</Text>
-            <Text style={styles.note}>粘贴书源配置后导入。支持本地管理、JSON 搜索，并可尝试获取书籍详情和章节目录。</Text>
+            <Text style={styles.note}>粘贴单个 JSON 对象或多个书源组成的 JSON 数组。最多一次导入 100 个；整批校验通过才会导入，重复项会阻止整批导入。</Text>
             <Pressable style={styles.exampleButton} onPress={() => { setSourceDraft(SOURCE_EXAMPLE); setSourceMessage("已填入示例模板，请替换为你有权访问的网站地址。"); }}>
               <Text style={styles.exampleButtonText}>填入 JSON 示例</Text>
             </Pressable>
-            <TextInput value={sourceDraft} onChangeText={(value) => { setSourceDraft(value); setSourceMessage(""); }} placeholder="在这里粘贴 JSON 书源配置…" placeholderTextColor="#A39F94" multiline autoCapitalize="none" style={styles.sourceInput} textAlignVertical="top" />
+            <TextInput value={sourceDraft} onChangeText={(value) => { setSourceDraft(value); setSourceMessage(""); }} placeholder="粘贴单个 JSON 对象或书源 JSON 数组…" placeholderTextColor="#A39F94" multiline autoCapitalize="none" style={styles.sourceInput} textAlignVertical="top" />
             <Pressable style={[styles.importButton, !sourceDraft.trim() && styles.importButtonDisabled]} disabled={!sourceDraft.trim()} onPress={importSource}>
-              <Text style={styles.importButtonText}>校验并导入</Text>
+              <Text style={styles.importButtonText}>校验并批量导入</Text>
             </Pressable>
             {!!sourceMessage && <Text style={styles.sourceMessage}>{sourceMessage}</Text>}
           </View>
