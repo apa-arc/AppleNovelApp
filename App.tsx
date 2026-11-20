@@ -142,6 +142,7 @@ export default function App() {
   const [speechModelVoiceId, setSpeechModelVoiceId] = useState(DEFAULT_READER_SETTINGS.speechModelVoiceId);
   const [speechCloudEndpoint, setSpeechCloudEndpoint] = useState(DEFAULT_READER_SETTINGS.speechCloudEndpoint);
   const [speechPaused, setSpeechPaused] = useState(false);
+  const speechPausedRef = useRef(false);
   const speechRunIdRef = useRef(0);
   const cloudPlaybackRef = useRef<CloudAudioPlayback | null>(null);
   const [speechVoiceCategoryFilter, setSpeechVoiceCategoryFilter] = useState<"全部" | "中文女声" | "中文男声" | "英语女声">("全部");
@@ -656,15 +657,18 @@ export default function App() {
     cloudPlaybackRef.current = null;
     setIsSpeaking(false);
     setSpeechPaused(false);
+    speechPausedRef.current = false;
   };
 
   const pauseSpeech = () => {
     setSpeechPaused(true);
+    speechPausedRef.current = true;
     cloudPlaybackRef.current?.pause();
   };
 
   const resumeSpeech = () => {
     setSpeechPaused(false);
+    speechPausedRef.current = false;
     cloudPlaybackRef.current?.resume();
   };
 
@@ -930,6 +934,7 @@ export default function App() {
     const runId = ++speechRunIdRef.current;
     setIsSpeaking(true);
     setSpeechPaused(false);
+    speechPausedRef.current = false;
     try {
       for (const chunk of chunks) {
         if (runId !== speechRunIdRef.current) break;
@@ -941,7 +946,7 @@ export default function App() {
         if (runId !== speechRunIdRef.current) break;
         const playback = await playCloudWav(audioBytes, { title: selectedBook.title, artist: selectedBook.author });
         cloudPlaybackRef.current = playback;
-        if (speechPaused) playback.pause();
+        if (speechPausedRef.current) playback.pause();
         await playback.finished;
         if (cloudPlaybackRef.current === playback) cloudPlaybackRef.current = null;
       }
@@ -954,6 +959,7 @@ export default function App() {
         cloudPlaybackRef.current = null;
         setIsSpeaking(false);
         setSpeechPaused(false);
+        speechPausedRef.current = false;
       }
     }
   };
