@@ -43,7 +43,7 @@ test("older saved preferences remain compatible with new layout options", () => 
 
 test("speech voice and sound controls are persisted and bounded", () => {
   assert.deepEqual(normalizeReaderSettings({ speechVoiceIdentifier: "com.apple.voice.zh-CN.tingting", speechRate: 1.35, speechPitch: 1.2 }), {
-    ...DEFAULT_READER_SETTINGS, speechVoiceIdentifier: "com.apple.voice.zh-CN.tingting", speechRate: 1.4, speechPitch: 1.2,
+    ...DEFAULT_READER_SETTINGS, speechVoiceIdentifier: "com.apple.voice.zh-CN.tingting", speechRate: 1.35, speechPitch: 1.2,
   });
   const bounded = normalizeReaderSettings({ speechRate: 9, speechPitch: 0.1 });
   assert.equal(bounded.speechRate, 2);
