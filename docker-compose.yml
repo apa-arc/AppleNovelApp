@@ -1,0 +1,23 @@
+services:
+  kokoro-tts:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: private-novel-kokoro-tts
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      KOKORO_MODEL_DIR: /models/kokoro
+      SPEECH_TOKEN_DB: /data/device-tokens.sqlite3
+      TTS_NUM_THREADS: ${TTS_NUM_THREADS:-2}
+      TTS_MAX_CONCURRENT: ${TTS_MAX_CONCURRENT:-1}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - kokoro-models:/models
+      - kokoro-data:/data
+
+volumes:
+  kokoro-models:
+  kokoro-data:
