@@ -8,13 +8,17 @@ From the repository root:
 
 ```bash
 docker build -f server/Dockerfile -t private-novel-tts .
-docker run --rm -p 8000:8000 -v kokoro-models:/models private-novel-tts
+docker run --rm -p 8000:8000 \\
+  -e SPEECH_ENROLLMENT_CODE="$(openssl rand -hex 24)" \\
+  -v kokoro-models:/models -v kokoro-data:/data private-novel-tts
 ```
 
 The first start downloads the upstream sherpa-onnx Kokoro int8 archive (about 147 MB) into the volume, then starts the service. Later starts reuse the downloaded model.
 
 - Health: `GET /health`
-- Synthesis: `POST /v1/audio/speech`
+- Device enrollment: `POST /v1/devices/enroll` (server enrollment code required)
+- Revoke a device: `POST /v1/devices/revoke` (bearer device token required)
+- Synthesis: `POST /v1/audio/speech` (bearer device token required)
 - Model ID: `kokoro-multi-lang-v1_1`
 - Speaker IDs: `0..102`
 - Text limit: 420 characters per request
@@ -32,6 +36,6 @@ curl -X POST http://localhost:8000/v1/audio/speech \
 
 ## Deployment and security
 
-Do not expose this service directly to the public internet without an authenticated reverse proxy, HTTPS, request limits, and monitoring. The app must only be configured with the HTTPS URL of a deployment you control. Do not put a provider API key or server credential in the iOS app. This service runs Kokoro itself, so it does not need a paid upstream TTS API key.
+Do not expose this service directly to the public internet without an authenticated reverse proxy, HTTPS, request limits, and monitoring. Set a long random `SPEECH_ENROLLMENT_CODE` on the server and keep it private. In the app, enter the server URL and this enrollment code once to bind the device. The returned device token is stored in iOS SecureStore/Keychain; it is not an upstream AI provider API key. The server stores only token hashes in the persistent `/data` volume, and a device can be revoked from the app. Do not put a provider API key or server enrollment code in the iOS app. This service runs Kokoro itself, so it does not need a paid upstream TTS API key.
 
-This service is an independently deployable backend; creating the files does not deploy it. The app already includes the HTTPS endpoint setting, chunked request client, WAV cache writer, and audio playback queue. Deploy this backend first, then enter its HTTPS base URL in the app's Voice settings before online synthesis can be used.
+This service is an independently deployable backend; creating the files does not deploy it. The app already includes the HTTPS endpoint setting, secure device enrollment, chunked request client, WAV cache writer, and audio playback queue. Deploy this backend first, then enter its HTTPS base URL and server enrollment code in the app's Voice settings before online synthesis can be used.
