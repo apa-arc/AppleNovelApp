@@ -36,7 +36,21 @@ function matches(n:Node,s:string):boolean{
  };
  return parts.length>0&&walk(n,parts.length-1);
 }
-export function selectHtmlNodes(root:Node,selector:string):Node[]{return selector.trim()?all(root).filter(n=>selector.split(",").some(s=>matches(n,s.trim()))):[];}
+function assertSupportedSelector(selector:string):void{
+ if(!selector.trim())throw new Error("CSS 选择器不能为空。");
+ for(const group of selector.split(",")){
+  const tokens=group.trim().replace(/\s*>\s*/g," ").split(/\s+/).filter(Boolean);
+  if(!tokens.length)throw new Error("CSS 选择器格式无效。");
+  for(let token of tokens){
+   token=token.replace(/^(?:[a-zA-Z][\w-]*|\*)/,"");
+   token=token.replace(/#[\w-]+/g,"").replace(/\.[\w-]+/g,"");
+   token=token.replace(/\[[\w:-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[\w.-]+))?\]/g,"");
+   token=token.replace(/:first-child|:last-child|:nth-child\(\d+\)/g,"");
+   if(token)throw new Error("暂不支持此 CSS 选择器语法："+token);
+  }
+ }
+}
+export function selectHtmlNodes(root:Node,selector:string):Node[]{assertSupportedSelector(selector);return all(root).filter(n=>selector.split(",").some(s=>matches(n,s.trim())));}
 export function htmlNodeText(n:Node):string{const walk=(x:Node):string=>x.children.map(c=>typeof c==="string"?c:(["script","style","noscript"].includes(c.tag)?"":(BLOCK.has(c.tag)?"\n":"")+walk(c)+(BLOCK.has(c.tag)?"\n":""))).join("");return walk(n).replace(/[\t\f\v ]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").trim();}
 function attr(n:Node,name:string):string{return n.attrs[name.toLowerCase()]||"";}
 function textAt(n:Node,selector?:string):string{const x=selector?selectHtmlNodes(n,selector)[0]:undefined;return x?htmlNodeText(x):"";}
