@@ -3,30 +3,37 @@ const assert = require("node:assert/strict");
 const { DEFAULT_READER_SETTINGS, normalizeReaderSettings } = require("../.test-build/reader-settings.js");
 
 test("reader settings use stable defaults", () => {
-  assert.deepEqual(DEFAULT_READER_SETTINGS, { fontSize: 18, theme: "paper", readingMode: "scroll" });
+  assert.deepEqual(DEFAULT_READER_SETTINGS, {
+    fontSize: 18, theme: "paper", readingMode: "scroll", lineSpacing: 1.9, paragraphSpacing: 22, horizontalPadding: 27,
+  });
 });
 
 test("reader settings preserve valid user preferences", () => {
-  assert.deepEqual(normalizeReaderSettings({ fontSize: 24, theme: "night", readingMode: "tap" }), {
-    fontSize: 24, theme: "night", readingMode: "tap",
+  assert.deepEqual(normalizeReaderSettings({ fontSize: 24, theme: "night", readingMode: "tap", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32 }), {
+    fontSize: 24, theme: "night", readingMode: "tap", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32,
   });
 });
 
-test("reader settings clamp font size and reject unknown themes and modes", () => {
-  assert.deepEqual(normalizeReaderSettings({ fontSize: 99, theme: "neon", readingMode: "unknown" }), {
-    fontSize: 28, theme: "paper", readingMode: "scroll",
+test("reader settings clamp numeric values and reject unknown choices", () => {
+  assert.deepEqual(normalizeReaderSettings({ fontSize: 99, theme: "neon", readingMode: "unknown", lineSpacing: 9, paragraphSpacing: 100, horizontalPadding: 2 }), {
+    fontSize: 28, theme: "paper", readingMode: "scroll", lineSpacing: 2.4, paragraphSpacing: 32, horizontalPadding: 16,
   });
-  assert.equal(normalizeReaderSettings({ fontSize: 5, theme: "night" }).fontSize, 14);
+  assert.equal(normalizeReaderSettings({ fontSize: 5, theme: "green", lineSpacing: 1.43 }).fontSize, 14);
+  assert.equal(normalizeReaderSettings({ lineSpacing: 1.43 }).lineSpacing, 1.4);
 });
 
 test("reader settings recover safely from malformed storage values", () => {
   assert.deepEqual(normalizeReaderSettings(null), DEFAULT_READER_SETTINGS);
   assert.deepEqual(normalizeReaderSettings("bad"), DEFAULT_READER_SETTINGS);
   assert.deepEqual(normalizeReaderSettings({ fontSize: NaN, theme: "night" }), {
-    fontSize: 18, theme: "night", readingMode: "scroll",
+    ...DEFAULT_READER_SETTINGS, theme: "night",
   });
 });
 
-test("older saved preferences remain compatible and default to scrolling", () => {
-  assert.equal(normalizeReaderSettings({ fontSize: 20, theme: "paper" }).readingMode, "scroll");
+test("older saved preferences remain compatible with new layout options", () => {
+  const normalized = normalizeReaderSettings({ fontSize: 20, theme: "paper" });
+  assert.equal(normalized.readingMode, "scroll");
+  assert.equal(normalized.lineSpacing, DEFAULT_READER_SETTINGS.lineSpacing);
+  assert.equal(normalized.paragraphSpacing, DEFAULT_READER_SETTINGS.paragraphSpacing);
+  assert.equal(normalized.horizontalPadding, DEFAULT_READER_SETTINGS.horizontalPadding);
 });
