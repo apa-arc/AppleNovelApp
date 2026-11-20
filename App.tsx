@@ -843,9 +843,18 @@ export default function App() {
               if (!start) return;
               const { pageX, pageY } = event.nativeEvent;
               const elapsed = Date.now() - start.time;
-              const moved = Math.abs(pageX - start.x) + Math.abs(pageY - start.y);
+              const deltaX = pageX - start.x;
+              const deltaY = pageY - start.y;
+              const moved = Math.abs(deltaX) + Math.abs(deltaY);
               const screenWidth = Dimensions.get("window").width;
               const centerTap = pageX > screenWidth * 0.28 && pageX < screenWidth * 0.72;
+              if (readerMode === "tap" && elapsed < 900 && Math.abs(deltaX) >= 55 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25) {
+                const nextOffset = deltaX < 0
+                  ? Math.min(readerMaxScrollOffset, readerScrollOffset + readerViewportHeight * 0.88)
+                  : Math.max(0, readerScrollOffset - readerViewportHeight * 0.88);
+                readerScrollRef.current?.scrollTo({ y: nextOffset, animated: true });
+                return;
+              }
               if (elapsed >= 280 || moved >= 14) return;
               if (readerMode === "tap") {
                 if (pageX < screenWidth * 0.28) {
@@ -895,6 +904,7 @@ export default function App() {
             <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>阅读方式</Text>
             <Pressable style={[styles.themeButton, readerMode === "scroll" && styles.modeButtonActive]} onPress={() => setReaderMode("scroll")}><Text style={styles.fontButtonText}>上下滚动</Text></Pressable>
             <Pressable style={[styles.themeButton, readerMode === "tap" && styles.modeButtonActive]} onPress={() => setReaderMode("tap")}><Text style={styles.fontButtonText}>点击翻页</Text></Pressable>
+            <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>点击翻页：点按左右区域或左右滑动即可翻页，中间区域呼出工具栏。</Text>
             <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>字体</Text>
             <Pressable style={styles.fontButton} onPress={() => setReaderFontSize((size) => Math.max(14, size - 1))}><Text style={styles.fontButtonText}>A−</Text></Pressable>
             <Text style={[styles.fontSizeValue, readerTheme === "night" && styles.nightText]}>{readerFontSize}</Text>
