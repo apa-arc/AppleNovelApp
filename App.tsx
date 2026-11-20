@@ -15,7 +15,19 @@ import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type ReaderSettings, 
 import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } from "./src/reading-progress";
 import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
 import { SPEECH_VOICES } from "./src/speech-voice-catalog";
-import { splitSpeechText, normalizeCloudTtsEndpoint } from "./src/speech-engine";
+import { splitSpeechText, normalizeCloudTtsEndpoint, selectSpeechEngine, type SpeechEngineMode } from "./src/speech-engine";
+import {
+  createOfflineKokoroEngine,
+  deleteOfflineKokoroModel,
+  downloadOfflineKokoroModel,
+  getOfflineKokoroModel,
+  isOfflineKokoroPause,
+  pauseOfflineKokoroModel,
+  resumeOfflineKokoroModel,
+  synthesizeOfflineKokoro,
+  type OfflineKokoroEngine,
+  type OfflineKokoroProgress,
+} from "./src/offline-kokoro-runtime";
 import { requestCloudSpeech, checkCloudTtsServer, enrollCloudSpeechDevice, revokeCloudSpeechDevice } from "./src/cloud-tts";
 import { playCloudWav, type CloudAudioPlayback } from "./src/cloud-audio-playback";
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
@@ -155,7 +167,16 @@ export default function App() {
   const [showReaderSettings, setShowReaderSettings] = useState(false);
   const [showSpeechSettings, setShowSpeechSettings] = useState(false);
   const [speechModelVoiceId, setSpeechModelVoiceId] = useState(DEFAULT_READER_SETTINGS.speechModelVoiceId);
+  const [speechEngineMode, setSpeechEngineMode] = useState<SpeechEngineMode>(DEFAULT_READER_SETTINGS.speechEngineMode);
   const [speechCloudEndpoint, setSpeechCloudEndpoint] = useState(DEFAULT_READER_SETTINGS.speechCloudEndpoint);
+  const [offlineModelStatus, setOfflineModelStatus] = useState<"checking" | "not-downloaded" | "downloading" | "paused" | "installed" | "failed" | "unavailable">("checking");
+  const [offlineModelProgress, setOfflineModelProgress] = useState(0);
+  const [offlineModelPhase, setOfflineModelPhase] = useState<OfflineKokoroProgress["phase"] | null>(null);
+  const [offlineModelPath, setOfflineModelPath] = useState<string | null>(null);
+  const [offlineModelError, setOfflineModelError] = useState<string | null>(null);
+  const offlineModelPhaseRef = useRef<OfflineKokoroProgress["phase"]>("downloading");
+  const offlineModelBusyRef = useRef(false);
+  const offlineEngineRef = useRef<OfflineKokoroEngine | null>(null);
   const [checkingSpeechServer, setCheckingSpeechServer] = useState(false);
   const [speechEnrollmentCode, setSpeechEnrollmentCode] = useState("");
   const [speechDeviceToken, setSpeechDeviceToken] = useState<string | null>(null);
@@ -312,6 +333,7 @@ export default function App() {
           setReaderParagraphSpacing(settings.paragraphSpacing);
           setReaderHorizontalPadding(settings.horizontalPadding);
           setSpeechModelVoiceId(settings.speechModelVoiceId);
+          setSpeechEngineMode(settings.speechEngineMode);
           setSpeechCloudEndpoint(settings.speechCloudEndpoint);
           setSpeechRate(settings.speechRate);
         }
@@ -350,11 +372,41 @@ export default function App() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    const settings: ReaderSettings = normalizeReaderSettings({ speechCloudEndpoint, fontSize: readerFontSize, theme: readerTheme, readingMode: readerMode, lineSpacing: readerLineSpacing, paragraphSpacing: readerParagraphSpacing, horizontalPadding: readerHorizontalPadding, speechModelVoiceId, speechRate });
+    const settings: ReaderSettings = normalizeReaderSettings({ speechCloudEndpoint, speechEngineMode, fontSize: readerFontSize, theme: readerTheme, readingMode: readerMode, lineSpacing: readerLineSpacing, paragraphSpacing: readerParagraphSpacing, horizontalPadding: readerHorizontalPadding, speechModelVoiceId, speechRate });
     AsyncStorage.setItem(READER_SETTINGS_STORAGE_KEY, JSON.stringify(settings)).catch(() => {
       Alert.alert("保存失败", "阅读设置暂时未能保存，请检查手机存储空间。");
     });
-  }, [readerFontSize, readerTheme, readerMode, readerLineSpacing, readerParagraphSpacing, readerHorizontalPadding, speechModelVoiceId, speechCloudEndpoint, speechRate, isLoaded]);
+  }, [readerFontSize, readerTheme, readerMode, readerLineSpacing, readerParagraphSpacing, readerHorizontalPadding, speechModelVoiceId, speechEngineMode, speechCloudEndpoint, speechRate, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    let active = true;
+    void getOfflineKokoroModel().then((model) => {
+      if (!active) return;
+      if (model.installed && model.localPath) {
+        setOfflineModelPath(model.localPath);
+        setOfflineModelStatus("installed");
+        setOfflineModelProgress(100);
+      } else if (model.pendingPhase) {
+        offlineModelPhaseRef.current = model.pendingPhase;
+        setOfflineModelPhase(model.pendingPhase);
+        setOfflineModelStatus("paused");
+      } else {
+        setOfflineModelStatus("not-downloaded");
+      }
+    }).catch((error) => {
+      if (!active) return;
+      setOfflineModelStatus("unavailable");
+      setOfflineModelError(error instanceof Error ? error.message : "当前构建暂未包含离线语音原生模块。");
+    });
+    return () => { active = false; };
+  }, [isLoaded]);
+
+  useEffect(() => () => {
+    const engine = offlineEngineRef.current;
+    offlineEngineRef.current = null;
+    if (engine) void engine.destroy().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!restoreReaderPositionRef.current || readerContentHeight <= 0 || readerViewportHeight <= 0) return;
@@ -698,6 +750,115 @@ export default function App() {
     cloudPlaybackRef.current?.resume();
   };
 
+  const updateOfflineModelProgress = (progress: OfflineKokoroProgress) => {
+    offlineModelPhaseRef.current = progress.phase;
+    setOfflineModelPhase(progress.phase);
+    setOfflineModelProgress(progress.percent);
+  };
+
+  const runOfflineModelTransfer = async (resume: boolean) => {
+    if (offlineModelBusyRef.current) return;
+    offlineModelBusyRef.current = true;
+    setOfflineModelStatus("downloading");
+    setOfflineModelError(null);
+    try {
+      const localPath = resume
+        ? await resumeOfflineKokoroModel(offlineModelPhaseRef.current, updateOfflineModelProgress)
+        : await downloadOfflineKokoroModel(updateOfflineModelProgress);
+      setOfflineModelPath(localPath);
+      setOfflineModelProgress(100);
+      setOfflineModelPhase(null);
+      setOfflineModelStatus("installed");
+      Alert.alert("离线模型已就绪", "Kokoro 中文多音色模型已下载并通过完整性校验，103 种音色均可离线使用。");
+    } catch (error) {
+      if (isOfflineKokoroPause(error)) {
+        setOfflineModelStatus("paused");
+      } else {
+        const message = error instanceof Error ? error.message : "模型下载或解压失败，请重试。";
+        setOfflineModelError(message);
+        setOfflineModelStatus("failed");
+        Alert.alert("离线模型准备失败", message);
+      }
+    } finally {
+      offlineModelBusyRef.current = false;
+    }
+  };
+
+  const requestOfflineModelDownload = () => {
+    Alert.alert(
+      "下载 Kokoro 离线模型",
+      "将下载约 147 MB 的官方 int8 多语言模型，并解压到 iPhone 本地。一个模型包含全部 103 种音色。只有确认后才会开始下载。",
+      [
+        { text: "取消", style: "cancel" },
+        { text: "确认下载", onPress: () => { void runOfflineModelTransfer(false); } },
+      ]
+    );
+  };
+
+  const pauseOfflineModelDownload = async () => {
+    if (offlineModelStatus !== "downloading" || !offlineModelPhase) return;
+    try {
+      await pauseOfflineKokoroModel(offlineModelPhase);
+    } catch (error) {
+      Alert.alert("暂停失败", error instanceof Error ? error.message : "暂时无法暂停模型下载。");
+    }
+  };
+
+  const requestOfflineModelResume = () => {
+    void runOfflineModelTransfer(true);
+  };
+
+  const requestOfflineModelDelete = () => {
+    Alert.alert("删除离线模型", "删除后将释放本地存储空间。在线 AI 朗读仍可继续使用。", [
+      { text: "取消", style: "cancel" },
+      { text: "删除模型", style: "destructive", onPress: () => {
+        void (async () => {
+          try {
+            const engine = offlineEngineRef.current;
+            offlineEngineRef.current = null;
+            if (engine) await engine.destroy();
+            await deleteOfflineKokoroModel();
+            setOfflineModelPath(null);
+            setOfflineModelProgress(0);
+            setOfflineModelPhase(null);
+            setOfflineModelError(null);
+            setOfflineModelStatus("not-downloaded");
+          } catch (error) {
+            Alert.alert("删除失败", error instanceof Error ? error.message : "无法删除离线模型。");
+          }
+        })();
+      } },
+    ]);
+  };
+
+  const synthesizeKokoroChunk = async (text: string, voiceId: string): Promise<Uint8Array> => {
+    const voice = SPEECH_VOICES.find((item) => item.id === voiceId);
+    if (!voice) throw new Error("所选 Kokoro 音色不存在。");
+    const endpoint = normalizeCloudTtsEndpoint(speechCloudEndpoint);
+    const cloudReady = Boolean(endpoint && speechDeviceToken && speechDeviceTokenEndpoint === endpoint);
+    const offlineReady = offlineModelStatus === "installed" && Boolean(offlineModelPath);
+    const selection = selectSpeechEngine(speechEngineMode, {
+      offlineReady,
+      cloudReady,
+      online: cloudReady,
+    });
+    if (selection.engine === "cloud" && endpoint && speechDeviceToken) {
+      try {
+        return await requestCloudSpeech(endpoint, { voiceId, text, speed: speechRate }, speechDeviceToken);
+      } catch (error) {
+        if (speechEngineMode !== "hybrid" || !offlineReady) throw error;
+      }
+    }
+    if (selection.engine === "offline" || (speechEngineMode === "hybrid" && offlineReady)) {
+      if (!offlineModelPath) throw new Error("离线模型路径不可用，请重新检查模型状态。");
+      if (!offlineEngineRef.current) offlineEngineRef.current = await createOfflineKokoroEngine(offlineModelPath);
+      return synthesizeOfflineKokoro(offlineEngineRef.current, text, voice.speakerId, speechRate);
+    }
+    if (selection.reason === "offline-not-ready") throw new Error("离线模型尚未下载。请先在声音设置中手动下载模型。");
+    if (selection.reason === "cloud-not-ready") throw new Error("在线 AI 服务尚未配置或设备未绑定。请先完成服务器设置。");
+    throw new Error("当前没有可用的 AI 朗读引擎。请配置在线服务或下载离线模型。");
+  };
+
   const bindSpeechDevice = async () => {
     if (bindingSpeechDevice) return;
     setBindingSpeechDevice(true);
@@ -956,12 +1117,6 @@ export default function App() {
   };
 
   const previewKokoroVoice = async (voiceId: string) => {
-    const endpoint = normalizeCloudTtsEndpoint(speechCloudEndpoint);
-    if (!endpoint || !speechDeviceToken || speechDeviceTokenEndpoint !== endpoint) {
-      Alert.alert("先配置 AI 语音服务", "填写 Kokoro HTTPS 地址并绑定此设备后，就可以试听 103 种 AI 音色。");
-      setShowSpeechSettings(true);
-      return;
-    }
     if (isSpeaking) stopSpeech();
     const runId = ++speechRunIdRef.current;
     setIsSpeaking(true);
@@ -969,18 +1124,14 @@ export default function App() {
     speechPausedRef.current = false;
     try {
       const voice = SPEECH_VOICES.find((item) => item.id === voiceId);
-      const bytes = await requestCloudSpeech(endpoint, {
-        voiceId,
-        text: "你好，欢迎使用私人小说。这是一段 Kokoro AI 音色试听。",
-        speed: speechRate,
-      }, speechDeviceToken);
+      const bytes = await synthesizeKokoroChunk("你好，欢迎使用私人小说。这是一段 Kokoro AI 音色试听。", voiceId);
       if (runId !== speechRunIdRef.current) return;
       const playback = await playCloudWav(bytes, { title: "Kokoro 音色试听", artist: voice?.label || "私人小说" });
       cloudPlaybackRef.current = playback;
       if (speechPausedRef.current) playback.pause();
       await playback.finished;
     } catch (error) {
-      if (runId === speechRunIdRef.current) Alert.alert("音色试听失败", error instanceof Error ? error.message : "请检查 AI 语音服务。");
+      if (runId === speechRunIdRef.current) Alert.alert("音色试听失败", error instanceof Error ? error.message : "请检查 AI 语音服务或离线模型。");
     } finally {
       if (runId === speechRunIdRef.current) {
         cloudPlaybackRef.current = null;
@@ -997,22 +1148,6 @@ export default function App() {
       stopSpeech();
       return;
     }
-    const endpoint = normalizeCloudTtsEndpoint(speechCloudEndpoint);
-    if (!endpoint) {
-      Alert.alert("AI 朗读服务未配置", "先在「声音」设置中填写你部署的 Kokoro 服务 HTTPS 地址。AI 朗读不会偷偷切换成 iPhone 系统语音。");
-      setShowSpeechSettings(true);
-      return;
-    }
-    if (!speechDeviceToken) {
-      Alert.alert("需要先绑定设备", "请在「声音」设置中输入服务器管理员绑定码，绑定本设备后才能使用 AI 朗读。");
-      setShowSpeechSettings(true);
-      return;
-    }
-    if (speechDeviceTokenEndpoint !== endpoint) {
-      Alert.alert("服务器地址已更改", "当前设备凭据属于另一台服务器。请先撤销旧授权，再使用新服务器的绑定码重新绑定。");
-      setShowSpeechSettings(true);
-      return;
-    }
     const chapterTitle = onlineReading ? onlineChapterTitle : localReading ? localChapters[chapterIndex]?.title || "全文" : SAMPLE_CHAPTERS[chapterIndex].title;
     const chapterText = onlineReading ? onlineChapterContent : localReading ? localChapters[chapterIndex]?.content || "" : SAMPLE_CHAPTERS[chapterIndex].content;
     const chunks = splitSpeechText(selectedBook.title + "。" + chapterTitle + "。" + chapterText, 420);
@@ -1024,11 +1159,7 @@ export default function App() {
     try {
       for (const chunk of chunks) {
         if (runId !== speechRunIdRef.current) break;
-        const audioBytes = await requestCloudSpeech(endpoint, {
-          voiceId: speechModelVoiceId,
-          text: chunk,
-          speed: speechRate,
-        }, speechDeviceToken);
+        const audioBytes = await synthesizeKokoroChunk(chunk, speechModelVoiceId);
         if (runId !== speechRunIdRef.current) break;
         const playback = await playCloudWav(audioBytes, { title: selectedBook.title, artist: selectedBook.author });
         cloudPlaybackRef.current = playback;
@@ -1038,7 +1169,7 @@ export default function App() {
       }
     } catch (error) {
       if (runId === speechRunIdRef.current) {
-        Alert.alert("AI 朗读失败", error instanceof Error ? error.message : "请检查 AI 语音服务器后重试。");
+        Alert.alert("AI 朗读失败", error instanceof Error ? error.message : "请检查在线服务或离线模型状态。");
       }
     } finally {
       if (runId === speechRunIdRef.current) {
@@ -1340,6 +1471,25 @@ export default function App() {
             <View style={[styles.voiceOption, readerTheme === "night" && styles.nightVoiceOption, { flexDirection: "column", alignItems: "flex-start", marginBottom: 10 }]}>
               <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>AI 朗读模型 · Kokoro 中文多音色</Text>
               <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>103 种音色 · 离线模型约 147 MB · 中文 / 英文</Text>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText, { marginTop: 12 }]}>朗读方式</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 7 }}>
+                {([{ id: "hybrid", label: "自动切换" }, { id: "cloud", label: "仅在线" }, { id: "offline", label: "仅离线" }] as const).map((option) => (
+                  <Pressable key={option.id} onPress={() => setSpeechEngineMode(option.id)} style={[styles.themeButton, speechEngineMode === option.id && styles.modeButtonActive]}>
+                    <Text style={styles.fontButtonText}>{option.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>自动切换优先使用在线 Kokoro；网络失败时仅在本地模型已安装的情况下转为离线合成，不会自动下载模型。</Text>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText, { marginTop: 14 }]}>离线模型</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 5 }]}>{offlineModelStatus === "checking" ? "正在检查本地模型…" : offlineModelStatus === "installed" ? "模型已安装 · 103 种音色可离线使用" : offlineModelStatus === "downloading" ? "正在" + (offlineModelPhase === "extracting" || offlineModelPhase === "extracting_resume_skipping" ? "解压" : "下载") + " · " + Math.round(offlineModelProgress) + "%" : offlineModelStatus === "paused" ? "下载已暂停，可继续上次任务" : offlineModelStatus === "unavailable" ? "当前构建尚未包含离线原生引擎" : offlineModelStatus === "failed" ? "模型准备失败，可重试" : "尚未下载 · 需要时可手动下载约 147 MB 模型"}</Text>
+              {(offlineModelStatus === "downloading" || offlineModelStatus === "installed" || offlineModelStatus === "paused") && <View style={{ height: 6, borderRadius: 4, backgroundColor: "#E5E6DF", overflow: "hidden", marginTop: 8 }}><View style={{ height: 6, width: Math.round(offlineModelProgress) + "%", backgroundColor: "#7D8B70" }} /></View>}
+              {!!offlineModelError && <Text style={[styles.note, { color: "#B45B4A", marginTop: 5 }]}>{offlineModelError}</Text>}
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 9 }}>
+                {(offlineModelStatus === "not-downloaded" || offlineModelStatus === "failed") && <Pressable onPress={requestOfflineModelDownload} style={styles.fontButton}><Text style={styles.fontButtonText}>{offlineModelStatus === "failed" ? "重新下载模型" : "下载离线模型"}</Text></Pressable>}
+                {offlineModelStatus === "downloading" && <Pressable onPress={() => void pauseOfflineModelDownload()} style={styles.fontButton}><Text style={styles.fontButtonText}>暂停下载</Text></Pressable>}
+                {offlineModelStatus === "paused" && <Pressable onPress={requestOfflineModelResume} style={styles.fontButton}><Text style={styles.fontButtonText}>继续下载</Text></Pressable>}
+                {offlineModelStatus === "installed" && <Pressable onPress={requestOfflineModelDelete} style={styles.fontButton}><Text style={styles.fontButtonText}>删除离线模型</Text></Pressable>}
+              </View>
               <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText, { marginTop: 12 }]}>在线 Kokoro 服务地址（HTTPS）</Text>
               <TextInput
                 value={speechCloudEndpoint}
@@ -1370,7 +1520,7 @@ export default function App() {
                   </Pressable>
                 </>
               )}
-              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>在线 AI 试听和朗读使用当前选中的 Kokoro 音色。离线模型下载与本地原生推理仍在接入中。</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>试听和朗读使用当前选中的 Kokoro 音色；自动模式可在在线服务不可用时使用已下载的离线模型。</Text>
               <Text style={[styles.voiceSelected, { marginTop: 6 }]}>{speechDeviceToken && speechDeviceTokenEndpoint === normalizeCloudTtsEndpoint(speechCloudEndpoint) ? "当前状态：设备已绑定，可使用在线 AI 朗读（需服务器模型正常运行）" : "当前状态：在线服务尚未绑定；离线模型尚未下载"}</Text>
             </View>
             <View style={{ marginBottom: 12 }}>
