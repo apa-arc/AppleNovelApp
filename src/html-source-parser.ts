@@ -32,12 +32,12 @@ function matches(n:Node,s:string):boolean{
   if(parts[i]===">"){
    i--;
    if(i<0||!cur)return false;
-   const parent:Node|null=cur.parent;
+   const parent:Node|null=cur ? cur.parent : null;
    if(!parent||!simple(parent,parts[i]))return false;
    cur=parent;
    i--;
   }else{
-   let parent:Node|null=cur?.parent??null;
+   let parent:Node|null=cur ? cur.parent : null;
    while(parent&&!simple(parent,parts[i]))parent=parent.parent;
    if(!parent)return false;
    cur=parent;
