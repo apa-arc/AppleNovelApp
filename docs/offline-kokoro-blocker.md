@@ -1,15 +1,22 @@
-# Offline Kokoro native integration blocker
+# Offline Kokoro native integration status
 
-The app's offline voice catalog and manual-download state machine are implemented, but they are not wired to a native inference runtime yet.
+The app now has an experimental `react-native-sherpa-onnx` 0.4.4 integration branch. It includes a deterministic postinstall patch for the upstream iOS TurboModule registration, Kokoro dictionary discovery, bilingual lexicon selection, and the native Kokoro `dict_dir` configuration. The branch also adds a config plugin for iOS background-download completion handling.
 
-The current candidate is `react-native-sherpa-onnx`. Its upstream issue [#112](https://github.com/XDcobra/react-native-sherpa-onnx/issues/112) reports that `TurboModuleRegistry.getEnforcing("SherpaOnnx")` fails on the exact Expo SDK 54 / React Native 0.81.5 / iOS New Architecture combination used by this app. The issue remains open. The latest upstream v0.4.4 release notes do not document a fix for that iOS registration problem.
+The upstream issue [#112](https://github.com/XDcobra/react-native-sherpa-onnx/issues/112) reports a TurboModule registration failure on the same Expo SDK 54 / React Native 0.81.5 / iOS New Architecture combination. The local patch is a candidate fix, not a verified upstream fix.
 
-For that reason, the dependency has deliberately not been added to the production app. A broken native module could prevent the app from launching. The cloud Kokoro path is implemented separately and does not depend on this module.
+The app-side integration now includes:
+- one shared Kokoro int8 multilingual model asset with 103 speaker IDs
+- explicit user confirmation before downloading
+- checksum verification, progress, pause/resume, extraction, and deletion
+- online-first, offline-only, and cloud-only playback modes
+- offline synthesis through the same speaker IDs and WAV playback queue as online synthesis
+- a startup native-module health check
 
-Before enabling offline model download:
-1. Verify a fixed upstream release or a reviewed fork.
-2. Run an EAS iOS development build to verify TurboModule registration.
-3. Verify Kokoro model archive download, extraction, model discovery, and speaker selection on an iPhone.
-4. Only then expose the manual download controls as active.
+This branch must remain unmerged until CI completes all of the following:
+1. deterministic native patch applies cleanly during `npm install`
+2. Expo iOS prebuild and CocoaPods install succeed
+3. iOS Simulator app compiles and launches
+4. `testSherpaInit()` succeeds at runtime and the app logs `KOKORO_NATIVE_READY`
+5. model download, extraction, 103-speaker discovery, and real offline synthesis are validated before enabling this in a production release
 
-Until those checks pass, the app must clearly report that offline Kokoro is unavailable. It must not download a 147 MB model that it cannot run, and must not silently fall back to iPhone system speech.
+If the native module check fails, the app must keep offline controls unavailable, continue to support cloud Kokoro, and never silently fall back to iPhone system speech. No model is downloaded automatically.
