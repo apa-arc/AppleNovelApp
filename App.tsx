@@ -4,6 +4,7 @@ import * as Speech from "expo-speech";
 import * as Updates from "expo-updates";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import * as SecureStore from "expo-secure-store";
 import { NovelSource, parseNovelSourceJsonBatch } from "./src/source";
 import { parseSourceSubscription } from "./src/source-subscription";
 import { searchNovelSource } from "./src/source-search";
@@ -15,7 +16,7 @@ import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } fr
 import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
 import { SPEECH_VOICES } from "./src/speech-voice-catalog";
 import { splitSpeechText, normalizeCloudTtsEndpoint } from "./src/speech-engine";
-import { requestCloudSpeech, checkCloudTtsServer } from "./src/cloud-tts";
+import { requestCloudSpeech, checkCloudTtsServer, enrollCloudSpeechDevice, revokeCloudSpeechDevice } from "./src/cloud-tts";
 import { playCloudWav, type CloudAudioPlayback } from "./src/cloud-audio-playback";
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
 import {
@@ -131,6 +132,14 @@ export default function App() {
   const [readingHistory, setReadingHistory] = useState<ReadingHistoryEntry[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void SecureStore.getItemAsync("kokoro_speech_device_token").then((token) => {
+      if (active) setSpeechDeviceToken(token);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
   const [chapterIndex, setChapterIndex] = useState(0);
   const [showCatalog, setShowCatalog] = useState(false);
   const [showReaderSettings, setShowReaderSettings] = useState(false);
@@ -142,6 +151,9 @@ export default function App() {
   const [speechModelVoiceId, setSpeechModelVoiceId] = useState(DEFAULT_READER_SETTINGS.speechModelVoiceId);
   const [speechCloudEndpoint, setSpeechCloudEndpoint] = useState(DEFAULT_READER_SETTINGS.speechCloudEndpoint);
   const [checkingSpeechServer, setCheckingSpeechServer] = useState(false);
+  const [speechEnrollmentCode, setSpeechEnrollmentCode] = useState("");
+  const [speechDeviceToken, setSpeechDeviceToken] = useState<string | null>(null);
+  const [bindingSpeechDevice, setBindingSpeechDevice] = useState(false);
   const [speechPaused, setSpeechPaused] = useState(false);
   const speechPausedRef = useRef(false);
   const speechRunIdRef = useRef(0);
@@ -673,6 +685,34 @@ export default function App() {
     cloudPlaybackRef.current?.resume();
   };
 
+  const bindSpeechDevice = async () => {
+    if (bindingSpeechDevice) return;
+    setBindingSpeechDevice(true);
+    try {
+      const token = await enrollCloudSpeechDevice(speechCloudEndpoint, speechEnrollmentCode);
+      await SecureStore.setItemAsync("kokoro_speech_device_token", token);
+      setSpeechDeviceToken(token);
+      setSpeechEnrollmentCode("");
+      Alert.alert("绑定成功", "此设备已安全绑定到你的 Kokoro 语音服务器。设备凭据保存在 iPhone 安全存储中。");
+    } catch (error) {
+      Alert.alert("绑定失败", error instanceof Error ? error.message : "请检查绑定码和服务器地址。");
+    } finally {
+      setBindingSpeechDevice(false);
+    }
+  };
+
+  const unbindSpeechDevice = async () => {
+    if (!speechDeviceToken) return;
+    try {
+      await revokeCloudSpeechDevice(speechCloudEndpoint, speechDeviceToken);
+      await SecureStore.deleteItemAsync("kokoro_speech_device_token");
+      setSpeechDeviceToken(null);
+      Alert.alert("已解绑", "此设备已从语音服务器撤销授权。");
+    } catch (error) {
+      Alert.alert("解绑失败", error instanceof Error ? error.message : "无法撤销设备授权，请检查服务器连接。");
+    }
+  };
+
   const testSpeechServer = async () => {
     if (checkingSpeechServer) return;
     setCheckingSpeechServer(true);
@@ -936,6 +976,11 @@ export default function App() {
       return;
     }
     const endpoint = normalizeCloudTtsEndpoint(speechCloudEndpoint);
+    if (!speechDeviceToken) {
+      Alert.alert("需要先绑定设备", "请在「声音」设置中输入服务器管理员提供的一次性绑定码，绑定本设备后才能使用 AI 朗读。");
+      setShowSpeechSettings(true);
+      return;
+    }
     if (!endpoint) {
       Alert.alert("AI 朗读服务未配置", "先在「声音」设置中填写你部署的 Kokoro 服务 HTTPS 地址。AI 朗读不会偷偷切换成 iPhone 系统语音。");
       setShowSpeechSettings(true);
@@ -956,7 +1001,7 @@ export default function App() {
           voiceId: speechModelVoiceId,
           text: chunk,
           speed: speechRate,
-        });
+        }, speechDeviceToken);
         if (runId !== speechRunIdRef.current) break;
         const playback = await playCloudWav(audioBytes, { title: selectedBook.title, artist: selectedBook.author });
         cloudPlaybackRef.current = playback;
@@ -1280,10 +1325,24 @@ export default function App() {
                 keyboardType="url"
                 style={[styles.searchInput, { width: "100%", marginTop: 7 }]}
               />
-              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>服务端部署完成后填入 HTTPS 地址。服务端保存模型，App 不保存服务端密钥。</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>服务端保存 Kokoro 模型和管理员绑定码；App 不保存第三方 AI API Key。设备绑定凭据单独保存在 iPhone 安全存储中。</Text>
               <Pressable onPress={() => void testSpeechServer()} disabled={checkingSpeechServer || !speechCloudEndpoint.trim()} style={[styles.catalogLoadButton, (checkingSpeechServer || !speechCloudEndpoint.trim()) && styles.importButtonDisabled]}>
                 {checkingSpeechServer ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>测试 AI 服务器连接</Text>}
               </Pressable>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText, { marginTop: 12 }]}>设备授权</Text>
+              {speechDeviceToken ? (
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 6 }}>
+                  <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>此设备已绑定</Text>
+                  <Pressable onPress={() => void unbindSpeechDevice()}><Text style={styles.sourceActionText}>撤销授权并解绑</Text></Pressable>
+                </View>
+              ) : (
+                <>
+                  <TextInput value={speechEnrollmentCode} onChangeText={setSpeechEnrollmentCode} placeholder="输入服务器管理员提供的一次性绑定码" placeholderTextColor="#A39F94" secureTextEntry autoCapitalize="none" autoCorrect={false} style={[styles.searchInput, { width: "100%", marginTop: 7 }]} />
+                  <Pressable onPress={() => void bindSpeechDevice()} disabled={bindingSpeechDevice || !speechCloudEndpoint.trim() || speechEnrollmentCode.trim().length < 8} style={[styles.catalogLoadButton, (bindingSpeechDevice || !speechCloudEndpoint.trim() || speechEnrollmentCode.trim().length < 8) && styles.importButtonDisabled]}>
+                    {bindingSpeechDevice ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>绑定此设备</Text>}
+                  </Pressable>
+                </>
+              )}
               <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>一个模型包包含全部 103 个音色。先选好声音；模型下载与 AI 试听接入后，才会真正生成语音。</Text>
               <Text style={[styles.voiceSelected, { marginTop: 6 }]}>当前状态：模型尚未下载，AI 朗读尚未启用</Text>
             </View>
