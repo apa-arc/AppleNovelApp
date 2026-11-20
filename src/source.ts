@@ -9,6 +9,10 @@ export type NovelSource = {
   enabled: boolean;
   importedAt: number;
   htmlRules?: HtmlSourceRules;
+  subscriptionGroup?: "normal" | "adult";
+  subscriptionId?: string;
+  remoteSourceId?: string;
+  remoteVersion?: string;
   /** Built-in offline fixture; never imported from untrusted source JSON. */
   isBuiltinMock?: boolean;
 };
