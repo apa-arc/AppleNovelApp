@@ -57,3 +57,34 @@ export async function requestCloudSpeech(
   }
   return new Uint8Array(buffer);
 }
+
+
+export type CloudSpeechServerStatus = {
+  model: string;
+  speakerCount: number;
+};
+
+export async function checkCloudTtsServer(
+  endpoint: string,
+  fetcher: typeof fetch = fetch
+): Promise<CloudSpeechServerStatus> {
+  const baseUrl = normalizeCloudTtsEndpoint(endpoint);
+  if (!baseUrl) throw new Error("AI 语音服务器地址必须是有效的 HTTPS 地址。");
+  let response: Response;
+  try {
+    response = await fetcher(baseUrl + "/health", { method: "GET", headers: { Accept: "application/json" } });
+  } catch {
+    throw new Error("无法连接 AI 语音服务器，请检查网络或服务器地址。");
+  }
+  if (!response.ok) throw new Error("服务器健康检查失败（" + response.status + "）。");
+  let payload: { status?: unknown; model?: unknown; speaker_count?: unknown };
+  try {
+    payload = await response.json() as { status?: unknown; model?: unknown; speaker_count?: unknown };
+  } catch {
+    throw new Error("服务器健康检查返回了无效数据。");
+  }
+  if (payload.status !== "ok" || payload.model !== "kokoro-multi-lang-v1_1" || payload.speaker_count !== 103) {
+    throw new Error("服务器已响应，但 Kokoro 模型尚未就绪或版本不匹配。");
+  }
+  return { model: payload.model, speakerCount: payload.speaker_count };
+}
