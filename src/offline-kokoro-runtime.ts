@@ -1,32 +1,25 @@
-import {
-  ModelCategory,
-  deleteIncompleteDownload,
-  deleteIncompleteExtraction,
-  deleteModel,
-  downloadModel,
-  getIncompleteDownloads,
-  getIncompleteExtractions,
-  getModelPath,
-  isModelDownloaded,
-  isPauseError,
-  pauseDownload,
-  pauseExtraction,
-  refreshModels,
-  resumeDownload,
-  resumeExtraction,
-  type Progress,
-  type ProgressPhase,
-} from "react-native-sherpa-onnx/download";
-import { createTTS } from "react-native-sherpa-onnx/tts";
 import { encodePcm16Wav } from "./wav-encoder";
 import { SPEECH_MODEL } from "./speech-voice-catalog";
+
+type DownloadApi = typeof import("react-native-sherpa-onnx/download");
+type TtsApi = typeof import("react-native-sherpa-onnx/tts");
+type Progress = import("react-native-sherpa-onnx/download").Progress;
+type ProgressPhase = import("react-native-sherpa-onnx/download").ProgressPhase;
+
+function loadDownloadApi(): DownloadApi {
+  return require("react-native-sherpa-onnx/download") as DownloadApi;
+}
+
+function loadTtsApi(): TtsApi {
+  return require("react-native-sherpa-onnx/tts") as TtsApi;
+}
 
 export type OfflineKokoroProgress = Pick<
   Progress,
   "phase" | "percent" | "bytesProcessed" | "totalBytes"
 >;
 
-export type OfflineKokoroEngine = Awaited<ReturnType<typeof createTTS>>;
+export type OfflineKokoroEngine = Awaited<ReturnType<TtsApi["createTTS"]>>;
 
 const MODEL_ID = SPEECH_MODEL.downloadAssetId;
 
@@ -35,16 +28,18 @@ export async function getOfflineKokoroModel(): Promise<{
   localPath: string | null;
   pendingPhase: ProgressPhase | null;
 }> {
-  const installed = await isModelDownloaded(ModelCategory.Tts, MODEL_ID);
+  const api = loadDownloadApi();
+  const category = api.ModelCategory.Tts;
+  const installed = await api.isModelDownloaded(category, MODEL_ID);
   const localPath = installed
-    ? await getModelPath(ModelCategory.Tts, MODEL_ID)
+    ? await api.getModelPath(category, MODEL_ID)
     : null;
   if (installed && localPath) {
     return { installed: true, localPath, pendingPhase: null };
   }
   const [downloads, extractions] = await Promise.all([
-    getIncompleteDownloads(ModelCategory.Tts),
-    getIncompleteExtractions(ModelCategory.Tts),
+    api.getIncompleteDownloads(category),
+    api.getIncompleteExtractions(category),
   ]);
   const extraction = extractions.find((entry) => entry.modelId === MODEL_ID);
   if (extraction) {
@@ -62,12 +57,14 @@ export async function getOfflineKokoroModel(): Promise<{
 export async function downloadOfflineKokoroModel(
   onProgress?: (progress: OfflineKokoroProgress) => void
 ): Promise<string> {
-  const models = await refreshModels(ModelCategory.Tts);
+  const api = loadDownloadApi();
+  const category = api.ModelCategory.Tts;
+  const models = await api.refreshModels(category);
   const model = models.find((entry) => entry.id === MODEL_ID);
   if (!model) {
     throw new Error("Kokoro 官方模型列表中没有找到预期的 int8 多语言模型。");
   }
-  const result = await downloadModel(ModelCategory.Tts, MODEL_ID, {
+  const result = await api.downloadModel(category, MODEL_ID, {
     verifyChecksum: true,
     deleteArchiveAfterExtract: true,
     onProgress: (progress) => onProgress?.({
@@ -82,9 +79,9 @@ export async function downloadOfflineKokoroModel(
 
 export async function pauseOfflineKokoroModel(phase: ProgressPhase): Promise<void> {
   if (phase === "extracting" || phase === "extracting_resume_skipping") {
-    await pauseExtraction(ModelCategory.Tts, MODEL_ID);
+    await loadDownloadApi().pauseExtraction(loadDownloadApi().ModelCategory.Tts, MODEL_ID);
   } else {
-    await pauseDownload(ModelCategory.Tts, MODEL_ID);
+    await loadDownloadApi().pauseDownload(loadDownloadApi().ModelCategory.Tts, MODEL_ID);
   }
 }
 
@@ -92,6 +89,8 @@ export async function resumeOfflineKokoroModel(
   phase: ProgressPhase,
   onProgress?: (progress: OfflineKokoroProgress) => void
 ): Promise<string> {
+  const api = loadDownloadApi();
+  const category = api.ModelCategory.Tts;
   const options = {
     verifyChecksum: true,
     deleteArchiveAfterExtract: true,
@@ -103,25 +102,27 @@ export async function resumeOfflineKokoroModel(
     }),
   };
   const result = phase === "extracting" || phase === "extracting_resume_skipping"
-    ? await resumeExtraction(ModelCategory.Tts, MODEL_ID, options)
-    : await resumeDownload(ModelCategory.Tts, MODEL_ID, options);
+    ? await api.resumeExtraction(category, MODEL_ID, options)
+    : await api.resumeDownload(category, MODEL_ID, options);
   return result.localPath;
 }
 
 export async function deleteOfflineKokoroModel(): Promise<void> {
-  await deleteIncompleteDownload(ModelCategory.Tts, MODEL_ID);
-  await deleteIncompleteExtraction(ModelCategory.Tts, MODEL_ID);
-  await deleteModel(ModelCategory.Tts, MODEL_ID);
+  const api = loadDownloadApi();
+  const category = api.ModelCategory.Tts;
+  await api.deleteIncompleteDownload(category, MODEL_ID);
+  await api.deleteIncompleteExtraction(category, MODEL_ID);
+  await api.deleteModel(category, MODEL_ID);
 }
 
 export function isOfflineKokoroPause(error: unknown): boolean {
-  return isPauseError(error);
+  return loadDownloadApi().isPauseError(error);
 }
 
 export async function createOfflineKokoroEngine(
   modelDirectory: string
 ): Promise<OfflineKokoroEngine> {
-  const engine = await createTTS({
+  const engine = await loadTtsApi().createTTS({
     modelPath: { type: "file", path: modelDirectory },
     modelType: "kokoro",
     provider: "cpu",
