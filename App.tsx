@@ -3,7 +3,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Speech from "expo-speech";
 import { NovelSource, parseNovelSourceJson } from "./src/source";
 import { searchNovelSource } from "./src/source-search";
-import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage } from "./src/novel";
+import { fetchNovelDetail, fetchNovelChapterList } from "./src/source-catalog";
+import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
 import {
   SafeAreaView,
   View,
@@ -113,6 +114,10 @@ export default function App() {
   const [searching, setSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState("");
   const [searchSummary, setSearchSummary] = useState("");
+  const [loadedNovelDetail, setLoadedNovelDetail] = useState<NovelDetail | null>(null);
+  const [loadedChapters, setLoadedChapters] = useState<NovelChapter[]>([]);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [catalogMessage, setCatalogMessage] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -238,6 +243,36 @@ export default function App() {
   const closeSearchNovel = () => {
     setSelectedSearchNovel(null);
     setSelectedSourceId(null);
+    setLoadedNovelDetail(null);
+    setLoadedChapters([]);
+    setCatalogMessage("");
+  };
+
+  const loadSelectedNovelCatalog = async () => {
+    if (!selectedSearchNovel || !selectedSourceId) return;
+    const option = selectedSearchNovel.sources.find((item) => item.summary.sourceId === selectedSourceId);
+    const source = sources.find((item) => item.id === selectedSourceId);
+    if (!option || !source || !source.enabled) {
+      setCatalogMessage("当前书源不可用，请重新选择一个已启用的书源。");
+      return;
+    }
+    setLoadingCatalog(true);
+    setCatalogMessage("正在获取小说详情和章节目录…");
+    setLoadedNovelDetail(null);
+    setLoadedChapters([]);
+    try {
+      const [detail, chapters] = await Promise.all([
+        fetchNovelDetail(source, option.summary),
+        fetchNovelChapterList(source, option.summary),
+      ]);
+      setLoadedNovelDetail(detail);
+      setLoadedChapters(chapters);
+      setCatalogMessage("获取成功，共 " + chapters.length + " 章。");
+    } catch (error) {
+      setCatalogMessage(error instanceof Error ? error.message : "获取详情或目录失败，请尝试其他书源。");
+    } finally {
+      setLoadingCatalog(false);
+    }
   };
 
   const stopSpeech = () => {
@@ -338,7 +373,7 @@ export default function App() {
           </View>
           <View style={styles.detailSection}>
             <Text style={styles.sectionTitle}>小说介绍</Text>
-            <Text style={styles.detailDescription}>{selectedSearchNovel.description || "这个书源没有提供小说简介。"}</Text>
+            <Text style={styles.detailDescription}>{loadedNovelDetail?.description || selectedSearchNovel.description || "这个书源没有提供小说简介。"} </Text>
           </View>
           <View style={styles.detailSection}>
             <Text style={styles.sectionTitle}>选择阅读源</Text>
@@ -347,7 +382,12 @@ export default function App() {
               const isRecommended = index === 0;
               const isSelected = option.summary.sourceId === activeSource?.summary.sourceId;
               return (
-                <Pressable key={option.summary.sourceId} onPress={() => setSelectedSourceId(option.summary.sourceId)} style={[styles.sourceChoice, isSelected && styles.sourceChoiceSelected]}>
+                <Pressable key={option.summary.sourceId} onPress={() => {
+                  setSelectedSourceId(option.summary.sourceId);
+                  setLoadedNovelDetail(null);
+                  setLoadedChapters([]);
+                  setCatalogMessage("");
+                }} style={[styles.sourceChoice, isSelected && styles.sourceChoiceSelected]}>
                   <View style={styles.sourceChoiceInfo}>
                     <Text style={styles.sourceChoiceName}>{option.summary.sourceName}</Text>
                     <Text style={styles.sourceChoiceLatency}>{option.latencyMs} ms · {isRecommended ? "本次最快" : "响应时间"}</Text>
@@ -358,7 +398,23 @@ export default function App() {
               );
             })}
           </View>
-          {!!activeSource && <Text style={styles.note}>当前选择：{activeSource.summary.sourceName}。下一阶段将接入该来源的真实目录与正文。</Text>}
+          {!!activeSource && (
+            <View style={styles.detailSection}>
+              <Text style={styles.sectionTitle}>真实小说目录</Text>
+              <Text style={styles.note}>当前选择：{activeSource.summary.sourceName}。点击下方按钮，从所选书源获取详情和目录。</Text>
+              <Pressable style={[styles.onlineSearchButton, loadingCatalog && styles.importButtonDisabled]} onPress={loadSelectedNovelCatalog} disabled={loadingCatalog}>
+                {loadingCatalog ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>获取小说详情和目录</Text>}
+              </Pressable>
+              {!!catalogMessage && <Text style={styles.searchFeedback}>{catalogMessage}</Text>}
+              {loadedChapters.map((chapter) => (
+                <View key={chapter.id} style={styles.chapterRow}>
+                  <Text style={styles.chapterRowTitle}>{chapter.title}</Text>
+                  <Text style={styles.chapterRowMeta}>第 {chapter.index + 1} 章</Text>
+                </View>
+              ))}
+              {!!loadedChapters.length && <Text style={styles.note}>目录已成功读取。章节正文和在线阅读将在下一阶段接入。</Text>}
+            </View>
+          )}
         </ScrollView>
       </SafeAreaView>
     );
@@ -648,6 +704,7 @@ const styles = StyleSheet.create({
   detailAuthor: { color: "#D0D4C9", fontSize: 13, marginTop: 10 },
   detailSection: { backgroundColor: "#FFFFFF", borderRadius: 17, padding: 18, marginBottom: 14, borderWidth: 1, borderColor: "#EEECE5" },
   detailDescription: { color: "#66665D", fontSize: 14, lineHeight: 24 },
+  catalogLoadButton: { alignItems: "center", justifyContent: "center", minHeight: 46, backgroundColor: "#65745D", borderRadius: 12, marginTop: 14 },
   sourceChoice: { minHeight: 62, backgroundColor: "#F8F7F3", borderRadius: 12, paddingHorizontal: 13, paddingVertical: 10, marginTop: 10, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#EEECE5" },
   sourceChoiceSelected: { borderColor: "#829078", backgroundColor: "#F0F2EC" },
   sourceChoiceInfo: { flex: 1 },
