@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { parseNovelSourceJson } = require("../.test-build/source.js");
+const { parseNovelSourceJson, parseNovelSourceJsonBatch } = require("../.test-build/source.js");
 const { createSourceHttpClient, SourceHttpError } = require("../.test-build/source-runtime.js");
 
 function source(overrides = {}) {
@@ -85,4 +85,19 @@ test("HTTP failures and oversized bodies are rejected", async () => {
 test("network failures are normalized", async () => {
   const client = createSourceHttpClient(source(), async () => { throw new Error("offline"); });
   await assert.rejects(client.get("searchUrl"), (error) => error instanceof SourceHttpError && error.code === "network-error");
+});
+
+test("source batch parser accepts an object array and validates every entry", () => {
+  const make = (name, host) => ({
+    name, baseUrl: "https://" + host, searchUrl: "https://" + host + "/search",
+    bookUrl: "https://" + host + "/book", chapterListUrl: "https://" + host + "/toc",
+    chapterUrl: "https://" + host + "/chapter",
+  });
+  const batch = parseNovelSourceJsonBatch(JSON.stringify([make("源一", "one.example"), make("源二", "two.example")]));
+  assert.equal(batch.length, 2);
+  assert.equal(batch[1].name, "源二");
+  assert.throws(() => parseNovelSourceJsonBatch(JSON.stringify([make("正常源", "one.example"), { name: "坏源" }])), /第 2 个书源校验失败/);
+  assert.throws(() => parseNovelSourceJsonBatch(JSON.stringify([make("重复", "one.example"), make("重复", "two.example")])), /存在重复/);
+  assert.throws(() => parseNovelSourceJsonBatch("[]"), /不能为空/);
+  assert.throws(() => parseNovelSourceJsonBatch(JSON.stringify(Array.from({ length: 101 }, (_, i) => make("源" + i, "host" + i + ".example")))), /最多导入 100 个/);
 });
