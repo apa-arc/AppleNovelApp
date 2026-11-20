@@ -33,6 +33,9 @@ export async function playCloudWav(
       albumTitle: "私人小说",
     });
   } catch (error) {
+    player?.clearLockScreenControls();
+    player?.remove();
+    player = null;
     await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
     throw error;
   }
