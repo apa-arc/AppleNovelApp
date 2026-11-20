@@ -50,6 +50,9 @@ test("parses chapter text from JSON", () => {
   const content = parseJsonChapterContent(JSON.stringify({ data: { title: "第一章", content: "正文第一段\n\n正文第二段" } }), "备用标题");
   assert.equal(content.title, "第一章");
   assert.match(content.content, /正文第二段/);
+  const wrapped = parseJsonChapterContent(JSON.stringify({ data: { content: "仅有正文，没有标题字段" } }), "默认标题");
+  assert.equal(wrapped.title, "默认标题");
+  assert.match(wrapped.content, /没有标题字段/);
 });
 
 test("fetch functions use the selected source endpoints", async () => {
