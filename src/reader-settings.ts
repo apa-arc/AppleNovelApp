@@ -1,13 +1,21 @@
+export type ReaderTheme = "paper" | "green" | "gray" | "night";
+
 export type ReaderSettings = {
   fontSize: number;
-  theme: "paper" | "night";
+  theme: ReaderTheme;
   readingMode: "scroll" | "tap";
+  lineSpacing: number;
+  paragraphSpacing: number;
+  horizontalPadding: number;
 };
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   fontSize: 18,
   theme: "paper",
   readingMode: "scroll",
+  lineSpacing: 1.9,
+  paragraphSpacing: 22,
+  horizontalPadding: 27,
 };
 
 /** Normalize persisted settings so old or corrupted storage cannot break the reader. */
@@ -16,12 +24,22 @@ export function normalizeReaderSettings(value: unknown): ReaderSettings {
     return { ...DEFAULT_READER_SETTINGS };
   }
   const candidate = value as Record<string, unknown>;
-  const rawSize = typeof candidate.fontSize === "number" && Number.isFinite(candidate.fontSize)
-    ? Math.round(candidate.fontSize)
-    : DEFAULT_READER_SETTINGS.fontSize;
+  const bounded = (key: string, fallback: number, min: number, max: number, digits = 0) => {
+    const raw = typeof candidate[key] === "number" && Number.isFinite(candidate[key])
+      ? candidate[key] as number
+      : fallback;
+    const factor = 10 ** digits;
+    return Math.min(max, Math.max(min, Math.round(raw * factor) / factor));
+  };
+  const theme: ReaderTheme = candidate.theme === "night" || candidate.theme === "green" || candidate.theme === "gray"
+    ? candidate.theme
+    : "paper";
   return {
-    fontSize: Math.min(28, Math.max(14, rawSize)),
-    theme: candidate.theme === "night" ? "night" : "paper",
+    fontSize: bounded("fontSize", DEFAULT_READER_SETTINGS.fontSize, 14, 28),
+    theme,
     readingMode: candidate.readingMode === "tap" ? "tap" : "scroll",
+    lineSpacing: bounded("lineSpacing", DEFAULT_READER_SETTINGS.lineSpacing, 1.4, 2.4, 1),
+    paragraphSpacing: bounded("paragraphSpacing", DEFAULT_READER_SETTINGS.paragraphSpacing, 8, 32),
+    horizontalPadding: bounded("horizontalPadding", DEFAULT_READER_SETTINGS.horizontalPadding, 16, 40),
   };
 }
