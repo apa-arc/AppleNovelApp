@@ -428,13 +428,20 @@ export default function App() {
 
   const importSource = () => {
     try {
-      let parsed: Array<{ name: string; baseUrl: string; searchUrl: string; bookUrl: string; chapterListUrl: string; chapterUrl: string }>;
+      type ImportEntry = Omit<NovelSource, "id" | "enabled" | "importedAt"> & { remoteId?: string; version?: string };
+      let parsed: ImportEntry[];
       let subscriptionNote = "";
       const decoded: unknown = JSON.parse(sourceDraft);
-      if (decoded && typeof decoded === "object" && !Array.isArray(decoded) &&
-          "subscriptionId" in decoded) {
+      if (decoded && typeof decoded === "object" && !Array.isArray(decoded) && "subscriptionId" in decoded) {
         const subscription = parseSourceSubscription(sourceDraft);
-        parsed = subscription.compatible;
+        const group: "normal" | "adult" = subscription.subscriptionId.toLowerCase().includes("adult") || /成人/.test(subscription.name) ? "adult" : "normal";
+        parsed = subscription.compatible.map((item) => ({
+          ...item,
+          subscriptionGroup: group,
+          subscriptionId: subscription.subscriptionId,
+          remoteSourceId: item.remoteId,
+          remoteVersion: item.version,
+        }));
         subscriptionNote = "；" + subscription.unsupported.length + " 个脚本或不兼容书源已跳过";
         if (parsed.length === 0) {
           setSourceMessage("订阅已识别，但没有可导入的 JSON 兼容书源" + subscriptionNote + "。不会执行订阅中的 JavaScript。");
@@ -454,17 +461,107 @@ export default function App() {
         return;
       }
       const importedAt = Date.now();
-      const additions: NovelSource[] = parsed.map((item, index) => ({
-        ...item,
-        id: importedAt.toString() + "-" + index.toString(),
-        enabled: true,
-        importedAt,
-      }));
+      const additions: NovelSource[] = parsed.map((item, index) => {
+        const { remoteId, version, ...config } = item;
+        return {
+          ...config,
+          id: importedAt.toString() + "-" + index.toString(),
+          enabled: true,
+          importedAt,
+          subscriptionGroup: item.subscriptionGroup || "normal",
+          ...(remoteId ? { remoteSourceId: remoteId } : {}),
+          ...(version ? { remoteVersion: version } : {}),
+        };
+      });
       setSources((current) => [...current, ...additions]);
       setSourceDraft("");
       setSourceMessage("导入成功：已导入 " + additions.length + " 个书源" + subscriptionNote + "。");
     } catch (error) {
       setSourceMessage(error instanceof Error ? error.message : "书源校验失败。");
+    }
+  };
+
+  const importSubscriptionFromUrl = async (group: "normal" | "adult") => {
+    if (subscriptionLoading) return;
+    const address = (group === "adult" ? adultSubscriptionUrl : normalSubscriptionUrl).trim();
+    setSubscriptionLoading(group);
+    setSubscriptionUrlMessage("");
+    try {
+      const url = new URL(address);
+      if (url.protocol !== "https:" || url.username || url.password) throw new Error("订阅地址必须是无账号密码的 HTTPS 公网地址。");
+      const host = url.hostname.toLowerCase();
+      if (host === "localhost" || host.endsWith(".local") || host.endsWith(".localhost") || /^(10\.|127\.|192\.168\.|169\.254\.)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
+        throw new Error("订阅地址不能指向本机或局域网。");
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      let response: Response;
+      try {
+        response = await fetch(url.toString(), {
+          method: "GET",
+          credentials: "omit",
+          redirect: "error",
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (!response.ok) throw new Error("订阅下载失败，HTTP " + response.status + "。");
+      const length = Number(response.headers.get("content-length") || 0);
+      if (length > 2 * 1024 * 1024) throw new Error("订阅文件超过 2 MB 限制。");
+      const raw = await response.text();
+      if (raw.length > 2 * 1024 * 1024) throw new Error("订阅文件超过 2 MB 限制。");
+      const subscription = parseSourceSubscription(raw);
+      const isAdult = subscription.subscriptionId.toLowerCase().includes("adult") || /成人/.test(subscription.name);
+      if (isAdult !== (group === "adult")) throw new Error(group === "adult" ? "此地址不是成人订阅，已阻止导入。" : "此地址是成人订阅，请使用成人订阅入口导入。");
+      if (subscription.compatible.length === 0) {
+        setSubscriptionUrlMessage(subscription.name + " 已连接，但目前没有可导入的兼容书源。" + (subscription.unsupported.length ? " 已跳过 " + subscription.unsupported.length + " 个不兼容条目。" : ""));
+        return;
+      }
+      const importedAt = Date.now();
+      const next = [...sources];
+      let added = 0;
+      let updated = 0;
+      let skipped = 0;
+      for (const item of subscription.compatible) {
+        const existingIndex = next.findIndex((source) => source.subscriptionId === subscription.subscriptionId && source.remoteSourceId === item.remoteId);
+        const { remoteId, version, ...config } = item;
+        if (existingIndex >= 0) {
+          const existing = next[existingIndex];
+          next[existingIndex] = {
+            ...config,
+            id: existing.id,
+            enabled: existing.enabled,
+            importedAt: existing.importedAt,
+            subscriptionGroup: group,
+            subscriptionId: subscription.subscriptionId,
+            remoteSourceId: remoteId,
+            remoteVersion: version,
+          };
+          updated++;
+        } else if (next.some((source) => source.baseUrl.toLowerCase() === item.baseUrl.toLowerCase())) {
+          skipped++;
+        } else {
+          next.push({
+            ...config,
+            id: "sub:" + subscription.subscriptionId + ":" + remoteId,
+            enabled: true,
+            importedAt,
+            subscriptionGroup: group,
+            subscriptionId: subscription.subscriptionId,
+            remoteSourceId: remoteId,
+            remoteVersion: version,
+          });
+          added++;
+        }
+      }
+      setSources(next);
+      setSubscriptionUrlMessage(subscription.name + " 更新完成：新增 " + added + "，更新 " + updated + "，重复跳过 " + skipped + "，不兼容 " + subscription.unsupported.length + "。");
+    } catch (error) {
+      setSubscriptionUrlMessage(error instanceof Error ? error.message : "订阅导入失败，请检查地址和网络。");
+    } finally {
+      setSubscriptionLoading(null);
     }
   };
 
