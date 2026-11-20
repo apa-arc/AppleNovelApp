@@ -1,4 +1,5 @@
 import type { NovelSource } from "./source";
+import { parseHtmlSearchResults } from "./html-source-parser";
 import { createSourceHttpClient, type SourceHttpClient } from "./source-runtime";
 import type { NovelSearchPage, NovelSummary } from "./novel";
 
@@ -91,8 +92,9 @@ export async function searchNovelSource(source: NovelSource, keyword: string, cl
   const cleanKeyword = keyword.trim();
   if (!cleanKeyword) throw new Error("请输入小说名称。");
   const response = await client.get("searchUrl", buildSearchRequestUrl(source.searchUrl, cleanKeyword));
-  if (!/json/i.test(response.contentType) && !response.body.trim().startsWith("{") && !response.body.trim().startsWith("[")) {
-    throw new Error("该书源没有返回 JSON。当前搜索引擎暂不解析 HTML 页面。");
+  if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
+    if (!source.htmlRules?.search) throw new Error("该书源返回 HTML，但没有配置 CSS 搜索规则。");
+    return parseHtmlSearchResults(response.body, source.id, source.name, cleanKeyword, response.url, source.htmlRules.search);
   }
   return parseJsonSearchResults(response.body, source, cleanKeyword, response.url);
 }
