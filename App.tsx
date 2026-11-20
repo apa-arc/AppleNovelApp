@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Speech from "expo-speech";
 import { NovelSource, parseNovelSourceJson } from "./src/source";
+import { searchNovelSource } from "./src/source-search";
+import { mergeNovelSearchResults, type NovelSummary, type NovelSearchPage } from "./src/novel";
 import {
   SafeAreaView,
   View,
@@ -102,6 +104,11 @@ export default function App() {
   const [sources, setSources] = useState<NovelSource[]>([]);
   const [sourceDraft, setSourceDraft] = useState("");
   const [sourceMessage, setSourceMessage] = useState("");
+  const [onlineQuery, setOnlineQuery] = useState("");
+  const [onlineResults, setOnlineResults] = useState<NovelSummary[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchMessage, setSearchMessage] = useState("");
+  const [searchSummary, setSearchSummary] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -165,6 +172,38 @@ export default function App() {
     ),
     [books, query]
   );
+
+  const searchOnlineNovels = async () => {
+    const keyword = onlineQuery.trim();
+    if (!keyword) {
+      setSearchMessage("先输入小说名称再搜索。");
+      setOnlineResults([]);
+      return;
+    }
+    const enabledSources = sources.filter((source) => source.enabled);
+    if (enabledSources.length === 0) {
+      setSearchMessage("还没有启用的书源。请先到「书源」页面导入并启用书源。");
+      setOnlineResults([]);
+      setSearchSummary("");
+      return;
+    }
+    setSearching(true);
+    setSearchMessage("");
+    setSearchSummary("正在向 " + enabledSources.length + " 个启用书源发起搜索…");
+    setOnlineResults([]);
+    const settled = await Promise.allSettled(enabledSources.map((source) => searchNovelSource(source, keyword)));
+    const pages: NovelSearchPage[] = [];
+    let failed = 0;
+    settled.forEach((result) => {
+      if (result.status === "fulfilled") pages.push(result.value);
+      else failed += 1;
+    });
+    const merged = mergeNovelSearchResults(pages);
+    setOnlineResults(merged);
+    setSearching(false);
+    setSearchSummary("搜索完成：成功 " + pages.length + " 个，失败 " + failed + " 个书源，共找到 " + merged.length + " 本（已去重）。");
+    setSearchMessage(merged.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（目前仅支持常见 JSON 列表）。" : "");
+  };
 
   const stopSpeech = () => {
     Speech.stop();
@@ -364,19 +403,44 @@ export default function App() {
       )}
 
       {tab === "发现" && (
-        <ScrollView contentContainerStyle={styles.pageContent}>
+        <ScrollView contentContainerStyle={styles.pageContent} keyboardShouldPersistTaps="handled">
           <View style={styles.welcomeCard}>
             <Text style={styles.welcomeEyebrow}>DISCOVER</Text>
-            <Text style={styles.welcomeTitle}>发现下一段好故事。</Text>
-            <Text style={styles.welcomeSub}>在线搜索将在书源功能完成后开放。</Text>
+            <Text style={styles.welcomeTitle}>搜索你想读的小说。</Text>
+            <Text style={styles.welcomeSub}>通过已启用的 JSON 书源搜索，结果会自动去重。</Text>
           </View>
-          <Text style={styles.sectionTitle}>题材分类</Text>
-          <View style={styles.categoryGrid}>
-            {["玄幻", "都市", "科幻", "悬疑", "历史", "奇幻"].map((item) => (
-              <View key={item} style={styles.categoryCard}><Text style={styles.categoryText}>{item}</Text></View>
-            ))}
+          <View style={styles.onlineSearchCard}>
+            <TextInput
+              value={onlineQuery}
+              onChangeText={(value) => { setOnlineQuery(value); setSearchMessage(""); }}
+              placeholder="输入小说名称或关键词"
+              placeholderTextColor="#9A9A9A"
+              style={styles.searchInput}
+              returnKeyType="search"
+              onSubmitEditing={searchOnlineNovels}
+              editable={!searching}
+            />
+            <Pressable style={[styles.onlineSearchButton, searching && styles.importButtonDisabled]} onPress={searchOnlineNovels} disabled={searching}>
+              {searching ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>搜索小说</Text>}
+            </Pressable>
+            <Text style={styles.note}>当前支持返回常见 JSON 列表的书源；HTML 页面和复杂脚本规则尚未支持。</Text>
           </View>
-          <Text style={styles.note}>目前展示的是界面原型，后续会接入可用的在线书源。</Text>
+          {!!searchSummary && <Text style={styles.searchSummary}>{searchSummary}</Text>}
+          {searching && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={styles.note}>正在搜索，请稍候…</Text></View>}
+          {!!searchMessage && <Text style={styles.searchFeedback}>{searchMessage}</Text>}
+          {onlineResults.map((item) => (
+            <View key={item.id} style={styles.onlineResultCard}>
+              <View style={styles.onlineResultInfo}>
+                <Text style={styles.onlineResultTitle}>{item.title}</Text>
+                <Text style={styles.onlineResultAuthor}>{item.author} · {item.sourceName}</Text>
+                {!!item.description && <Text style={styles.onlineResultDescription} numberOfLines={3}>{item.description}</Text>}
+                <Text style={styles.onlineResultUrl} numberOfLines={1}>{item.bookUrl}</Text>
+              </View>
+            </View>
+          ))}
+          {!searching && onlineResults.length === 0 && !searchMessage && (
+            <Text style={styles.emptyText}>输入书名开始搜索。需要先在「书源」页导入并启用可用书源。</Text>
+          )}
         </ScrollView>
       )}
 
@@ -494,6 +558,18 @@ const styles = StyleSheet.create({
   progressText: { color: "#989487", fontSize: 10, marginTop: 5 },
   emptyText: { color: "#888477", textAlign: "center", paddingVertical: 30, fontSize: 13 },
   storageNote: { color: "#AAA69B", fontSize: 11, textAlign: "center", marginTop: 12 },
+  onlineSearchCard: { backgroundColor: "#FFFFFF", borderRadius: 18, padding: 16, borderWidth: 1, borderColor: "#EEECE5", marginBottom: 16 },
+  searchInput: { minHeight: 48, borderRadius: 12, backgroundColor: "#F8F7F3", paddingHorizontal: 14, color: "#25251F", fontSize: 14, borderWidth: 1, borderColor: "#EEECE5" },
+  onlineSearchButton: { alignItems: "center", justifyContent: "center", minHeight: 46, backgroundColor: "#65745D", borderRadius: 12, marginTop: 10 },
+  searchSummary: { color: "#65745D", fontSize: 12, lineHeight: 18, marginBottom: 12 },
+  searchLoading: { alignItems: "center", paddingVertical: 18 },
+  searchFeedback: { color: "#9A6A50", fontSize: 12, lineHeight: 19, marginBottom: 12 },
+  onlineResultCard: { backgroundColor: "#FFFFFF", borderRadius: 15, padding: 15, marginBottom: 10, borderWidth: 1, borderColor: "#EEECE5" },
+  onlineResultInfo: { flex: 1 },
+  onlineResultTitle: { color: "#292A24", fontSize: 16, fontWeight: "800" },
+  onlineResultAuthor: { color: "#8D897F", fontSize: 11, marginTop: 5 },
+  onlineResultDescription: { color: "#77766E", fontSize: 12, lineHeight: 18, marginTop: 8 },
+  onlineResultUrl: { color: "#A09B8E", fontSize: 9, marginTop: 8 },
   categoryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 5 },
   categoryCard: { width: "30%", minHeight: 82, borderRadius: 16, backgroundColor: "#EAE9E1", alignItems: "center", justifyContent: "center" },
   categoryText: { color: "#55594D", fontSize: 16, fontWeight: "700" },
