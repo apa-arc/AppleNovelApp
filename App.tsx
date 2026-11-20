@@ -59,6 +59,9 @@ type Book = {
 
 const STORAGE_KEY = "@private_novel/books_v1";
 const SOURCES_STORAGE_KEY = "@private_novel/sources_v1";
+const SUBSCRIPTION_URLS_STORAGE_KEY = "@private_novel/subscription_urls_v1";
+const DEFAULT_NORMAL_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/subscription.json";
+const DEFAULT_ADULT_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/adult-subscription.json";
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
 const SOURCE_EXAMPLE = `{
@@ -183,7 +186,12 @@ export default function App() {
   const [sources, setSources] = useState<NovelSource[]>([]);
   const [sourceDraft, setSourceDraft] = useState("");
   const [sourceMessage, setSourceMessage] = useState("");
+  const [normalSubscriptionUrl, setNormalSubscriptionUrl] = useState(DEFAULT_NORMAL_SUBSCRIPTION_URL);
+  const [adultSubscriptionUrl, setAdultSubscriptionUrl] = useState(DEFAULT_ADULT_SUBSCRIPTION_URL);
+  const [subscriptionUrlMessage, setSubscriptionUrlMessage] = useState("");
+  const [subscriptionLoading, setSubscriptionLoading] = useState<"normal" | "adult" | null>(null);
   const [onlineQuery, setOnlineQuery] = useState("");
+  const [sourceSearchMode, setSourceSearchMode] = useState<"normal" | "adult">("normal");
   const [onlineResults, setOnlineResults] = useState<SearchNovelGroup[]>([]);
   const [selectedSearchNovel, setSelectedSearchNovel] = useState<SearchNovelGroup | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
