@@ -4,23 +4,18 @@ const path = require("path");
 
 function addSwiftBackgroundSessionSupport(contents) {
   if (!contents.includes("handleEventsForBackgroundURLSession")) {
-    const isExpoDelegate = /\\bExpoAppDelegate\\b/.test(contents);
+    const isExpoDelegate = /\bExpoAppDelegate\b/.test(contents);
     const forwardOtherSessions = isExpoDelegate
-      ? `
-    guard identifier.hasSuffix(".backgrounddownloadtask") else {
-      return super.application(application, handleEventsForBackgroundURLSession: identifier, completionHandler: completionHandler)
-    }`
+      ? "\n    guard identifier.hasSuffix(\".backgrounddownloadtask\") else {\n      return super.application(application, handleEventsForBackgroundURLSession: identifier, completionHandler: completionHandler)\n    }"
       : "";
-    const method = `
-  ${isExpoDelegate ? "public override func" : "func"} application(
-    _ application: UIApplication,
-    handleEventsForBackgroundURLSession identifier: String,
-    completionHandler: @escaping () -> Void
-  ) {${forwardOtherSessions}
-    RNBackgroundDownloader.setCompletionHandlerWithIdentifier(identifier, completionHandler: completionHandler)
-  }
-`;
-    const classMatch = /^.*\\bclass\\s+AppDelegate\\b.*$/m.exec(contents);
+    const method = "\n  " + (isExpoDelegate ? "public override func" : "func") + " application(\n" +
+      "    _ application: UIApplication,\n" +
+      "    handleEventsForBackgroundURLSession identifier: String,\n" +
+      "    completionHandler: @escaping () -> Void\n" +
+      "  ) {" + forwardOtherSessions + "\n" +
+      "    RNBackgroundDownloader.setCompletionHandlerWithIdentifier(identifier, completionHandler: completionHandler)\n" +
+      "  }\n";
+    const classMatch = /^.*\bclass\s+AppDelegate\b.*$/m.exec(contents);
     const classEnd = classMatch ? /^}$/m.exec(contents.slice(classMatch.index)) : null;
     if (!classMatch || !classEnd) {
       throw new Error("Could not locate the AppDelegate class closing brace for background download support.");
@@ -34,8 +29,8 @@ function addSwiftBackgroundSessionSupport(contents) {
 function addBridgingHeaderImport(projectRoot, projectName) {
   const iosRoot = IOSConfig.Paths.getSourceRoot(projectRoot);
   const candidates = [
-    path.join(iosRoot, `${projectName}-Bridging-Header.h`),
-    path.join(iosRoot, projectName, `${projectName}-Bridging-Header.h`),
+    path.join(iosRoot, projectName + "-Bridging-Header.h"),
+    path.join(iosRoot, projectName, projectName + "-Bridging-Header.h"),
     path.join(iosRoot, "Bridging-Header.h"),
   ];
   let header = candidates.find((candidate) => fs.existsSync(candidate));
@@ -44,7 +39,7 @@ function addBridgingHeaderImport(projectRoot, projectName) {
   const statement = "#import <RNBackgroundDownloader.h>";
   if (!contents.includes(statement)) {
     contents = contents.trim();
-    contents = (contents ? contents + "\\n" : "") + statement + "\\n";
+    contents = (contents ? contents + "\n" : "") + statement + "\n";
     fs.mkdirSync(path.dirname(header), { recursive: true });
     fs.writeFileSync(header, contents, "utf8");
   }
@@ -58,19 +53,16 @@ module.exports = function withSherpaOnnxBackgroundDownloader(config) {
     } else {
       let contents = config.modResults.contents;
       if (!contents.includes("#import <RNBackgroundDownloader.h>")) {
-        const lastReactImport = [...contents.matchAll(/#import <React\\/.*?\\.h>/g)].pop();
+        const lastReactImport = [...contents.matchAll(/#import <React\/.*?\.h>/g)].pop();
         if (lastReactImport) {
           const at = contents.lastIndexOf(lastReactImport[0]) + lastReactImport[0].length;
-          contents = contents.slice(0, at) + "\\n#import <RNBackgroundDownloader.h>" + contents.slice(at);
+          contents = contents.slice(0, at) + "\n#import <RNBackgroundDownloader.h>" + contents.slice(at);
         }
       }
       if (!contents.includes("handleEventsForBackgroundURLSession")) {
-        const method = `
-- (void)application:(UIApplication *)application handleEventsForBackgroundURLSession:(NSString *)identifier completionHandler:(void (^)(void))completionHandler
-{
-  [RNBackgroundDownloader setCompletionHandlerWithIdentifier:identifier completionHandler:completionHandler];
-}
-`;
+        const method = "\n- (void)application:(UIApplication *)application handleEventsForBackgroundURLSession:(NSString *)identifier completionHandler:(void (^)(void))completionHandler\n{\n" +
+          "  [RNBackgroundDownloader setCompletionHandlerWithIdentifier:identifier completionHandler:completionHandler];\n" +
+          "}\n";
         const end = contents.lastIndexOf("@end");
         if (end < 0) throw new Error("Could not locate AppDelegate @end for background download support.");
         contents = contents.slice(0, end) + method + contents.slice(end);
