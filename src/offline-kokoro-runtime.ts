@@ -116,7 +116,7 @@ export async function deleteOfflineKokoroModel(): Promise<void> {
 }
 
 export function isOfflineKokoroPause(error: unknown): boolean {
-  return loadDownloadApi().isPauseError(error);
+  return error instanceof Error && error.name === "PauseError";
 }
 
 export async function createOfflineKokoroEngine(
