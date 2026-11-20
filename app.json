@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "私人小说",
+    "slug": "apple-novel-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "applenovelapp",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.apaarc.applenovelapp"
+    },
+    "android": {
+      "package": "com.apaarc.applenovelapp"
+    }
+  }
+}
