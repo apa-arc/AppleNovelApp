@@ -7,6 +7,7 @@ import { searchNovelSource } from "./src/source-search";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
 import { compareChapterUpdates } from "./src/subscription";
+import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type ReaderSettings } from "./src/reader-settings";
 import {
   SafeAreaView,
   View,
@@ -41,6 +42,7 @@ type Book = {
 
 const STORAGE_KEY = "@private_novel/books_v1";
 const SOURCES_STORAGE_KEY = "@private_novel/sources_v1";
+const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const SOURCE_EXAMPLE = `{
   "name": "我的书源",
   "baseUrl": "https://example.com",
@@ -114,8 +116,8 @@ export default function App() {
   const [chapterIndex, setChapterIndex] = useState(0);
   const [showCatalog, setShowCatalog] = useState(false);
   const [showReaderSettings, setShowReaderSettings] = useState(false);
-  const [readerFontSize, setReaderFontSize] = useState(18);
-  const [readerTheme, setReaderTheme] = useState<"paper" | "night">("paper");
+  const [readerFontSize, setReaderFontSize] = useState(DEFAULT_READER_SETTINGS.fontSize);
+  const [readerTheme, setReaderTheme] = useState<"paper" | "night">(DEFAULT_READER_SETTINGS.theme);
   const [sources, setSources] = useState<NovelSource[]>([]);
   const [sourceDraft, setSourceDraft] = useState("");
   const [sourceMessage, setSourceMessage] = useState("");
@@ -153,6 +155,12 @@ export default function App() {
           const parsedSources: unknown = JSON.parse(savedSources);
           if (Array.isArray(parsedSources)) setSources(parsedSources as NovelSource[]);
         }
+        const savedReaderSettings = await AsyncStorage.getItem(READER_SETTINGS_STORAGE_KEY);
+        if (savedReaderSettings && active) {
+          const settings = normalizeReaderSettings(JSON.parse(savedReaderSettings));
+          setReaderFontSize(settings.fontSize);
+          setReaderTheme(settings.theme);
+        }
       } catch {
         Alert.alert("读取失败", "本地书架数据暂时无法读取，已使用默认书架。");
       } finally {
@@ -179,6 +187,14 @@ export default function App() {
       Alert.alert("保存失败", "书源列表暂时未能保存，请检查手机存储空间。");
     });
   }, [sources, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    const settings: ReaderSettings = normalizeReaderSettings({ fontSize: readerFontSize, theme: readerTheme });
+    AsyncStorage.setItem(READER_SETTINGS_STORAGE_KEY, JSON.stringify(settings)).catch(() => {
+      Alert.alert("保存失败", "阅读设置暂时未能保存，请检查手机存储空间。");
+    });
+  }, [readerFontSize, readerTheme, isLoaded]);
 
   const importSource = () => {
     try {
