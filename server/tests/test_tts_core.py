@@ -47,13 +47,16 @@ class TtsCoreTests(unittest.TestCase):
             root = Path(directory) / "archive-root"
             nested = root / "kokoro-int8"
             (nested / "espeak-ng-data").mkdir(parents=True)
-            for name in ("model.onnx", "voices.bin", "tokens.txt", "lexicon-zh.txt", "lexicon-us-en.txt"):
+            (nested / "dict").mkdir()
+            for name in ("model.int8.onnx", "voices.bin", "tokens.txt", "lexicon-zh.txt", "lexicon-us-en.txt", "phone-zh.fst", "date-zh.fst", "number-zh.fst"):
                 (nested / name).write_text("fixture", encoding="utf-8")
             assets = find_model_assets(root)
-            self.assertEqual(Path(assets["model"]).name, "model.onnx")
+            self.assertEqual(Path(assets["model"]).name, "model.int8.onnx")
             self.assertEqual(Path(assets["voices"]).name, "voices.bin")
             self.assertEqual(Path(assets["data_dir"]).name, "espeak-ng-data")
+            self.assertEqual(Path(assets["dict_dir"]).name, "dict")
             self.assertEqual(len(assets["lexicon"].split(",")), 2)
+            self.assertEqual(len(assets["rule_fsts"].split(",")), 3)
 
 
 if __name__ == "__main__":
