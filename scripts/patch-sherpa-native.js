@@ -20,6 +20,16 @@ function replaceExactlyOnce(relativePath, before, after, description) {
 
 replaceExactlyOnce(
   "ios/SherpaOnnx.mm",
+  `#import <React/RCTLog.h>
+#import <AVFoundation/AVFoundation.h>`,
+  `#import <React/RCTLog.h>
+#import <React/RCTBridgeModule.h>
+#import <AVFoundation/AVFoundation.h>`,
+  "RCTBridgeModule macro import"
+);
+
+replaceExactlyOnce(
+  "ios/SherpaOnnx.mm",
   `@implementation SherpaOnnx
 
 + (NSString *)moduleName
