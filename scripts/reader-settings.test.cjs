@@ -62,7 +62,7 @@ test("Kokoro speaker selection is persisted and rejects unknown speaker IDs", ()
 
 test("cloud speech endpoint only persists safe HTTPS URLs", () => {
   assert.equal(normalizeReaderSettings({ speechCloudEndpoint: "https://tts.example.com/" }).speechCloudEndpoint, "https://tts.example.com");
-  for (const value of ["http://tts.example.com", "https://user:pass@tts.example.com", "javascript:alert(1)", "not a url"]) {
+  for (const value of ["http://tts.example.com", "https://user:pass@tts.example.com", "javascript:alert(1)", "https://tts.example.com/?token=secret", "not a url"]) {
     assert.equal(normalizeReaderSettings({ speechCloudEndpoint: value }).speechCloudEndpoint, "");
   }
 });
