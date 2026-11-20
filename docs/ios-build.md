@@ -6,7 +6,7 @@
 
 1. Expo 账号及其 Access Token。
 2. 在 GitHub 仓库 Settings → Secrets and variables → Actions 中添加 `EXPO_TOKEN`。
-3. 使用 Expo/EAS 初始化项目并将真实的 `projectId` 绑定到 `app.json` 的 `extra.eas.projectId`；不能使用占位 ID。
+3. 在 GitHub 仓库 Settings → Secrets and variables → Actions → Variables 中添加 `EAS_PROJECT_ID`（真实 Expo/EAS 项目 ID）；`app.config.js` 会在云构建和 OTA 发布时注入 `extra.eas.projectId` 与更新 URL。
 4. Apple Developer Program 账号与 Bundle ID `com.apaarc.applenovelapp` 的签名/分发授权。
 5. 选择 `production` 可生成 App Store Connect/TestFlight 所需构建；选择 `preview` 则需要适合内部安装的签名配置。
 
@@ -16,4 +16,4 @@
 
 ## 当前限制
 
-本工作流只负责触发云构建，不会绕过 Apple 签名或 EAS 项目绑定要求。项目未绑定 projectId 或缺少 token/Apple 凭据时，工作流应明确失败，而不是声称已生成安装包。
+本工作流会检查 `EXPO_TOKEN` 与 `EAS_PROJECT_ID`，并将项目 ID 注入 Expo 配置；它不会绕过 Apple 签名或 EAS 项目绑定要求。缺少 Token、项目 ID 或 Apple 签名授权时，构建会明确失败，而不会声称已生成安装包。
