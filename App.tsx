@@ -586,7 +586,7 @@ export default function App() {
           </View>
           <View style={styles.sourceCard}>
             <Text style={styles.sourceTitle}>导入 JSON 书源</Text>
-            <Text style={styles.note}>粘贴书源配置后导入。当前版本先完成格式校验和本地管理，尚未请求网站或解析小说内容。</Text>
+            <Text style={styles.note}>粘贴书源配置后导入。支持本地管理、JSON 搜索，并可尝试获取书籍详情和章节目录。</Text>
             <Pressable style={styles.exampleButton} onPress={() => { setSourceDraft(SOURCE_EXAMPLE); setSourceMessage("已填入示例模板，请替换为你有权访问的网站地址。"); }}>
               <Text style={styles.exampleButtonText}>填入 JSON 示例</Text>
             </Pressable>
@@ -607,7 +607,7 @@ export default function App() {
               <View style={styles.sourceItemInfo}>
                 <Text style={styles.sourceItemTitle}>{source.name}</Text>
                 <Text style={styles.sourceItemUrl} numberOfLines={1}>{source.baseUrl}</Text>
-                <Text style={styles.sourceItemStatus}>{source.enabled ? "已启用" : "已停用"} · 仅保存配置，尚未联网测试</Text>
+                <Text style={styles.sourceItemStatus}>{source.enabled ? "已启用" : "已停用"} · 搜索和目录请求会使用此书源</Text>
               </View>
               <View style={styles.sourceItemActions}>
                 <Pressable onPress={() => setSources((current) => current.map((item) => item.id === source.id ? { ...item, enabled: !item.enabled } : item))} style={styles.sourceAction}>
