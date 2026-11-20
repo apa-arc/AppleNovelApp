@@ -133,6 +133,7 @@ export async function resumeOfflineKokoroModel(
 ): Promise<string> {
   const api = loadDownloadApi();
   const category = api.ModelCategory.Tts;
+  api.configureBackgroundDownloader({ showNotificationsEnabled: false });
   const options = {
     verifyChecksum: true,
     deleteArchiveAfterExtract: true,
