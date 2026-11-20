@@ -112,3 +112,17 @@ test("disabled sources cannot make requests", async () => {
     (error) => error instanceof SourceHttpError && error.code === "source-disabled"
   );
 });
+
+test("source config rejects unknown HTML rule groups", () => {
+  const { parseNovelSourceJson } = require("../.test-build/source.js");
+  const raw = {
+    name: "invalid HTML rules",
+    baseUrl: "https://mock-api.example.invalid",
+    searchUrl: "https://mock-api.example.invalid/search",
+    bookUrl: "https://mock-api.example.invalid/book",
+    chapterListUrl: "https://mock-api.example.invalid/chapters",
+    chapterUrl: "https://mock-api.example.invalid/chapter",
+    htmlRules: { executeJavaScript: { code: "return true" } },
+  };
+  assert.throws(() => parseNovelSourceJson(JSON.stringify(raw)), /不支持的规则组/);
+});
