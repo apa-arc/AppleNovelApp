@@ -4,6 +4,7 @@ export type ReaderTheme = "paper" | "green" | "gray" | "night";
 
 export type ReaderSettings = {
   speechCloudEndpoint: string;
+  speechEngineMode: "hybrid" | "offline" | "cloud";
   fontSize: number;
   theme: ReaderTheme;
   readingMode: "scroll" | "tap";
@@ -16,6 +17,7 @@ export type ReaderSettings = {
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   speechCloudEndpoint: "",
+  speechEngineMode: "hybrid",
   fontSize: 18,
   theme: "paper",
   readingMode: "scroll",
@@ -44,8 +46,10 @@ export function normalizeReaderSettings(value: unknown): ReaderSettings {
     : "paper";
   const rawSpeechEndpoint = typeof candidate.speechCloudEndpoint === "string" ? candidate.speechCloudEndpoint : "";
   const speechCloudEndpoint = normalizeCloudTtsEndpoint(rawSpeechEndpoint) || "";
+  const speechEngineMode = candidate.speechEngineMode === "offline" || candidate.speechEngineMode === "cloud" ? candidate.speechEngineMode : "hybrid";
   return {
     speechCloudEndpoint,
+    speechEngineMode,
     fontSize: bounded("fontSize", DEFAULT_READER_SETTINGS.fontSize, 14, 28),
     theme,
     readingMode: candidate.readingMode === "tap" ? "tap" : "scroll",
