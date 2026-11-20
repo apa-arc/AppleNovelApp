@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Speech from "expo-speech";
 import { NovelSource, parseNovelSourceJsonBatch } from "./src/source";
@@ -8,6 +8,7 @@ import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } fro
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
 import { compareChapterUpdates } from "./src/subscription";
 import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type ReaderSettings } from "./src/reader-settings";
+import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } from "./src/reading-progress";
 import {
   SafeAreaView,
   View,
@@ -38,6 +39,7 @@ type Book = {
   onlineChapters?: NovelChapter[];
   onlineChapterId?: string;
   onlineLastCheckedAt?: number;
+  readerParagraphIndex?: number;
 };
 
 const STORAGE_KEY = "@private_novel/books_v1";
@@ -118,6 +120,11 @@ export default function App() {
   const [showReaderSettings, setShowReaderSettings] = useState(false);
   const [readerFontSize, setReaderFontSize] = useState(DEFAULT_READER_SETTINGS.fontSize);
   const [readerTheme, setReaderTheme] = useState<"paper" | "night">(DEFAULT_READER_SETTINGS.theme);
+  const [readerParagraphIndex, setReaderParagraphIndex] = useState(0);
+  const [readerContentHeight, setReaderContentHeight] = useState(0);
+  const [readerViewportHeight, setReaderViewportHeight] = useState(0);
+  const readerScrollRef = useRef<ScrollView | null>(null);
+  const restoreReaderPositionRef = useRef(false);
   const [sources, setSources] = useState<NovelSource[]>([]);
   const [sourceDraft, setSourceDraft] = useState("");
   const [sourceMessage, setSourceMessage] = useState("");
@@ -195,6 +202,15 @@ export default function App() {
       Alert.alert("保存失败", "阅读设置暂时未能保存，请检查手机存储空间。");
     });
   }, [readerFontSize, readerTheme, isLoaded]);
+
+  useEffect(() => {
+    if (!restoreReaderPositionRef.current || readerContentHeight <= 0 || readerViewportHeight <= 0) return;
+    const text = onlineReading ? onlineChapterContent : (selectedBook?.description || "") + "\n\n" + (SAMPLE_CHAPTERS[chapterIndex]?.content || "");
+    const count = splitReadingText(text).length;
+    const maxOffset = Math.max(0, readerContentHeight - readerViewportHeight);
+    readerScrollRef.current?.scrollTo({ y: getReadingScrollOffset(readerParagraphIndex, count, maxOffset), animated: false });
+    restoreReaderPositionRef.current = false;
+  }, [readerContentHeight, readerViewportHeight, readerParagraphIndex, onlineReading, onlineChapterContent, chapterIndex, selectedBook?.id]);
 
   const importSource = () => {
     try {
@@ -422,6 +438,8 @@ export default function App() {
     try {
       const result = await fetchNovelChapterContent(source, chapter);
       setOnlineChapterIndex(chapter.index);
+      setReaderParagraphIndex(0);
+      restoreReaderPositionRef.current = true;
       setOnlineChapterContent(result.content);
       setOnlineChapterTitle(result.title || chapter.title);
       setOnlineReading(true);
@@ -436,6 +454,7 @@ export default function App() {
         color: "#E5E9DF",
         lastChapter: chapter.title,
         chapterIndex: chapter.index,
+        readerParagraphIndex: 0,
         onlineSourceId: source.id,
         onlineSourceName: source.name,
         onlineSummary: option.summary,
@@ -447,11 +466,13 @@ export default function App() {
         progress: Math.round(((chapter.index + 1) / Math.max(1, loadedChapters.length)) * 100),
         lastChapter: chapter.title,
         chapterIndex: chapter.index,
+        readerParagraphIndex: 0,
         onlineSourceId: source.id,
         onlineSourceName: source.name,
         onlineSummary: option.summary,
         onlineChapters: loadedChapters,
         onlineChapterId: chapter.id,
+        readerParagraphIndex: 0,
       })));
       setShowCatalog(false);
       setShowReaderSettings(false);
@@ -566,6 +587,9 @@ export default function App() {
       try {
         const result = await fetchNovelChapterContent(source, targetChapter);
         setOnlineChapterIndex(targetChapter.index);
+        const savedParagraph = refreshedBook?.onlineChapterId === targetChapter.id ? (refreshedBook.readerParagraphIndex ?? 0) : 0;
+        setReaderParagraphIndex(savedParagraph);
+        restoreReaderPositionRef.current = true;
         setOnlineChapterContent(result.content);
         setOnlineChapterTitle(result.title || targetChapter.title);
       } catch (error) {
@@ -581,6 +605,8 @@ export default function App() {
     setOnlineReading(false);
     setSelectedBook(book);
     setChapterIndex(Math.min(Math.max(book.chapterIndex ?? 0, 0), SAMPLE_CHAPTERS.length - 1));
+    setReaderParagraphIndex(Math.max(0, book.readerParagraphIndex ?? 0));
+    restoreReaderPositionRef.current = true;
     setShowCatalog(false);
     setShowReaderSettings(false);
   };
@@ -624,12 +650,15 @@ export default function App() {
   const saveReadingPosition = (bookId: string, nextChapterIndex: number) => {
     const safeIndex = Math.min(Math.max(nextChapterIndex, 0), SAMPLE_CHAPTERS.length - 1);
     setChapterIndex(safeIndex);
+    setReaderParagraphIndex(0);
+    restoreReaderPositionRef.current = true;
     setBooks((current) => current.map((book) => {
       if (book.id !== bookId) return book;
       return {
         ...book,
         chapterIndex: safeIndex,
-        progress: Math.max(book.progress, Math.round(((safeIndex + 1) / SAMPLE_CHAPTERS.length) * 100)),
+        readerParagraphIndex: 0,
+        progress: Math.round((safeIndex / SAMPLE_CHAPTERS.length) * 100),
         lastChapter: SAMPLE_CHAPTERS[safeIndex].title,
       };
     }));
@@ -754,6 +783,8 @@ export default function App() {
     const activeChapter = onlineReading ? { title: onlineChapterTitle, content: onlineChapterContent } : SAMPLE_CHAPTERS[chapterIndex];
     const activeChapterIndex = onlineReading ? onlineChapterIndex : chapterIndex;
     const activeChapterCount = onlineReading ? loadedChapters.length : SAMPLE_CHAPTERS.length;
+    const activeReadingText = onlineReading ? activeChapter.content : currentBook.description + "\n\n" + activeChapter.content;
+    const readingParagraphs = splitReadingText(activeReadingText);
     const readerBackground = readerTheme === "night" ? "#20231F" : "#F8F7F3";
     const readerTextColor = readerTheme === "night" ? "#E6E3D9" : "#45453D";
     return (
@@ -789,10 +820,35 @@ export default function App() {
             {!onlineReading && <Text style={[styles.catalogDisclaimer, readerTheme === "night" && styles.nightMuted]}>当前为内置演示目录。</Text>}
           </ScrollView>
         ) : (
-          <ScrollView contentContainerStyle={styles.readerContent}>
+          <ScrollView
+            ref={readerScrollRef}
+            contentContainerStyle={styles.readerContent}
+            scrollEventThrottle={250}
+            onLayout={(event) => setReaderViewportHeight(event.nativeEvent.layout.height)}
+            onContentSizeChange={(_width, height) => setReaderContentHeight(height)}
+            onScroll={(event) => {
+              if (restoreReaderPositionRef.current || loadingOnlineChapter || readingParagraphs.length === 0) return;
+              const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+              const nextIndex = getReadingParagraphIndex(contentOffset.y, Math.max(0, contentSize.height - layoutMeasurement.height), readingParagraphs.length);
+              if (nextIndex === readerParagraphIndex) return;
+              setReaderParagraphIndex(nextIndex);
+              const fraction = readingParagraphs.length > 1 ? nextIndex / (readingParagraphs.length - 1) : 0;
+              const percent = Math.min(100, Math.round(((activeChapterIndex + fraction) / Math.max(1, activeChapterCount)) * 100));
+              setBooks((current) => current.map((book) => book.id !== currentBook.id ? book : ({
+                ...book,
+                readerParagraphIndex: nextIndex,
+                chapterIndex: activeChapterIndex,
+                onlineChapterId: onlineReading ? loadedChapters[activeChapterIndex]?.id : book.onlineChapterId,
+                lastChapter: activeChapter.title,
+                progress: percent,
+              })));
+            }}
+          >
             <Text style={styles.chapterLabel}>{activeChapter.title}</Text>
             <Text style={[styles.readerTitle, readerTheme === "night" && styles.nightText]}>{currentBook.title}</Text>
-            {loadingOnlineChapter ? <ActivityIndicator size="large" color="#65745D" /> : <Text style={[styles.readerParagraph, { fontSize: readerFontSize, lineHeight: Math.round(readerFontSize * 1.9), color: readerTextColor }]}>{onlineReading ? activeChapter.content : currentBook.description + "\n\n" + activeChapter.content}</Text>}
+            {loadingOnlineChapter ? <ActivityIndicator size="large" color="#65745D" /> : readingParagraphs.map((paragraph, index) => (
+              <Text key={index} style={[styles.readerParagraph, { fontSize: readerFontSize, lineHeight: Math.round(readerFontSize * 1.9), color: readerTextColor, marginBottom: 22 }]}>{paragraph}</Text>
+            ))}
             <View style={styles.readerFooter}>
               <Text style={[styles.muted, readerTheme === "night" && styles.nightMuted]}>第 {activeChapterIndex + 1} / {activeChapterCount} 章</Text>
               <Text style={[styles.muted, readerTheme === "night" && styles.nightMuted]}>已读 {currentBook.progress}%</Text>
