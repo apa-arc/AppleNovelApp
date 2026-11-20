@@ -451,7 +451,7 @@ export default function App() {
         author: option.summary.author,
         description: option.summary.description,
         category: option.summary.category || "网络小说",
-        progress: Math.round(((chapter.index + 1) / Math.max(1, loadedChapters.length)) * 100),
+        progress: Math.round((chapter.index / Math.max(1, loadedChapters.length)) * 100),
         color: "#E5E9DF",
         lastChapter: chapter.title,
         chapterIndex: chapter.index,
