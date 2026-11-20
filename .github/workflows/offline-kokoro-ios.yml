@@ -6,6 +6,8 @@ on:
     paths:
       - "package.json"
       - "app.json"
+      - "plugins/**"
+      - "patches/**"
       - "App.tsx"
       - "src/reader-settings.ts"
       - "src/offline-kokoro-runtime.ts"
