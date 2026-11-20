@@ -1,7 +1,10 @@
 diff --git a/node_modules/react-native-sherpa-onnx/ios/SherpaOnnx.mm b/node_modules/react-native-sherpa-onnx/ios/SherpaOnnx.mm
 --- a/node_modules/react-native-sherpa-onnx/ios/SherpaOnnx.mm
 +++ b/node_modules/react-native-sherpa-onnx/ios/SherpaOnnx.mm
-@@ -10,13 +10,9 @@
+@@ -10,17 +10,13 @@
+ #import "SherpaOnnx.h"
+ #import "SherpaOnnx+Assets.h"
+ #import "sherpa-onnx-archive-helper.h"
  #import <React/RCTLog.h>
 +#import <React/RCTBridgeModule.h>
  #import <AVFoundation/AVFoundation.h>
