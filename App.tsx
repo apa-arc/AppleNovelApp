@@ -1319,7 +1319,7 @@ export default function App() {
               <View style={styles.historyInfo}>
                 <Text style={styles.bookTitle}>{entry.title}</Text>
                 <Text style={styles.bookAuthor}>{entry.author} · {entry.chapterTitle}</Text>
-                <View style={styles.progressTrack}><View style={[styles.progressFill, { width: entry.progress.toString() + "%" }]} /></View>
+                <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${entry.progress}%` as `${number}%` }]} /></View>
                 <Text style={styles.progressText}>已读 {entry.progress}% · {new Date(entry.updatedAt).toLocaleString()}</Text>
               </View>
               <Text style={styles.chevron}>›</Text>
