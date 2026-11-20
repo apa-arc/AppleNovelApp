@@ -1123,7 +1123,7 @@ export default function App() {
                     <Pressable key={voice.id} style={[styles.voiceOption, selected && styles.voiceOptionSelected, readerTheme === "night" && styles.nightVoiceOption]} onPress={() => setSpeechModelVoiceId(voice.id)}>
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>{voice.label}</Text>
-                        <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>Kokoro speaker ID · {voice.speakerId}</Text>
+                        <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>speaker ID · {voice.speakerId}</Text>
                       </View>
                       <Text style={styles.voiceSelected}>{selected ? "已选择" : "选择"}</Text>
                     </Pressable>
