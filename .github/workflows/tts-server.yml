@@ -22,5 +22,7 @@ jobs:
           python-version: "3.11"
       - name: Compile server modules
         run: python -m compileall -q server
+      - name: Validate model download shell script
+        run: sh -n server/download-model.sh
       - name: Run server unit tests
         run: python -m unittest server.tests.test_tts_core server.tests.test_auth
