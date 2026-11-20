@@ -308,6 +308,15 @@ export default function App() {
         } else if (active) {
           setSources([BUILTIN_MOCK_SOURCE]);
         }
+        const savedSubscriptionUrls = await AsyncStorage.getItem(SUBSCRIPTION_URLS_STORAGE_KEY);
+        if (savedSubscriptionUrls && active) {
+          const parsedUrls: unknown = JSON.parse(savedSubscriptionUrls);
+          if (parsedUrls && typeof parsedUrls === "object") {
+            const urls = parsedUrls as { normal?: unknown; adult?: unknown };
+            if (typeof urls.normal === "string") setNormalSubscriptionUrl(urls.normal);
+            if (typeof urls.adult === "string") setAdultSubscriptionUrl(urls.adult);
+          }
+        }
         const savedHistory = await AsyncStorage.getItem(READING_HISTORY_STORAGE_KEY);
         if (savedHistory && active) setReadingHistory(normalizeReadingHistory(JSON.parse(savedHistory)));
         const savedReaderSettings = await AsyncStorage.getItem(READER_SETTINGS_STORAGE_KEY);
@@ -341,6 +350,13 @@ export default function App() {
       Alert.alert("保存失败", "书架进度暂时未能保存，请检查手机存储空间。");
     });
   }, [books, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem(SUBSCRIPTION_URLS_STORAGE_KEY, JSON.stringify({ normal: normalSubscriptionUrl, adult: adultSubscriptionUrl })).catch(() => {
+      setSubscriptionUrlMessage("订阅地址保存失败，请稍后重试。");
+    });
+  }, [normalSubscriptionUrl, adultSubscriptionUrl, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
