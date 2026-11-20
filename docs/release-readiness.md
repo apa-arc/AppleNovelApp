@@ -8,6 +8,7 @@
 - [x] 书架、阅读记录、阅读设置和数据模型单元测试
 - [x] 书源安全 HTTP 边界测试
 - [x] JSON 搜索、详情、目录、正文解析单元测试
+- [x] CSS HTML 选择器解析和四阶段模拟联调测试
 - [x] 模拟 JSON 书源四接口端到端测试
 - [x] 普通/成人订阅独立构建和格式校验
 - [x] 书源许可、质量报告和真实宿主验证门禁
@@ -28,7 +29,8 @@
 
 ## 当前功能边界
 
-- App 当前在线书源运行时支持受限 HTTPS JSON 接口；不执行上游 JavaScript。
+- App 在线书源运行时支持受限 HTTPS JSON 接口和声明式 CSS HTML 规则；不执行上游 JavaScript。
+- CSS 选择器引擎已支持常见标签、ID、class、属性、后代/子代关系、first/last/nth-child。复杂 XPath、正则替换、JavaScript 规则仍未支持。
 - 目前尚无通用 HTML/CSS/XPath 解析器，因此 Legado 选择器脚本不能直接运行。
 - 云端 Kokoro TTS 服务端代码、App HTTPS 客户端和 WAV 播放队列已接入；设备授权凭据通过 iOS SecureStore 保存，服务端支持撤销。需部署服务端并在 App「声音」设置填写 HTTPS 地址、管理员绑定码后才可实际联网朗读。
 - 后台/锁屏音频配置已加入 Expo 项目，但必须经 EAS 原生构建后才能验证。
