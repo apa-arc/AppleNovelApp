@@ -133,6 +133,7 @@ export default function App() {
   const [onlineChapterTitle, setOnlineChapterTitle] = useState("");
   const [loadingOnlineChapter, setLoadingOnlineChapter] = useState(false);
   const [rankingChapterCounts, setRankingChapterCounts] = useState(false);
+  const [openedFromShelf, setOpenedFromShelf] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -369,6 +370,7 @@ export default function App() {
       return;
     }
     stopSpeech();
+    setOpenedFromShelf(false);
     setLoadingOnlineChapter(true);
     setCatalogMessage("");
     try {
@@ -421,6 +423,7 @@ export default function App() {
 
   const openBook = (book: Book) => {
     stopSpeech();
+    setOpenedFromShelf(true);
     if (book.onlineSourceId && book.onlineSummary && book.onlineChapters?.length) {
       const source = sources.find((item) => item.id === book.onlineSourceId && item.enabled);
       if (!source) {
@@ -470,6 +473,15 @@ export default function App() {
     setOnlineReading(false);
     setShowCatalog(false);
     setShowReaderSettings(false);
+    if (openedFromShelf) {
+      setSelectedSearchNovel(null);
+      setSelectedSourceId(null);
+      setLoadedNovelDetail(null);
+      setLoadedChapters([]);
+      setCatalogMessage("");
+      setTab("书架");
+    }
+    setOpenedFromShelf(false);
   };
 
   const speakCurrentBook = () => {
