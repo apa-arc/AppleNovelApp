@@ -28,6 +28,8 @@ export async function requestCloudSpeech(
     response = await fetcher(baseUrl + "/v1/audio/speech", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "audio/wav", Authorization: "Bearer " + deviceToken },
+      credentials: "omit",
+      redirect: "error",
       body: JSON.stringify({
         model: voice.modelId,
         speaker_id: voice.speakerId,
@@ -74,7 +76,7 @@ export async function checkCloudTtsServer(
   if (!baseUrl) throw new Error("AI 语音服务器地址必须是有效的 HTTPS 地址。");
   let response: Response;
   try {
-    response = await fetcher(baseUrl + "/health", { method: "GET", headers: { Accept: "application/json" } });
+    response = await fetcher(baseUrl + "/health", { method: "GET", headers: { Accept: "application/json" }, credentials: "omit", redirect: "error" });
   } catch {
     throw new Error("无法连接 AI 语音服务器，请检查网络或服务器地址。");
   }
@@ -105,6 +107,8 @@ export async function enrollCloudSpeechDevice(
     response = await fetcher(baseUrl + "/v1/devices/enroll", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: "omit",
+      redirect: "error",
       body: JSON.stringify({ enrollment_code: enrollmentCode.trim() }),
     });
   } catch {
@@ -132,6 +136,8 @@ export async function revokeCloudSpeechDevice(
   const response = await fetcher(baseUrl + "/v1/devices/revoke", {
     method: "POST",
     headers: { Authorization: "Bearer " + deviceToken, Accept: "application/json" },
+    credentials: "omit",
+    redirect: "error",
   });
   if (!response.ok) throw new Error("设备解绑失败（" + response.status + "）。");
 }
