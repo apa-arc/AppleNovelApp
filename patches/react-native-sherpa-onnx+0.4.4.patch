@@ -1,7 +1,8 @@
 diff --git a/node_modules/react-native-sherpa-onnx/ios/SherpaOnnx.mm b/node_modules/react-native-sherpa-onnx/ios/SherpaOnnx.mm
+index 0000000..1111111 100644
 --- a/node_modules/react-native-sherpa-onnx/ios/SherpaOnnx.mm
 +++ b/node_modules/react-native-sherpa-onnx/ios/SherpaOnnx.mm
-@@ -10,17 +10,13 @@
+@@ -10,17 +10,14 @@
  #import "SherpaOnnx.h"
  #import "SherpaOnnx+Assets.h"
  #import "sherpa-onnx-archive-helper.h"
