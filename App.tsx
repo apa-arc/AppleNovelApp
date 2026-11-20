@@ -1419,6 +1419,10 @@ export default function App() {
             <View style={{ marginBottom: 12 }}>
               <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>选择 Kokoro 音色 · 103 种</Text>
               <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 4, marginBottom: 8 }]}>当前选择：{SPEECH_VOICES.find((voice) => voice.id === speechModelVoiceId)?.label || "声音 01"}。点击每个音色右侧的「试听」即可用在线 Kokoro AI 听效果。</Text>
+              {isSpeaking && <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+                <Pressable style={styles.fontButton} onPress={speechPaused ? resumeSpeech : pauseSpeech}><Text style={styles.fontButtonText}>{speechPaused ? "继续播放" : "暂停播放"}</Text></Pressable>
+                <Pressable style={styles.fontButton} onPress={stopSpeech}><Text style={styles.fontButtonText}>停止</Text></Pressable>
+              </View>}
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
                 {(["全部", "中文女声", "中文男声", "英语女声"] as const).map((category) => (
                   <Pressable key={category} style={[styles.themeButton, speechVoiceCategoryFilter === category && styles.modeButtonActive]} onPress={() => setSpeechVoiceCategoryFilter(category)}>
