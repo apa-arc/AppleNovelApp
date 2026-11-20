@@ -1715,8 +1715,8 @@ export default function App() {
             <Text style={styles.settingValue}>已启用</Text>
           </View>
           <View style={styles.settingRow}>
-            <Text style={styles.settingText}>系统语音朗读</Text>
-            <Text style={styles.settingValue}>已启用</Text>
+            <Text style={styles.settingText}>Kokoro AI 朗读</Text>
+            <Text style={styles.settingValue}>{speechDeviceToken && speechDeviceTokenEndpoint === normalizeCloudTtsEndpoint(speechCloudEndpoint) ? "设备已绑定" : "待配置服务"}</Text>
           </View>
           <Pressable style={styles.settingRow} onPress={() => Alert.alert("私人小说", "当前版本为开发预览版，书源和章节功能正在建设中。")}>
             <Text style={styles.settingText}>关于私人小说</Text>
