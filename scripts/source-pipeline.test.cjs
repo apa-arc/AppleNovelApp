@@ -14,7 +14,7 @@ const source = parseNovelSourceJson(JSON.stringify({
   baseUrl: base,
   searchUrl: base + "/api/search?q={keyword}",
   bookUrl: base + "/api/book/{bookId}",
-  chapterListUrl: base + "/api/book/{bookId}/chapters",
+  chapterListUrl: base + "/api/chapters?bookUrl={bookUrl}",
   chapterUrl: base + "/api/chapter/{chapterId}",
 }));
 source.id = "pipeline-mock";
@@ -52,7 +52,7 @@ function createFetch() {
     if (parsed.pathname === "/api/book/book-1") {
       return response(String(url), { data: { title: "星海来信", author: "书源测试组", intro: "详情简介", status: "completed" } });
     }
-    if (parsed.pathname === "/api/book/book-1/chapters") {
+    if (parsed.pathname === "/api/chapters" && parsed.searchParams.get("bookUrl") === book.bookUrl) {
       return response(String(url), { chapters: [
         { title: "第一章 漂流瓶", url: "/api/chapter/ch-1" },
         { title: "第二章 蓝色星球", url: "/api/chapter/ch-2" },
