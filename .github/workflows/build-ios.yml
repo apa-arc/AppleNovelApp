@@ -29,10 +29,15 @@ jobs:
       - name: Build iOS app with EAS
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
           BUILD_PROFILE: ${{ inputs.profile }}
         run: |
           if [ -z "$EXPO_TOKEN" ]; then
             echo "::error::Missing EXPO_TOKEN GitHub repository secret. Add an Expo access token before running this workflow."
+            exit 1
+          fi
+          if [ -z "$EAS_PROJECT_ID" ]; then
+            echo "::error::Missing EAS_PROJECT_ID GitHub repository variable. Create/link the Expo project and add its ID before building."
             exit 1
           fi
           npx eas-cli build --platform ios --profile "$BUILD_PROFILE" --non-interactive --wait
