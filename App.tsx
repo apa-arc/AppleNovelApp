@@ -251,7 +251,7 @@ export default function App() {
                 <Text style={styles.bookAuthor}>{book.author} · {book.category}</Text>
                 <Text style={styles.bookDescription} numberOfLines={2}>{book.description}</Text>
                 <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: book.progress + "%" }]} />
+                  <View style={[styles.progressFill, { width: `${book.progress}%` as `${number}%` }]} />
                 </View>
                 <Text style={styles.progressText}>{book.progress > 0 ? "已读 " + book.progress + "%" : "尚未开始"}</Text>
               </View>
