@@ -41,6 +41,7 @@ def load_tts():
                 voices=assets["voices"],
                 tokens=assets["tokens"],
                 data_dir=assets["data_dir"],
+                dict_dir=assets["dict_dir"],
                 lexicon=assets["lexicon"],
             ),
             num_threads=NUM_THREADS,
