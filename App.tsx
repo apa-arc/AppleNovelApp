@@ -1104,10 +1104,16 @@ export default function App() {
         )}
         {showSpeechSettings && !showCatalog && (
           <View style={[styles.readerSettings, styles.speechSettings, readerTheme === "night" && styles.nightCard]}>
+            <View style={[styles.voiceOption, readerTheme === "night" && styles.nightVoiceOption, { flexDirection: "column", alignItems: "flex-start", marginBottom: 10 }]}>
+              <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>AI 朗读模型 · Kokoro 中文多音色</Text>
+              <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>103 种音色 · 离线模型约 147 MB · 中文 / 英文</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>模型下载入口正在接入。以后只有你主动选择并确认后才会下载；一个模型包包含全部音色，下载后可自由切换。</Text>
+              <Text style={[styles.voiceSelected, { marginTop: 6 }]}>当前状态：模型尚未下载，AI 朗读尚未启用</Text>
+            </View>
             <View style={styles.speechHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>朗读声音</Text>
-                <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>使用 iPhone 已安装的系统语音；可在系统设置中下载更多声音。</Text>
+                <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>系统语音（临时兼容）</Text>
+                <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>下面的声音仍来自 iPhone 系统，仅用于当前演示；不是 Kokoro AI 音色。</Text>
               </View>
               <Pressable style={styles.fontButton} onPress={() => { void loadAvailableSpeechVoices(true); }}>
                 <Text style={styles.fontButtonText}>{loadingSpeechVoices ? "读取中" : "刷新"}</Text>
