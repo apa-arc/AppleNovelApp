@@ -4,7 +4,7 @@ const { DEFAULT_READER_SETTINGS, normalizeReaderSettings } = require("../.test-b
 
 test("reader settings use stable defaults", () => {
   assert.deepEqual(DEFAULT_READER_SETTINGS, {
-    fontSize: 18, theme: "paper", readingMode: "scroll", lineSpacing: 1.9, paragraphSpacing: 22, horizontalPadding: 27, speechVoiceIdentifier: null, speechRate: 0.95, speechPitch: 1,
+    fontSize: 18, theme: "paper", readingMode: "scroll", lineSpacing: 1.9, paragraphSpacing: 22, horizontalPadding: 27, speechVoiceIdentifier: null, speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-0", speechRate: 0.95, speechPitch: 1,
   });
 });
 
@@ -37,6 +37,7 @@ test("older saved preferences remain compatible with new layout options", () => 
   assert.equal(normalized.paragraphSpacing, DEFAULT_READER_SETTINGS.paragraphSpacing);
   assert.equal(normalized.horizontalPadding, DEFAULT_READER_SETTINGS.horizontalPadding);
   assert.equal(normalized.speechVoiceIdentifier, null);
+  assert.equal(normalized.speechModelVoiceId, DEFAULT_READER_SETTINGS.speechModelVoiceId);
   assert.equal(normalized.speechRate, DEFAULT_READER_SETTINGS.speechRate);
   assert.equal(normalized.speechPitch, DEFAULT_READER_SETTINGS.speechPitch);
 });
@@ -48,4 +49,12 @@ test("speech voice and sound controls are persisted and bounded", () => {
   const bounded = normalizeReaderSettings({ speechRate: 9, speechPitch: 0.1 });
   assert.equal(bounded.speechRate, 2);
   assert.equal(bounded.speechPitch, 0.5);
+});
+
+
+test("Kokoro speaker selection is persisted and rejects unknown speaker IDs", () => {
+  const selected = normalizeReaderSettings({ speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-72" });
+  assert.equal(selected.speechModelVoiceId, "kokoro-multi-lang-v1_1:speaker-72");
+  assert.equal(normalizeReaderSettings({ speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-103" }).speechModelVoiceId, DEFAULT_READER_SETTINGS.speechModelVoiceId);
+  assert.equal(normalizeReaderSettings({ speechModelVoiceId: "other-model:speaker-1" }).speechModelVoiceId, DEFAULT_READER_SETTINGS.speechModelVoiceId);
 });
