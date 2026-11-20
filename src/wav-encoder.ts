@@ -1,4 +1,4 @@
-export function encodePcm16Wav(samples: number[], sampleRate: number): Uint8Array {
+export function encodePcm16Wav(samples: ArrayLike<number>, sampleRate: number): Uint8Array {
   if (!Number.isFinite(sampleRate) || sampleRate <= 0 || samples.length === 0) {
     throw new Error("Kokoro 返回的音频数据无效。");
   }
