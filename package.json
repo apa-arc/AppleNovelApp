@@ -57,6 +57,8 @@
   },
   "overrides": {
     "@babel/parser": "7.29.14",
-    "@babel/plugin-transform-block-scoping": "7.29.14"
+    "@babel/plugin-transform-block-scoping": "7.29.14",
+    "@babel/core": "7.29.14",
+    "@babel/preset-env": "7.29.14"
   }
 }
