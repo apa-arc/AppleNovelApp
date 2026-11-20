@@ -1123,7 +1123,7 @@ export default function App() {
                   <Pressable key={voice.identifier} style={[styles.voiceOption, selected && styles.voiceOptionSelected, readerTheme === "night" && styles.nightVoiceOption]} onPress={() => { setSpeechVoiceIdentifier(voice.identifier); Speech.stop(); }}>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>{voice.name}</Text>
-                      <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>{voice.language} · {voice.quality === "Enhanced" ? "增强音质" : voice.quality === "Premium" ? "高级音质" : "标准音质"}</Text>
+                      <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>{voice.language} · {String(voice.quality).toLowerCase().includes("enhanced") ? "增强音质" : "标准音质"}</Text>
                     </View>
                     <Text style={styles.voiceSelected}>{selected ? "已选择" : "选择"}</Text>
                   </Pressable>
