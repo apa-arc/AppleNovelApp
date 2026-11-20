@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Speech from "expo-speech";
+import { NovelSource, parseNovelSourceJson } from "./src/source";
 import {
   SafeAreaView,
   View,
@@ -28,6 +29,15 @@ type Book = {
 };
 
 const STORAGE_KEY = "@private_novel/books_v1";
+const SOURCES_STORAGE_KEY = "@private_novel/sources_v1";
+const SOURCE_EXAMPLE = `{
+  "name": "我的书源",
+  "baseUrl": "https://example.com",
+  "searchUrl": "https://example.com/search",
+  "bookUrl": "https://example.com/book",
+  "chapterListUrl": "https://example.com/chapters",
+  "chapterUrl": "https://example.com/chapter"
+}`;
 type Chapter = { title: string; content: string };
 const SAMPLE_CHAPTERS: Chapter[] = [
   { title: "第一章 · 故事的开始", content: "清晨的光从窗边慢慢铺开，新的旅程也在这一刻开始。\n\n这是用于测试阅读器的演示章节。正式接入书源后，这里会显示所选小说的真实章节正文。\n\n阅读器会记录你读到的章节，方便下次从上次的位置继续。\n\n请注意：当前内容仅为应用内置演示文本，并非真实小说正文。" },
@@ -89,6 +99,9 @@ export default function App() {
   const [showReaderSettings, setShowReaderSettings] = useState(false);
   const [readerFontSize, setReaderFontSize] = useState(18);
   const [readerTheme, setReaderTheme] = useState<"paper" | "night">("paper");
+  const [sources, setSources] = useState<NovelSource[]>([]);
+  const [sourceDraft, setSourceDraft] = useState("");
+  const [sourceMessage, setSourceMessage] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -98,6 +111,11 @@ export default function App() {
         if (saved && active) {
           const parsed: unknown = JSON.parse(saved);
           if (Array.isArray(parsed)) setBooks(parsed as Book[]);
+        }
+        const savedSources = await AsyncStorage.getItem(SOURCES_STORAGE_KEY);
+        if (savedSources && active) {
+          const parsedSources: unknown = JSON.parse(savedSources);
+          if (Array.isArray(parsedSources)) setSources(parsedSources as NovelSource[]);
         }
       } catch {
         Alert.alert("读取失败", "本地书架数据暂时无法读取，已使用默认书架。");
@@ -118,6 +136,28 @@ export default function App() {
       Alert.alert("保存失败", "书架进度暂时未能保存，请检查手机存储空间。");
     });
   }, [books, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem(SOURCES_STORAGE_KEY, JSON.stringify(sources)).catch(() => {
+      Alert.alert("保存失败", "书源列表暂时未能保存，请检查手机存储空间。");
+    });
+  }, [sources, isLoaded]);
+
+  const importSource = () => {
+    try {
+      const parsed = parseNovelSourceJson(sourceDraft);
+      if (sources.some((item) => item.name.toLowerCase() === parsed.name.toLowerCase() || item.baseUrl === parsed.baseUrl)) {
+        setSourceMessage("导入失败：相同名称或网址的书源已经存在。");
+        return;
+      }
+      setSources((current) => [...current, { ...parsed, id: String(Date.now()), enabled: true, importedAt: Date.now() }]);
+      setSourceDraft("");
+      setSourceMessage("书源导入成功，已默认启用。");
+    } catch (error) {
+      setSourceMessage(error instanceof Error ? error.message : "书源校验失败。");
+    }
+  };
 
   const filteredBooks = useMemo(
     () => books.filter((book) =>
@@ -345,12 +385,44 @@ export default function App() {
           <View style={styles.welcomeCard}>
             <Text style={styles.welcomeEyebrow}>SOURCES</Text>
             <Text style={styles.welcomeTitle}>管理你的阅读来源。</Text>
-            <Text style={styles.welcomeSub}>计划支持导入 GitHub JSON 书源。</Text>
+            <Text style={styles.welcomeSub}>导入 JSON 配置，书源保存在本机。</Text>
           </View>
           <View style={styles.sourceCard}>
-            <Text style={styles.sourceTitle}>书源功能开发中</Text>
-            <Text style={styles.note}>下一阶段会实现订阅地址、导入校验、启用/禁用和更新状态。</Text>
+            <Text style={styles.sourceTitle}>导入 JSON 书源</Text>
+            <Text style={styles.note}>粘贴书源配置后导入。当前版本先完成格式校验和本地管理，尚未请求网站或解析小说内容。</Text>
+            <Pressable style={styles.exampleButton} onPress={() => { setSourceDraft(SOURCE_EXAMPLE); setSourceMessage("已填入示例模板，请替换为你有权访问的网站地址。"); }}>
+              <Text style={styles.exampleButtonText}>填入 JSON 示例</Text>
+            </Pressable>
+            <TextInput value={sourceDraft} onChangeText={(value) => { setSourceDraft(value); setSourceMessage(""); }} placeholder="在这里粘贴 JSON 书源配置…" placeholderTextColor="#A39F94" multiline autoCapitalize="none" style={styles.sourceInput} textAlignVertical="top" />
+            <Pressable style={[styles.importButton, !sourceDraft.trim() && styles.importButtonDisabled]} disabled={!sourceDraft.trim()} onPress={importSource}>
+              <Text style={styles.importButtonText}>校验并导入</Text>
+            </Pressable>
+            {!!sourceMessage && <Text style={styles.sourceMessage}>{sourceMessage}</Text>}
           </View>
+          <View style={styles.sourceListHeading}>
+            <Text style={styles.sectionTitle}>已导入书源</Text>
+            <Text style={styles.sectionMeta}>{sources.filter((item) => item.enabled).length} / {sources.length} 个启用</Text>
+          </View>
+          {sources.length === 0 ? (
+            <Text style={styles.emptyText}>还没有书源。你可以先用上方示例了解格式。</Text>
+          ) : sources.map((source) => (
+            <View key={source.id} style={styles.sourceItem}>
+              <View style={styles.sourceItemInfo}>
+                <Text style={styles.sourceItemTitle}>{source.name}</Text>
+                <Text style={styles.sourceItemUrl} numberOfLines={1}>{source.baseUrl}</Text>
+                <Text style={styles.sourceItemStatus}>{source.enabled ? "已启用" : "已停用"} · 仅保存配置，尚未联网测试</Text>
+              </View>
+              <View style={styles.sourceItemActions}>
+                <Pressable onPress={() => setSources((current) => current.map((item) => item.id === source.id ? { ...item, enabled: !item.enabled } : item))} style={styles.sourceAction}>
+                  <Text style={styles.sourceActionText}>{source.enabled ? "停用" : "启用"}</Text>
+                </Pressable>
+                <Pressable onPress={() => Alert.alert("删除书源", "确定删除「" + source.name + "」吗？", [{ text: "取消", style: "cancel" }, { text: "删除", style: "destructive", onPress: () => setSources((current) => current.filter((item) => item.id !== source.id)) }])} style={styles.sourceAction}>
+                  <Text style={styles.sourceDeleteText}>删除</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+          <Text style={styles.note}>安全提示：只导入你有权使用的书源。当前仅接受 HTTPS 公网地址，不支持本机/局域网地址；不会执行书源附带的脚本。</Text>
         </ScrollView>
       )}
 
@@ -428,6 +500,23 @@ const styles = StyleSheet.create({
   note: { color: "#918D82", fontSize: 12, lineHeight: 19, marginTop: 12 },
   sourceCard: { backgroundColor: "#FFFFFF", borderRadius: 18, padding: 20, borderWidth: 1, borderColor: "#EEECE5" },
   sourceTitle: { color: "#33352D", fontSize: 16, fontWeight: "800" },
+  sourceInput: { minHeight: 170, backgroundColor: "#F8F7F3", borderRadius: 12, borderWidth: 1, borderColor: "#EEECE5", padding: 12, marginTop: 14, color: "#33352D", fontSize: 12, fontFamily: "monospace" },
+  exampleButton: { alignSelf: "flex-start", marginTop: 14, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: "#EEF0E9" },
+  exampleButtonText: { color: "#65745D", fontSize: 12, fontWeight: "700" },
+  importButton: { alignItems: "center", backgroundColor: "#65745D", borderRadius: 12, paddingVertical: 13, marginTop: 12 },
+  importButtonDisabled: { opacity: 0.45 },
+  importButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
+  sourceMessage: { color: "#65745D", fontSize: 12, lineHeight: 18, marginTop: 10 },
+  sourceListHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 24 },
+  sourceItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 15, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: "#EEECE5" },
+  sourceItemInfo: { flex: 1, paddingRight: 8 },
+  sourceItemTitle: { color: "#33352D", fontSize: 14, fontWeight: "800" },
+  sourceItemUrl: { color: "#8D897F", fontSize: 10, marginTop: 5 },
+  sourceItemStatus: { color: "#8D987F", fontSize: 10, marginTop: 5 },
+  sourceItemActions: { alignItems: "flex-end", gap: 9 },
+  sourceAction: { paddingVertical: 5, paddingHorizontal: 9, backgroundColor: "#EEF0E9", borderRadius: 8 },
+  sourceActionText: { color: "#65745D", fontSize: 11, fontWeight: "700" },
+  sourceDeleteText: { color: "#A66D62", fontSize: 11, fontWeight: "700" },
   profileCard: { alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 20, padding: 25, marginBottom: 16 },
   avatarLarge: { width: 68, height: 68, borderRadius: 34, backgroundColor: "#E9E5DA", alignItems: "center", justifyContent: "center" },
   avatarLargeText: { color: "#6F695B", fontSize: 25, fontWeight: "800" },
