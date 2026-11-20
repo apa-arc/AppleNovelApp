@@ -977,7 +977,7 @@ export default function App() {
     }
     const endpoint = normalizeCloudTtsEndpoint(speechCloudEndpoint);
     if (!speechDeviceToken) {
-      Alert.alert("需要先绑定设备", "请在「声音」设置中输入服务器管理员提供的一次性绑定码，绑定本设备后才能使用 AI 朗读。");
+      Alert.alert("需要先绑定设备", "请在「声音」设置中输入服务器管理员提供的服务器管理员绑定码，绑定本设备后才能使用 AI 朗读。");
       setShowSpeechSettings(true);
       return;
     }
@@ -1337,7 +1337,7 @@ export default function App() {
                 </View>
               ) : (
                 <>
-                  <TextInput value={speechEnrollmentCode} onChangeText={setSpeechEnrollmentCode} placeholder="输入服务器管理员提供的一次性绑定码" placeholderTextColor="#A39F94" secureTextEntry autoCapitalize="none" autoCorrect={false} style={[styles.searchInput, { width: "100%", marginTop: 7 }]} />
+                  <TextInput value={speechEnrollmentCode} onChangeText={setSpeechEnrollmentCode} placeholder="输入服务器管理员提供的服务器管理员绑定码" placeholderTextColor="#A39F94" secureTextEntry autoCapitalize="none" autoCorrect={false} style={[styles.searchInput, { width: "100%", marginTop: 7 }]} />
                   <Pressable onPress={() => void bindSpeechDevice()} disabled={bindingSpeechDevice || !speechCloudEndpoint.trim() || speechEnrollmentCode.trim().length < 8} style={[styles.catalogLoadButton, (bindingSpeechDevice || !speechCloudEndpoint.trim() || speechEnrollmentCode.trim().length < 8) && styles.importButtonDisabled]}>
                     {bindingSpeechDevice ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>绑定此设备</Text>}
                   </Pressable>
