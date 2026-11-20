@@ -49,7 +49,7 @@ module.exports = function withSherpaOnnxBackgroundDownloader(config) {
   config = withAppDelegate(config, (config) => {
     if (config.modResults.language === "swift") {
       config.modResults.contents = addSwiftBackgroundSessionSupport(config.modResults.contents);
-      addBridgingHeaderImport(config.modRequest.projectRoot, config.modRequest.projectName || "App");
+      addBridgingHeaderImport(config.modRequest.projectRoot, config.modRequest.projectName || "AppleNovelApp");
     } else {
       let contents = config.modResults.contents;
       if (!contents.includes("#import <RNBackgroundDownloader.h>")) {
@@ -78,7 +78,7 @@ module.exports = function withSherpaOnnxBackgroundDownloader(config) {
     const iosRoot = config.modRequest.platformProjectRoot;
     const sourceRoot = IOSConfig.Paths.getSourceRoot(config.modRequest.projectRoot);
     const headerPath = path.join(sourceRoot, `${projectName}-Bridging-Header.h`);
-    const relativeHeaderPath = path.relative(iosRoot, headerPath).replace(/\\\\/g, "/");
+    const relativeHeaderPath = path.relative(iosRoot, headerPath).split(path.sep).join("/");
     const targets = project.pbxNativeTargetSection();
     const appTarget = Object.values(targets).find((target) =>
       target && target.isa === "PBXNativeTarget" && target.name === projectName
