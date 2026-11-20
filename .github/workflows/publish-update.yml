@@ -1,0 +1,42 @@
+name: Publish OTA update
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Update channel
+        required: true
+        default: production
+        type: choice
+        options:
+          - preview
+          - production
+      message:
+        description: Update notes
+        required: true
+        default: Bug fixes and improvements
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install
+      - name: Publish Expo Update
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          UPDATE_CHANNEL: ${{ inputs.channel }}
+          UPDATE_MESSAGE: ${{ inputs.message }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "Missing EXPO_TOKEN repository secret."
+            exit 1
+          fi
+          npx eas-cli update --channel "$UPDATE_CHANNEL" --message "$UPDATE_MESSAGE" --non-interactive
