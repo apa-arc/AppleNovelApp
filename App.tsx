@@ -123,7 +123,7 @@ export default function App() {
   const [onlineChapterContent, setOnlineChapterContent] = useState("");
   const [onlineChapterTitle, setOnlineChapterTitle] = useState("");
   const [loadingOnlineChapter, setLoadingOnlineChapter] = useState(false);
-  const [sourceSortMode, setSourceSortMode] = useState<"fastest" | "chapters">("fastest");
+  const [sourceSortMode, setSourceSortMode] = useState<"combined">("combined");
   const [rankingChapterCounts, setRankingChapterCounts] = useState(false);
 
   useEffect(() => {
@@ -261,26 +261,33 @@ export default function App() {
         return { ...option, chapterCount: null };
       }
     }));
+    const valid = ranked.filter((item) => item.chapterCount !== null && item.chapterCount !== undefined);
+    const speedOrder = [...ranked].sort((a, b) => a.latencyMs - b.latencyMs);
+    const chapterOrder = [...valid].sort((a, b) => (b.chapterCount ?? 0) - (a.chapterCount ?? 0));
+    const speedRanks = new Map(speedOrder.map((item, index) => [item.summary.sourceId, index]));
+    const chapterRanks = new Map(chapterOrder.map((item, index) => [item.summary.sourceId, index]));
     const sorted = ranked.sort((a, b) => {
-      if (a.chapterCount === null || a.chapterCount === undefined) return 1;
-      if (b.chapterCount === null || b.chapterCount === undefined) return -1;
-      return b.chapterCount - a.chapterCount || a.latencyMs - b.latencyMs;
+      const ar = chapterRanks.get(a.summary.sourceId);
+      const br = chapterRanks.get(b.summary.sourceId);
+      if (ar === undefined) return 1;
+      if (br === undefined) return -1;
+      const as = (speedRanks.get(a.summary.sourceId) ?? ranked.length) + ar;
+      const bs = (speedRanks.get(b.summary.sourceId) ?? ranked.length) + br;
+      return as - bs || a.latencyMs - b.latencyMs;
     });
     setSelectedSearchNovel({ ...selectedSearchNovel, sources: sorted });
-    setSourceSortMode("chapters");
     if (sorted[0]?.chapterCount !== null && sorted[0]?.chapterCount !== undefined) {
       setSelectedSourceId(sorted[0].summary.sourceId);
       setLoadedNovelDetail(null);
       setLoadedChapters([]);
     }
-    setCatalogMessage("目录统计完成。章节最多的书源已排在第一位；无法读取目录的来源排在后面。");
+    setCatalogMessage("综合排序完成：同时考虑响应速度和章节数量，两项排名相加后分数越低越靠前；无法读取目录的来源排在后面。");
     setRankingChapterCounts(false);
   };
 
   const closeSearchNovel = () => {
     setSelectedSearchNovel(null);
     setSelectedSourceId(null);
-    setSourceSortMode("fastest");
     setLoadedNovelDetail(null);
     setLoadedChapters([]);
     setCatalogMessage("");
@@ -442,13 +449,8 @@ export default function App() {
 
   if (selectedSearchNovel && !selectedBook) {
     const sortedSources = [...selectedSearchNovel.sources].sort((a, b) => {
-      if (sourceSortMode === "chapters") {
-        const ac = a.chapterCount;
-        const bc = b.chapterCount;
-        if (ac === null || ac === undefined) return 1;
-        if (bc === null || bc === undefined) return -1;
-        return bc - ac || a.latencyMs - b.latencyMs;
-      }
+      if (a.chapterCount === null || a.chapterCount === undefined) return 1;
+      if (b.chapterCount === null || b.chapterCount === undefined) return -1;
       return a.latencyMs - b.latencyMs;
     });
     const recommended = sortedSources[0];
@@ -472,17 +474,12 @@ export default function App() {
           </View>
           <View style={styles.detailSection}>
             <Text style={styles.sectionTitle}>选择阅读源</Text>
-            <Text style={styles.note}>可按响应速度或目录章节数量排序。速度取本次搜索耗时；章节数量需读取各书源目录后统计。</Text>
-            <View style={styles.sourceSortRow}>
-              <Pressable onPress={() => setSourceSortMode("fastest")} style={[styles.sourceSortButton, sourceSortMode === "fastest" && styles.sourceSortButtonActive]}>
-                <Text style={[styles.sourceSortText, sourceSortMode === "fastest" && styles.sourceSortTextActive]}>速度最快</Text>
-              </Pressable>
-              <Pressable onPress={rankSourcesByChapterCount} disabled={rankingChapterCounts} style={[styles.sourceSortButton, sourceSortMode === "chapters" && styles.sourceSortButtonActive, rankingChapterCounts && styles.importButtonDisabled]}>
-                {rankingChapterCounts ? <ActivityIndicator size="small" color="#65745D" /> : <Text style={[styles.sourceSortText, sourceSortMode === "chapters" && styles.sourceSortTextActive]}>章节最多</Text>}
-              </Pressable>
-            </View>
+            <Text style={styles.note}>综合推荐同时考虑搜索响应速度和目录章节数量。点击下方按钮统计各源目录并生成综合排名。</Text>
+            <Pressable onPress={rankSourcesByChapterCount} disabled={rankingChapterCounts} style={[styles.onlineSearchButton, rankingChapterCounts && styles.importButtonDisabled]}>
+              {rankingChapterCounts ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>生成综合推荐排序</Text>}
+            </Pressable>
             {sortedSources.map((option, index) => {
-              const isRecommended = index === 0 && (sourceSortMode === "fastest" || option.chapterCount !== null && option.chapterCount !== undefined);
+              const isRecommended = index === 0 && option.chapterCount !== null && option.chapterCount !== undefined;
               const isSelected = option.summary.sourceId === activeSource?.summary.sourceId;
               return (
                 <Pressable key={option.summary.sourceId} onPress={() => {
@@ -493,9 +490,9 @@ export default function App() {
                 }} style={[styles.sourceChoice, isSelected && styles.sourceChoiceSelected]}>
                   <View style={styles.sourceChoiceInfo}>
                     <Text style={styles.sourceChoiceName}>{option.summary.sourceName}</Text>
-                    <Text style={styles.sourceChoiceLatency}>{sourceSortMode === "chapters" ? (option.chapterCount === null || option.chapterCount === undefined ? "目录读取失败" : option.chapterCount + " 章 · " + option.latencyMs + " ms") : option.latencyMs + " ms · " + (isRecommended ? "本次最快" : "响应时间")}</Text>
+                    <Text style={styles.sourceChoiceLatency}>{option.chapterCount === null || option.chapterCount === undefined ? option.latencyMs + " ms · 尚未统计目录" : option.chapterCount + " 章 · " + option.latencyMs + " ms}</Text>
                   </View>
-                  {isRecommended && <Text style={styles.recommendTag}>{sourceSortMode === "chapters" ? "章节最多" : "速度最快"}</Text>}
+                  {isRecommended && <Text style={styles.recommendTag}>综合推荐</Text>}
                   {isSelected && <Text style={styles.selectedTag}>已选择</Text>}
                 </Pressable>
               );
