@@ -1,0 +1,44 @@
+name: Offline Kokoro iOS native smoke test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "app.json"
+      - "src/offline-kokoro-runtime.ts"
+      - "src/wav-encoder.ts"
+      - "scripts/wav-encoder.test.cjs"
+      - ".github/workflows/offline-kokoro-ios.yml"
+  workflow_dispatch:
+
+jobs:
+  ios-simulator-build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install JavaScript dependencies
+        run: npm install
+      - name: TypeScript and WAV encoder tests
+        run: |
+          npm run typecheck
+          npm run test:wav-encoder
+      - name: Generate native iOS project
+        run: npx expo prebuild --platform ios --no-install
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install
+      - name: Build iOS Simulator app without signing
+        run: |
+          xcodebuild \
+            -workspace ios/AppleNovelApp.xcworkspace \
+            -scheme AppleNovelApp \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build
