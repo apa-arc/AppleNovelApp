@@ -1,0 +1,26 @@
+name: Kokoro TTS server checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - ".github/workflows/tts-server.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "server/**"
+      - ".github/workflows/tts-server.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile server modules
+        run: python -m compileall -q server
+      - name: Run server unit tests
+        run: python -m unittest server.tests.test_tts_core
