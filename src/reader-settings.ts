@@ -48,7 +48,7 @@ export function normalizeReaderSettings(value: unknown): ReaderSettings {
     paragraphSpacing: bounded("paragraphSpacing", DEFAULT_READER_SETTINGS.paragraphSpacing, 8, 32),
     horizontalPadding: bounded("horizontalPadding", DEFAULT_READER_SETTINGS.horizontalPadding, 16, 40),
     speechVoiceIdentifier: typeof candidate.speechVoiceIdentifier === "string" && candidate.speechVoiceIdentifier.trim() ? candidate.speechVoiceIdentifier : null,
-    speechRate: bounded("speechRate", DEFAULT_READER_SETTINGS.speechRate, 0.5, 2, 1),
+    speechRate: bounded("speechRate", DEFAULT_READER_SETTINGS.speechRate, 0.5, 2, 2),
     speechPitch: bounded("speechPitch", DEFAULT_READER_SETTINGS.speechPitch, 0.5, 2, 1),
   };
 }
