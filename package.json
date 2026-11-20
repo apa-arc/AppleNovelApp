@@ -13,14 +13,15 @@
     "test:reading-progress": "tsc src/reading-progress.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/reading-progress.test.cjs",
     "test:reader-settings": "tsc src/reader-settings.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/reader-settings.test.cjs",
     "test:novel-model": "tsc src/novel.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/novel-model.test.cjs",
-    "test": "npm run test:source-runtime && npm run test:reading-progress && npm run test:reading-history && npm run test:reader-settings && npm run test:novel-model && npm run test:source-search && npm run test:source-catalog && npm run test:subscription && npm run test:source-subscription && npm run test:speech-engine && npm run test:speech-voice-catalog",
+    "test": "npm run test:source-runtime && npm run test:reading-progress && npm run test:reading-history && npm run test:reader-settings && npm run test:novel-model && npm run test:source-search && npm run test:source-catalog && npm run test:subscription && npm run test:source-subscription && npm run test:speech-engine && npm run test:speech-voice-catalog && npm run test:offline-model-download",
     "test:source-search": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/source-search.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-search.test.cjs",
     "test:source-catalog": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/source-catalog.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-catalog.test.cjs",
     "test:subscription": "tsc src/novel.ts src/subscription.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/subscription.test.cjs",
     "test:source-subscription": "tsc src/source.ts src/source-subscription.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-subscription.test.cjs",
     "test:reading-history": "tsc src/reading-history.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/reading-history.test.cjs",
     "test:speech-engine": "tsc src/speech-engine.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/speech-engine.test.cjs",
-    "test:speech-voice-catalog": "tsc src/speech-voice-catalog.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/speech-voice-catalog.test.cjs"
+    "test:speech-voice-catalog": "tsc src/speech-voice-catalog.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/speech-voice-catalog.test.cjs",
+    "test:offline-model-download": "tsc src/offline-model-download.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/offline-model-download.test.cjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
