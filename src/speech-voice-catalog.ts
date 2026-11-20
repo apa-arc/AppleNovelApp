@@ -2,6 +2,8 @@ export type SpeechVoice = {
   id: string;
   modelId: string;
   label: string;
+  speakerName: string;
+  category: "美式女声" | "英式女声" | "中文女声" | "中文男声";
   language: "zh-en";
   localModelId: string;
   cloudModelId: string;
@@ -34,19 +36,30 @@ export const SPEECH_MODEL = {
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_1.tar.bz2",
 } as const;
 
-/** Official model exposes 103 speaker IDs; friendly names require its speaker map. */
-export const SPEECH_VOICES: SpeechVoice[] = Array.from(
-  { length: SPEECH_MODEL.speakerCount },
-  (_, speakerId) => ({
+/** Speaker names and ID ordering from the official sherpa-onnx Kokoro v1.1-zh model page. */
+export const SPEECH_SPEAKER_NAMES = ["af_maple","af_sol","bf_vale","zf_001","zf_002","zf_003","zf_004","zf_005","zf_006","zf_007","zf_008","zf_017","zf_018","zf_019","zf_021","zf_022","zf_023","zf_024","zf_026","zf_027","zf_028","zf_032","zf_036","zf_038","zf_039","zf_040","zf_042","zf_043","zf_044","zf_046","zf_047","zf_048","zf_049","zf_051","zf_059","zf_060","zf_067","zf_070","zf_071","zf_072","zf_073","zf_074","zf_075","zf_076","zf_077","zf_078","zf_079","zf_083","zf_084","zf_085","zf_086","zf_087","zf_088","zf_090","zf_092","zf_093","zf_094","zf_099","zm_009","zm_010","zm_011","zm_012","zm_013","zm_014","zm_015","zm_016","zm_020","zm_025","zm_029","zm_030","zm_031","zm_033","zm_034","zm_035","zm_037","zm_041","zm_045","zm_050","zm_052","zm_053","zm_054","zm_055","zm_056","zm_057","zm_058","zm_061","zm_062","zm_063","zm_064","zm_065","zm_066","zm_068","zm_069","zm_080","zm_081","zm_082","zm_089","zm_091","zm_095","zm_096","zm_097","zm_098","zm_100"] as const;
+
+export function getSpeechVoiceCategory(speakerId: number): SpeechVoice["category"] {
+  if (speakerId <= 1) return "美式女声";
+  if (speakerId === 2) return "英式女声";
+  if (speakerId <= 57) return "中文女声";
+  return "中文男声";
+}
+
+export const SPEECH_VOICES: SpeechVoice[] = SPEECH_SPEAKER_NAMES.map((speakerName, speakerId) => {
+  const category = getSpeechVoiceCategory(speakerId);
+  return {
     id: `${SPEECH_MODEL.id}:speaker-${speakerId}`,
     modelId: SPEECH_MODEL.id,
-    label: `声音 ${String(speakerId + 1).padStart(2, "0")}`,
+    label: `${category} · ${speakerName}`,
+    speakerName,
+    category,
     language: "zh-en",
     localModelId: SPEECH_MODEL.downloadAssetId,
     cloudModelId: SPEECH_MODEL.id,
     speakerId,
-  })
-);
+  };
+});
 
 export function findSpeechVoice(id: string): SpeechVoice | null {
   return SPEECH_VOICES.find((voice) => voice.id === id) ?? null;
