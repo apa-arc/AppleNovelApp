@@ -33,6 +33,8 @@ type SourceInput = {
 function validateHtmlRules(value: unknown): HtmlSourceRules {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("htmlRules 必须是对象。");
   const input=value as Record<string,unknown>;
+  const allowedGroups = ["search", "detail", "chapters", "content"];
+  if (Object.keys(input).some((key) => !allowedGroups.includes(key))) throw new Error("htmlRules 包含不支持的规则组。");
   const read=(key:string,required:string[],allowed:string[])=>{
     const raw=input[key];if(raw===undefined)return undefined;
     if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new Error("htmlRules."+key+" 必须是对象。");
