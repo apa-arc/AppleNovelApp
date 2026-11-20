@@ -29,6 +29,11 @@ type Book = {
   color: string;
   lastChapter?: string;
   chapterIndex?: number;
+  onlineSourceId?: string;
+  onlineSourceName?: string;
+  onlineSummary?: NovelSummary;
+  onlineChapters?: NovelChapter[];
+  onlineChapterId?: string;
 };
 
 const STORAGE_KEY = "@private_novel/books_v1";
@@ -81,6 +86,10 @@ const SAMPLE_BOOKS: Book[] = [
     lastChapter: "尚未开始",
   },
 ];
+
+function getOnlineBookId(title: string, author: string): string {
+  return "online:" + normalizeNovelTitle(title) + "::" + normalizeNovelTitle(author);
+}
 
 function BookCover({ book }: { book: Book }) {
   return (
@@ -284,6 +293,38 @@ export default function App() {
     setRankingChapterCounts(false);
   };
 
+  const saveOnlineBookToShelf = () => {
+    if (!selectedSearchNovel || !selectedSourceId || loadedChapters.length === 0) return;
+    const option = selectedSearchNovel.sources.find((item) => item.summary.sourceId === selectedSourceId);
+    const source = sources.find((item) => item.id === selectedSourceId && item.enabled);
+    if (!option || !source) {
+      setCatalogMessage("当前书源不可用，无法加入书架。");
+      return;
+    }
+    const id = getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author);
+    setBooks((current) => {
+      const existing = current.find((book) => book.id === id);
+      const nextBook: Book = {
+        id,
+        title: selectedSearchNovel.title,
+        author: selectedSearchNovel.author,
+        description: loadedNovelDetail?.description || selectedSearchNovel.description,
+        category: option.summary.category || "网络小说",
+        progress: existing?.progress ?? 0,
+        color: "#E5E9DF",
+        lastChapter: existing?.lastChapter || "尚未开始",
+        chapterIndex: existing?.chapterIndex ?? 0,
+        onlineSourceId: source.id,
+        onlineSourceName: source.name,
+        onlineSummary: option.summary,
+        onlineChapters: loadedChapters,
+        onlineChapterId: existing?.onlineChapterId,
+      };
+      return existing ? current.map((book) => book.id === id ? nextBook : book) : [nextBook, ...current];
+    });
+    setCatalogMessage("已加入本地书架。下次打开会从上次阅读的章节继续。");
+  };
+
   const closeSearchNovel = () => {
     setSelectedSearchNovel(null);
     setSelectedSourceId(null);
@@ -336,17 +377,34 @@ export default function App() {
       setOnlineChapterContent(result.content);
       setOnlineChapterTitle(result.title || chapter.title);
       setOnlineReading(true);
+      const onlineBookId = getOnlineBookId(option.summary.title, option.summary.author);
       setSelectedBook({
-        id: option.summary.id,
+        id: onlineBookId,
         title: option.summary.title,
         author: option.summary.author,
         description: option.summary.description,
         category: option.summary.category || "网络小说",
-        progress: 0,
+        progress: Math.round(((chapter.index + 1) / Math.max(1, loadedChapters.length)) * 100),
         color: "#E5E9DF",
         lastChapter: chapter.title,
         chapterIndex: chapter.index,
+        onlineSourceId: source.id,
+        onlineSourceName: source.name,
+        onlineSummary: option.summary,
+        onlineChapters: loadedChapters,
+        onlineChapterId: chapter.id,
       });
+      setBooks((current) => current.map((book) => book.id !== onlineBookId ? book : ({
+        ...book,
+        progress: Math.round(((chapter.index + 1) / Math.max(1, loadedChapters.length)) * 100),
+        lastChapter: chapter.title,
+        chapterIndex: chapter.index,
+        onlineSourceId: source.id,
+        onlineSourceName: source.name,
+        onlineSummary: option.summary,
+        onlineChapters: loadedChapters,
+        onlineChapterId: chapter.id,
+      })));
       setShowCatalog(false);
       setShowReaderSettings(false);
     } catch (error) {
@@ -363,6 +421,42 @@ export default function App() {
 
   const openBook = (book: Book) => {
     stopSpeech();
+    if (book.onlineSourceId && book.onlineSummary && book.onlineChapters?.length) {
+      const source = sources.find((item) => item.id === book.onlineSourceId && item.enabled);
+      if (!source) {
+        Alert.alert("书源不可用", "这本小说保存的书源已停用或删除。请到「书源」页面重新启用，或到「发现」重新选择其他书源。");
+        return;
+      }
+      const chapters = book.onlineChapters;
+      const savedIndex = chapters.findIndex((chapter) => chapter.id === book.onlineChapterId);
+      const chapterIndexToOpen = savedIndex >= 0 ? savedIndex : Math.min(Math.max(book.chapterIndex ?? 0, 0), chapters.length - 1);
+      const summary = book.onlineSummary;
+      setSelectedSearchNovel({
+        id: getOnlineBookId(book.title, book.author),
+        title: book.title,
+        author: book.author,
+        description: book.description,
+        sources: [{ summary, latencyMs: 0, chapterCount: chapters.length }],
+      });
+      setSelectedSourceId(source.id);
+      setLoadedChapters(chapters);
+      setLoadedNovelDetail(null);
+      setShowCatalog(false);
+      setShowReaderSettings(false);
+      setOnlineReading(true);
+      setOnlineChapterIndex(chapterIndexToOpen);
+      setSelectedBook(book);
+      setLoadingOnlineChapter(true);
+      void fetchNovelChapterContent(source, chapters[chapterIndexToOpen]).then((result) => {
+        setOnlineChapterContent(result.content);
+        setOnlineChapterTitle(result.title || chapters[chapterIndexToOpen].title);
+      }).catch((error) => {
+        Alert.alert("章节加载失败", error instanceof Error ? error.message : "请检查书源后重试。");
+        setSelectedBook(null);
+        setOnlineReading(false);
+      }).finally(() => setLoadingOnlineChapter(false));
+      return;
+    }
     setOnlineReading(false);
     setSelectedBook(book);
     setChapterIndex(Math.min(Math.max(book.chapterIndex ?? 0, 0), SAMPLE_CHAPTERS.length - 1));
@@ -505,6 +599,11 @@ export default function App() {
                 {loadingCatalog ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>获取小说详情和目录</Text>}
               </Pressable>
               {!!catalogMessage && <Text style={styles.searchFeedback}>{catalogMessage}</Text>}
+              {!!loadedChapters.length && (
+                <Pressable style={styles.catalogLoadButton} onPress={saveOnlineBookToShelf}>
+                  <Text style={styles.importButtonText}>{books.some((book) => book.id === getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author)) ? "更新书架信息" : "加入本地书架"}</Text>
+                </Pressable>
+              )}
               {loadedChapters.map((chapter) => (
                 <Pressable key={chapter.id} onPress={() => openOnlineChapter(chapter)} disabled={loadingOnlineChapter} style={styles.chapterRow}>
                   <Text style={styles.chapterRowTitle}>{chapter.title}</Text>
