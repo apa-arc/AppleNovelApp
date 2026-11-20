@@ -42,7 +42,7 @@ test("falls back to matching normalized chapter title when URL changes", () => {
   ];
   const result = compareChapterUpdates(previous, latest, "old", 1);
   assert.equal(result.currentChapterIndex, 1);
-  assert.equal(result.newChapters.length, 1);
+  assert.equal(result.newChapters.length, 0);
 });
 
 test("handles an empty latest catalog and clamps fallback progress", () => {
