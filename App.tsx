@@ -8,7 +8,7 @@ import { searchNovelSource } from "./src/source-search";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
 import { compareChapterUpdates } from "./src/subscription";
-import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type ReaderSettings } from "./src/reader-settings";
+import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type ReaderSettings, type ReaderTheme } from "./src/reader-settings";
 import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } from "./src/reading-progress";
 import {
   SafeAreaView,
