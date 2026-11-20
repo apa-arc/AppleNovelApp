@@ -710,6 +710,17 @@ export default function App() {
     }));
   };
 
+  const removeBookFromShelf = (book: Book) => {
+    Alert.alert("移出书架", "确定移出《" + book.title + "》吗？本地导入文件也会从 App 存储中删除。", [
+      { text: "取消", style: "cancel" },
+      { text: "移出", style: "destructive", onPress: () => {
+        setBooks((current) => current.filter((item) => item.id !== book.id));
+        setReadingHistory((current) => current.filter((entry) => entry.bookId !== book.id));
+        if (book.localFileUri) void FileSystem.deleteAsync(book.localFileUri, { idempotent: true }).catch(() => undefined);
+      } },
+    ]);
+  };
+
   const resumeReadingHistory = (entry: ReadingHistoryEntry) => {
     const book = books.find((item) => item.id === entry.bookId);
     if (!book) { Alert.alert("无法继续阅读", "这本书当前不在书架中，请重新搜索并添加后再继续。"); return; }
@@ -1278,7 +1289,7 @@ export default function App() {
             <Text style={styles.playerAction}>声音</Text>
           </Pressable>
           <Pressable onPress={speakCurrentBook} style={styles.playerButton}>
-            <Text style={styles.playerAction}>{isSpeaking ? "停止朗读" : "听书"}</Text>
+            <Text style={styles.playerAction}>{isSpeaking ? "停止朗读" : "系统朗读"}</Text>
           </Pressable>
           <Pressable disabled={activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter} onPress={() => changeChapter(1)} style={styles.chapterNavButton}>
             <Text style={[styles.chapterNavText, (activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter) && styles.disabledText]}>下一章</Text>
@@ -1324,7 +1335,7 @@ export default function App() {
           {filteredBooks.length === 0 ? (
             <Text style={styles.emptyText}>没有找到相关书籍，试试其他关键词。</Text>
           ) : filteredBooks.map((book) => (
-            <Pressable key={book.id} style={styles.bookRow} onPress={() => openBook(book)}>
+            <Pressable key={book.id} style={styles.bookRow} onPress={() => openBook(book)} onLongPress={() => removeBookFromShelf(book)} delayLongPress={550}>
               <BookCover book={book} />
               <View style={styles.bookInfo}>
                 <Text style={styles.bookTitle}>{book.title}</Text>
@@ -1337,7 +1348,7 @@ export default function App() {
               </View>
             </Pressable>
           ))}
-          <Text style={styles.storageNote}>书架和阅读进度会保存在当前设备中。</Text>
+          <Text style={styles.storageNote}>书架和阅读进度保存在当前设备。长按书籍可将其移出书架。</Text>
         </ScrollView>
       )}
 
@@ -1436,7 +1447,10 @@ export default function App() {
           </View>
           <View style={styles.sectionHeading}>
             <Text style={styles.sectionTitle}>最近阅读</Text>
-            <Text style={styles.sectionMeta}>{readingHistory.length} 条记录</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Text style={styles.sectionMeta}>{readingHistory.length} 条记录</Text>
+              {readingHistory.length > 0 && <Pressable onPress={() => Alert.alert("清空阅读记录", "只清除阅读历史，不会删除书架中的小说。", [{ text: "取消", style: "cancel" }, { text: "清空", style: "destructive", onPress: () => setReadingHistory([]) }])}><Text style={styles.sourceActionText}>清空</Text></Pressable>}
+            </View>
           </View>
           {readingHistory.length === 0 ? <Text style={styles.emptyText}>还没有阅读记录，打开一本小说后会自动记录。</Text> : readingHistory.map((entry) => (
             <Pressable key={entry.bookId} style={styles.historyRow} onPress={() => resumeReadingHistory(entry)}>
