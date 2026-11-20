@@ -122,7 +122,10 @@ export default function App() {
   const [showCatalog, setShowCatalog] = useState(false);
   const [showReaderSettings, setShowReaderSettings] = useState(false);
   const [readerFontSize, setReaderFontSize] = useState(DEFAULT_READER_SETTINGS.fontSize);
-  const [readerTheme, setReaderTheme] = useState<"paper" | "night">(DEFAULT_READER_SETTINGS.theme);
+  const [readerTheme, setReaderTheme] = useState<ReaderTheme>(DEFAULT_READER_SETTINGS.theme);
+  const [readerLineSpacing, setReaderLineSpacing] = useState(DEFAULT_READER_SETTINGS.lineSpacing);
+  const [readerParagraphSpacing, setReaderParagraphSpacing] = useState(DEFAULT_READER_SETTINGS.paragraphSpacing);
+  const [readerHorizontalPadding, setReaderHorizontalPadding] = useState(DEFAULT_READER_SETTINGS.horizontalPadding);
   const [readerMode, setReaderMode] = useState<"scroll" | "tap">(DEFAULT_READER_SETTINGS.readingMode);
   const [readerParagraphIndex, setReaderParagraphIndex] = useState(0);
   const [readerChromeVisible, setReaderChromeVisible] = useState(true);
@@ -244,6 +247,9 @@ export default function App() {
           setReaderFontSize(settings.fontSize);
           setReaderTheme(settings.theme);
           setReaderMode(settings.readingMode);
+          setReaderLineSpacing(settings.lineSpacing);
+          setReaderParagraphSpacing(settings.paragraphSpacing);
+          setReaderHorizontalPadding(settings.horizontalPadding);
         }
       } catch {
         Alert.alert("读取失败", "本地书架数据暂时无法读取，已使用默认书架。");
@@ -274,11 +280,11 @@ export default function App() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    const settings: ReaderSettings = normalizeReaderSettings({ fontSize: readerFontSize, theme: readerTheme, readingMode: readerMode });
+    const settings: ReaderSettings = normalizeReaderSettings({ fontSize: readerFontSize, theme: readerTheme, readingMode: readerMode, lineSpacing: readerLineSpacing, paragraphSpacing: readerParagraphSpacing, horizontalPadding: readerHorizontalPadding });
     AsyncStorage.setItem(READER_SETTINGS_STORAGE_KEY, JSON.stringify(settings)).catch(() => {
       Alert.alert("保存失败", "阅读设置暂时未能保存，请检查手机存储空间。");
     });
-  }, [readerFontSize, readerTheme, readerMode, isLoaded]);
+  }, [readerFontSize, readerTheme, readerMode, readerLineSpacing, readerParagraphSpacing, readerHorizontalPadding, isLoaded]);
 
   useEffect(() => {
     if (!restoreReaderPositionRef.current || readerContentHeight <= 0 || readerViewportHeight <= 0) return;
@@ -865,8 +871,8 @@ export default function App() {
     const activeChapterCount = onlineReading ? loadedChapters.length : SAMPLE_CHAPTERS.length;
     const activeReadingText = onlineReading ? activeChapter.content : currentBook.description + "\n\n" + activeChapter.content;
     const readingParagraphs = splitReadingText(activeReadingText);
-    const readerBackground = readerTheme === "night" ? "#20231F" : "#F8F7F3";
-    const readerTextColor = readerTheme === "night" ? "#E6E3D9" : "#45453D";
+    const readerBackground = readerTheme === "night" ? "#20231F" : readerTheme === "green" ? "#E8EFE3" : readerTheme === "gray" ? "#E9EAEC" : "#F8F7F3";
+    const readerTextColor = readerTheme === "night" ? "#E6E3D9" : readerTheme === "green" ? "#3F4A3B" : readerTheme === "gray" ? "#41464D" : "#45453D";
     const readingProgressPercent = Math.min(100, Math.max(0, Math.round(((activeChapterIndex + (readingParagraphs.length > 1 ? readerParagraphIndex / (readingParagraphs.length - 1) : 0)) / Math.max(1, activeChapterCount)) * 100)));
     const readerScrollOffset = getReadingScrollOffset(readerParagraphIndex, readingParagraphs.length, Math.max(0, readerContentHeight - readerViewportHeight));
     const readerMaxScrollOffset = Math.max(0, readerContentHeight - readerViewportHeight);
@@ -938,7 +944,7 @@ export default function App() {
                 }
               } else if (centerTap) setReaderChromeVisible((visible) => !visible);
             }}
-            contentContainerStyle={styles.readerContent}
+            contentContainerStyle={[styles.readerContent, { paddingHorizontal: readerHorizontalPadding }]}
             scrollEventThrottle={250}
             onLayout={(event) => setReaderViewportHeight(event.nativeEvent.layout.height)}
             onContentSizeChange={(_width, height) => setReaderContentHeight(height)}
@@ -963,7 +969,7 @@ export default function App() {
             <Text style={styles.chapterLabel}>{activeChapter.title}</Text>
             <Text style={[styles.readerTitle, readerTheme === "night" && styles.nightText]}>{currentBook.title}</Text>
             {loadingOnlineChapter ? <ActivityIndicator size="large" color="#65745D" /> : readingParagraphs.map((paragraph, index) => (
-              <Text key={index} style={[styles.readerParagraph, { fontSize: readerFontSize, lineHeight: Math.round(readerFontSize * 1.9), color: readerTextColor, marginBottom: 22 }]}>{paragraph}</Text>
+              <Text key={index} style={[styles.readerParagraph, { fontSize: readerFontSize, lineHeight: Math.round(readerFontSize * readerLineSpacing), color: readerTextColor, marginBottom: readerParagraphSpacing }]}>{paragraph}</Text>
             ))}
             <View style={styles.readerFooter}>
               <Text style={[styles.muted, readerTheme === "night" && styles.nightMuted]}>第 {activeChapterIndex + 1} / {activeChapterCount} 章</Text>
@@ -973,15 +979,40 @@ export default function App() {
         )}
         {showReaderSettings && !showCatalog && (
           <View style={[styles.readerSettings, readerTheme === "night" && styles.nightCard]}>
-            <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>阅读方式</Text>
-            <Pressable style={[styles.themeButton, readerMode === "scroll" && styles.modeButtonActive]} onPress={() => setReaderMode("scroll")}><Text style={styles.fontButtonText}>上下滚动</Text></Pressable>
-            <Pressable style={[styles.themeButton, readerMode === "tap" && styles.modeButtonActive]} onPress={() => setReaderMode("tap")}><Text style={styles.fontButtonText}>点击翻页</Text></Pressable>
-            <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>点击翻页：点按左右区域或左右滑动即可翻页，中间区域呼出工具栏。</Text>
-            <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>字体</Text>
-            <Pressable style={styles.fontButton} onPress={() => setReaderFontSize((size) => Math.max(14, size - 1))}><Text style={styles.fontButtonText}>A−</Text></Pressable>
-            <Text style={[styles.fontSizeValue, readerTheme === "night" && styles.nightText]}>{readerFontSize}</Text>
-            <Pressable style={styles.fontButton} onPress={() => setReaderFontSize((size) => Math.min(28, size + 1))}><Text style={styles.fontButtonText}>A+</Text></Pressable>
-            <Pressable style={styles.themeButton} onPress={() => setReaderTheme((theme) => theme === "paper" ? "night" : "paper")}><Text style={styles.fontButtonText}>{readerTheme === "paper" ? "夜间" : "日间"}</Text></Pressable>
+            <View style={styles.readerSettingRow}>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>阅读方式</Text>
+              <Pressable style={[styles.themeButton, readerMode === "scroll" && styles.modeButtonActive]} onPress={() => setReaderMode("scroll")}><Text style={styles.fontButtonText}>上下滚动</Text></Pressable>
+              <Pressable style={[styles.themeButton, readerMode === "tap" && styles.modeButtonActive]} onPress={() => setReaderMode("tap")}><Text style={styles.fontButtonText}>点击翻页</Text></Pressable>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>点击翻页可点按左右区域或左右滑动。</Text>
+            </View>
+            <View style={styles.readerSettingRow}>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>字体大小</Text>
+              <Pressable style={styles.fontButton} onPress={() => setReaderFontSize((size) => Math.max(14, size - 1))}><Text style={styles.fontButtonText}>A−</Text></Pressable>
+              <Text style={[styles.fontSizeValue, readerTheme === "night" && styles.nightText]}>{readerFontSize}</Text>
+              <Pressable style={styles.fontButton} onPress={() => setReaderFontSize((size) => Math.min(28, size + 1))}><Text style={styles.fontButtonText}>A+</Text></Pressable>
+            </View>
+            <View style={styles.readerSettingRow}>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>行距</Text>
+              <Pressable style={styles.fontButton} onPress={() => setReaderLineSpacing((v) => Math.max(1.4, Math.round((v - 0.1) * 10) / 10))}><Text style={styles.fontButtonText}>−</Text></Pressable>
+              <Text style={[styles.fontSizeValue, readerTheme === "night" && styles.nightText]}>{readerLineSpacing.toFixed(1)}</Text>
+              <Pressable style={styles.fontButton} onPress={() => setReaderLineSpacing((v) => Math.min(2.4, Math.round((v + 0.1) * 10) / 10))}><Text style={styles.fontButtonText}>＋</Text></Pressable>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>段间距</Text>
+              <Pressable style={styles.fontButton} onPress={() => setReaderParagraphSpacing((v) => Math.max(8, v - 2))}><Text style={styles.fontButtonText}>−</Text></Pressable>
+              <Text style={[styles.fontSizeValue, readerTheme === "night" && styles.nightText]}>{readerParagraphSpacing}</Text>
+              <Pressable style={styles.fontButton} onPress={() => setReaderParagraphSpacing((v) => Math.min(32, v + 2))}><Text style={styles.fontButtonText}>＋</Text></Pressable>
+            </View>
+            <View style={styles.readerSettingRow}>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>左右留白</Text>
+              <Pressable style={styles.fontButton} onPress={() => setReaderHorizontalPadding((v) => Math.max(16, v - 2))}><Text style={styles.fontButtonText}>−</Text></Pressable>
+              <Text style={[styles.fontSizeValue, readerTheme === "night" && styles.nightText]}>{readerHorizontalPadding}</Text>
+              <Pressable style={styles.fontButton} onPress={() => setReaderHorizontalPadding((v) => Math.min(40, v + 2))}><Text style={styles.fontButtonText}>＋</Text></Pressable>
+            </View>
+            <View style={styles.readerSettingRow}>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>背景</Text>
+              {([{ id: "paper", label: "纸白" }, { id: "green", label: "护眼绿" }, { id: "gray", label: "浅灰" }, { id: "night", label: "夜间" }] as const).map((option) => (
+                <Pressable key={option.id} style={[styles.themeButton, readerTheme === option.id && styles.modeButtonActive]} onPress={() => setReaderTheme(option.id)}><Text style={styles.fontButtonText}>{option.label}</Text></Pressable>
+              ))}
+            </View>
           </View>
         )}
         {readerChromeVisible && <View style={[styles.readerBottomBar, readerTheme === "night" && styles.nightCard]}>
@@ -1389,7 +1420,8 @@ const styles = StyleSheet.create({
   chapterRowTitle: { color: "#383A32", fontSize: 14, fontWeight: "600", flex: 1 },
   chapterRowMeta: { color: "#87917E", fontSize: 10, marginLeft: 8 },
   catalogDisclaimer: { color: "#A09B8E", fontSize: 11, lineHeight: 18, marginTop: 10 },
-  readerSettings: { minHeight: 58, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#EEECE5", paddingHorizontal: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  readerSettings: { maxHeight: 240, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#EEECE5", paddingHorizontal: 14, paddingVertical: 9 },
+  readerSettingRow: { minHeight: 38, flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   settingsLabel: { color: "#777368", fontSize: 11 },
   fontButton: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: "#EEF0E9" },
   fontButtonText: { color: "#65745D", fontWeight: "800", fontSize: 12 },
