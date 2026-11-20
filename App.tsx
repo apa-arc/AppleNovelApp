@@ -121,6 +121,8 @@ export default function App() {
   const [readerFontSize, setReaderFontSize] = useState(DEFAULT_READER_SETTINGS.fontSize);
   const [readerTheme, setReaderTheme] = useState<"paper" | "night">(DEFAULT_READER_SETTINGS.theme);
   const [readerParagraphIndex, setReaderParagraphIndex] = useState(0);
+  const [readerChromeVisible, setReaderChromeVisible] = useState(true);
+  const readerTapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const [readerContentHeight, setReaderContentHeight] = useState(0);
   const [readerViewportHeight, setReaderViewportHeight] = useState(0);
   const readerScrollRef = useRef<ScrollView | null>(null);
@@ -790,10 +792,11 @@ export default function App() {
     const readingParagraphs = splitReadingText(activeReadingText);
     const readerBackground = readerTheme === "night" ? "#20231F" : "#F8F7F3";
     const readerTextColor = readerTheme === "night" ? "#E6E3D9" : "#45453D";
+    const readingProgressPercent = Math.min(100, Math.max(0, Math.round(((activeChapterIndex + (readingParagraphs.length > 1 ? readerParagraphIndex / (readingParagraphs.length - 1) : 0)) / Math.max(1, activeChapterCount)) * 100)));
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: readerBackground }]}>
         <StatusBar barStyle={readerTheme === "night" ? "light-content" : "dark-content"} />
-        <View style={styles.readerHeader}>
+        {readerChromeVisible && <View style={styles.readerHeader}>
           <Pressable onPress={closeReader}><Text style={styles.backText}>‹ 返回</Text></Pressable>
           <Text style={[styles.readerHeaderTitle, readerTheme === "night" && styles.nightMuted]}>正在阅读</Text>
           {onlineReading && (
@@ -804,7 +807,7 @@ export default function App() {
           <Pressable onPress={() => { setShowCatalog((value) => !value); setShowReaderSettings(false); }}>
             <Text style={styles.headerAction}>{showCatalog ? "返回正文" : "目录"}</Text>
           </Pressable>
-        </View>
+        </View>}
         {showCatalog ? (
           <ScrollView contentContainerStyle={styles.catalogContent}>
             <Text style={[styles.catalogHeading, readerTheme === "night" && styles.nightText]}>章节目录</Text>
@@ -825,6 +828,20 @@ export default function App() {
         ) : (
           <ScrollView
             ref={readerScrollRef}
+            onTouchStart={(event) => {
+              const { pageX, pageY } = event.nativeEvent;
+              readerTapStartRef.current = { x: pageX, y: pageY, time: Date.now() };
+            }}
+            onTouchEnd={(event) => {
+              const start = readerTapStartRef.current;
+              readerTapStartRef.current = null;
+              if (!start) return;
+              const { pageX, pageY } = event.nativeEvent;
+              const elapsed = Date.now() - start.time;
+              const moved = Math.abs(pageX - start.x) + Math.abs(pageY - start.y);
+              const centerTap = pageX > 90 && pageX < 330;
+              if (elapsed < 280 && moved < 14 && centerTap) setReaderChromeVisible((visible) => !visible);
+            }}
             contentContainerStyle={styles.readerContent}
             scrollEventThrottle={250}
             onLayout={(event) => setReaderViewportHeight(event.nativeEvent.layout.height)}
@@ -867,7 +884,10 @@ export default function App() {
             <Pressable style={styles.themeButton} onPress={() => setReaderTheme((theme) => theme === "paper" ? "night" : "paper")}><Text style={styles.fontButtonText}>{readerTheme === "paper" ? "夜间" : "日间"}</Text></Pressable>
           </View>
         )}
-        <View style={[styles.readerBottomBar, readerTheme === "night" && styles.nightCard]}>
+        {readerChromeVisible && <View style={[styles.readerBottomBar, readerTheme === "night" && styles.nightCard]}>
+          <View style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, backgroundColor: readerTheme === "night" ? "#3A4038" : "#EEECE5" }}>
+            <View style={{ height: 2, width: `${readingProgressPercent}%`, backgroundColor: "#7D8B70" }} />
+          </View>
           <Pressable disabled={activeChapterIndex === 0 || showCatalog || loadingOnlineChapter} onPress={() => changeChapter(-1)} style={styles.chapterNavButton}>
             <Text style={[styles.chapterNavText, (activeChapterIndex === 0 || showCatalog || loadingOnlineChapter) && styles.disabledText]}>上一章</Text>
           </Pressable>
@@ -880,7 +900,7 @@ export default function App() {
           <Pressable disabled={activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter} onPress={() => changeChapter(1)} style={styles.chapterNavButton}>
             <Text style={[styles.chapterNavText, (activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter) && styles.disabledText]}>下一章</Text>
           </Pressable>
-        </View>
+        </View>}
       </SafeAreaView>
     );
   }
