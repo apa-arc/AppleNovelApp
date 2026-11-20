@@ -11,6 +11,7 @@ import { compareChapterUpdates } from "./src/subscription";
 import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type ReaderSettings, type ReaderTheme } from "./src/reader-settings";
 import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } from "./src/reading-progress";
 import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
+import { SPEECH_VOICES } from "./src/speech-voice-catalog";
 import {
   SafeAreaView,
   View,
@@ -129,6 +130,7 @@ export default function App() {
   const [loadingSpeechVoices, setLoadingSpeechVoices] = useState(false);
   const [speechVoiceMessage, setSpeechVoiceMessage] = useState("");
   const [speechVoiceIdentifier, setSpeechVoiceIdentifier] = useState<string | null>(null);
+  const [speechModelVoiceId, setSpeechModelVoiceId] = useState(DEFAULT_READER_SETTINGS.speechModelVoiceId);
   const [speechRate, setSpeechRate] = useState(DEFAULT_READER_SETTINGS.speechRate);
   const [speechPitch, setSpeechPitch] = useState(DEFAULT_READER_SETTINGS.speechPitch);
   const [readerFontSize, setReaderFontSize] = useState(DEFAULT_READER_SETTINGS.fontSize);
@@ -263,6 +265,7 @@ export default function App() {
           setReaderParagraphSpacing(settings.paragraphSpacing);
           setReaderHorizontalPadding(settings.horizontalPadding);
           setSpeechVoiceIdentifier(settings.speechVoiceIdentifier);
+          setSpeechModelVoiceId(settings.speechModelVoiceId);
           setSpeechRate(settings.speechRate);
           setSpeechPitch(settings.speechPitch);
         }
@@ -302,11 +305,11 @@ export default function App() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    const settings: ReaderSettings = normalizeReaderSettings({ fontSize: readerFontSize, theme: readerTheme, readingMode: readerMode, lineSpacing: readerLineSpacing, paragraphSpacing: readerParagraphSpacing, horizontalPadding: readerHorizontalPadding, speechVoiceIdentifier, speechRate, speechPitch });
+    const settings: ReaderSettings = normalizeReaderSettings({ fontSize: readerFontSize, theme: readerTheme, readingMode: readerMode, lineSpacing: readerLineSpacing, paragraphSpacing: readerParagraphSpacing, horizontalPadding: readerHorizontalPadding, speechVoiceIdentifier, speechModelVoiceId, speechRate, speechPitch });
     AsyncStorage.setItem(READER_SETTINGS_STORAGE_KEY, JSON.stringify(settings)).catch(() => {
       Alert.alert("保存失败", "阅读设置暂时未能保存，请检查手机存储空间。");
     });
-  }, [readerFontSize, readerTheme, readerMode, readerLineSpacing, readerParagraphSpacing, readerHorizontalPadding, speechVoiceIdentifier, speechRate, speechPitch, isLoaded]);
+  }, [readerFontSize, readerTheme, readerMode, readerLineSpacing, readerParagraphSpacing, readerHorizontalPadding, speechVoiceIdentifier, speechModelVoiceId, speechRate, speechPitch, isLoaded]);
 
   useEffect(() => {
     if (!restoreReaderPositionRef.current || readerContentHeight <= 0 || readerViewportHeight <= 0) return;
@@ -1107,8 +1110,26 @@ export default function App() {
             <View style={[styles.voiceOption, readerTheme === "night" && styles.nightVoiceOption, { flexDirection: "column", alignItems: "flex-start", marginBottom: 10 }]}>
               <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>AI 朗读模型 · Kokoro 中文多音色</Text>
               <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>103 种音色 · 离线模型约 147 MB · 中文 / 英文</Text>
-              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>模型下载入口正在接入。以后只有你主动选择并确认后才会下载；一个模型包包含全部音色，下载后可自由切换。</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>一个模型包包含全部 103 个音色。先选好声音；模型下载与 AI 试听接入后，才会真正生成语音。</Text>
               <Text style={[styles.voiceSelected, { marginTop: 6 }]}>当前状态：模型尚未下载，AI 朗读尚未启用</Text>
+            </View>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>选择 Kokoro 音色 · 103 种</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 4, marginBottom: 8 }]}>当前选择：{SPEECH_VOICES.find((voice) => voice.id === speechModelVoiceId)?.label || "声音 01"}。音色试听将在 AI 引擎接入后开放。</Text>
+              <ScrollView style={styles.voiceList} nestedScrollEnabled>
+                {SPEECH_VOICES.map((voice) => {
+                  const selected = speechModelVoiceId === voice.id;
+                  return (
+                    <Pressable key={voice.id} style={[styles.voiceOption, selected && styles.voiceOptionSelected, readerTheme === "night" && styles.nightVoiceOption]} onPress={() => setSpeechModelVoiceId(voice.id)}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>{voice.label}</Text>
+                        <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>Kokoro speaker ID · {voice.speakerId}</Text>
+                      </View>
+                      <Text style={styles.voiceSelected}>{selected ? "已选择" : "选择"}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
             <View style={styles.speechHeader}>
               <View style={{ flex: 1 }}>
