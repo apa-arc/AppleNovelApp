@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import * as Speech from "expo-speech";
 import {
   SafeAreaView,
   View,
@@ -85,6 +86,7 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [books, setBooks] = useState(SAMPLE_BOOKS);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const filteredBooks = useMemo(
     () =>
@@ -130,8 +132,24 @@ export default function App() {
           </View>
         </ScrollView>
         <View style={styles.playerBar}>
-          <Text style={styles.playerHint}>♫ 听书功能将在下一阶段接入</Text>
-          <Text style={styles.playerAction}>朗读</Text>
+          <Text style={styles.playerHint}>♫ 系统语音朗读 · 演示内容</Text>
+          <Pressable onPress={() => {
+            if (isSpeaking) {
+              Speech.stop();
+              setIsSpeaking(false);
+              return;
+            }
+            Speech.speak(`${selectedBook.title}。${selectedBook.description}。这是私人小说阅读器的第一版阅读页面。后续将接入真实章节内容。`, {
+              language: "zh-CN",
+              rate: 1.0,
+              onDone: () => setIsSpeaking(false),
+              onStopped: () => setIsSpeaking(false),
+              onError: () => setIsSpeaking(false),
+            });
+            setIsSpeaking(true);
+          }}>
+            <Text style={styles.playerAction}>{isSpeaking ? "停止朗读" : "开始朗读"}</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );
