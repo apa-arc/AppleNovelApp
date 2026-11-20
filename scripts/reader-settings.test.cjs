@@ -10,13 +10,13 @@ test("reader settings use stable defaults", () => {
 
 test("reader settings preserve valid user preferences", () => {
   assert.deepEqual(normalizeReaderSettings({ fontSize: 24, theme: "night", readingMode: "tap", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32 }), {
-    fontSize: 24, theme: "night", readingMode: "tap", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32, speechVoiceIdentifier: null, speechRate: 0.95, speechPitch: 1,
+    fontSize: 24, theme: "night", readingMode: "tap", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32, speechVoiceIdentifier: null, speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-0", speechRate: 0.95, speechPitch: 1,
   });
 });
 
 test("reader settings clamp numeric values and reject unknown choices", () => {
   assert.deepEqual(normalizeReaderSettings({ fontSize: 99, theme: "neon", readingMode: "unknown", lineSpacing: 9, paragraphSpacing: 100, horizontalPadding: 2 }), {
-    fontSize: 28, theme: "paper", readingMode: "scroll", lineSpacing: 2.4, paragraphSpacing: 32, horizontalPadding: 16, speechVoiceIdentifier: null, speechRate: 0.95, speechPitch: 1,
+    fontSize: 28, theme: "paper", readingMode: "scroll", lineSpacing: 2.4, paragraphSpacing: 32, horizontalPadding: 16, speechVoiceIdentifier: null, speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-0", speechRate: 0.95, speechPitch: 1,
   });
   assert.equal(normalizeReaderSettings({ fontSize: 5, theme: "green", lineSpacing: 1.43 }).fontSize, 14);
   assert.equal(normalizeReaderSettings({ lineSpacing: 1.43 }).lineSpacing, 1.4);
