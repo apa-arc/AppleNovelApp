@@ -41,13 +41,9 @@ export async function playCloudWav(
   }
 
   let resolveFinished: (() => void) | null = null;
-  let rejectFinished: ((error: Error) => void) | null = null;
   let settled = false;
-  const finished = new Promise<void>((resolve, reject) => {
-    resolveFinished = resolve;
-    rejectFinished = reject;
-  });
-  const finish = (error?: Error) => {
+  const finished = new Promise<void>((resolve) => { resolveFinished = resolve; });
+  const finish = () => {
     if (settled) return;
     settled = true;
     subscription.remove();
@@ -55,12 +51,10 @@ export async function playCloudWav(
     player?.remove();
     player = null;
     void FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
-    if (error) rejectFinished?.(error);
-    else resolveFinished?.();
+    resolveFinished?.();
   };
   const subscription = player.addListener("playbackStatusUpdate", (status) => {
-    if (status.error) finish(new Error(status.error));
-    else if (status.didJustFinish) finish();
+    if (status.didJustFinish) finish();
   });
   player.play();
 
