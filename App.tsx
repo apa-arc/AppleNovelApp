@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Speech from "expo-speech";
 import { NovelSource, parseNovelSourceJsonBatch } from "./src/source";
+import { parseSourceSubscription } from "./src/source-subscription";
 import { searchNovelSource } from "./src/source-search";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
@@ -181,7 +182,21 @@ export default function App() {
 
   const importSource = () => {
     try {
-      const parsed = parseNovelSourceJsonBatch(sourceDraft);
+      let parsed: Array<{ name: string; baseUrl: string; searchUrl: string; bookUrl: string; chapterListUrl: string; chapterUrl: string }>;
+      let subscriptionNote = "";
+      const decoded: unknown = JSON.parse(sourceDraft);
+      if (decoded && typeof decoded === "object" && !Array.isArray(decoded) &&
+          "subscriptionId" in decoded) {
+        const subscription = parseSourceSubscription(sourceDraft);
+        parsed = subscription.compatible;
+        subscriptionNote = "；" + subscription.unsupported.length + " 个脚本或不兼容书源已跳过";
+        if (parsed.length === 0) {
+          setSourceMessage("订阅已识别，但没有可导入的 JSON 兼容书源" + subscriptionNote + "。不会执行订阅中的 JavaScript。");
+          return;
+        }
+      } else {
+        parsed = parseNovelSourceJsonBatch(sourceDraft);
+      }
       const existingNames = new Set(sources.map((item) => item.name.trim().toLocaleLowerCase()));
       const existingUrls = new Set(sources.map((item) => item.baseUrl.toLocaleLowerCase()));
       const duplicate = parsed.find((item) =>
@@ -201,7 +216,7 @@ export default function App() {
       }));
       setSources((current) => [...current, ...additions]);
       setSourceDraft("");
-      setSourceMessage("批量导入成功：已校验并导入 " + additions.length + " 个书源。");
+      setSourceMessage("导入成功：已导入 " + additions.length + " 个书源" + subscriptionNote + "。");
     } catch (error) {
       setSourceMessage(error instanceof Error ? error.message : "书源校验失败。");
     }
@@ -894,11 +909,11 @@ export default function App() {
           </View>
           <View style={styles.sourceCard}>
             <Text style={styles.sourceTitle}>导入 JSON 书源</Text>
-            <Text style={styles.note}>粘贴单个 JSON 对象或多个书源组成的 JSON 数组。最多一次导入 100 个；整批校验通过才会导入，重复项会阻止整批导入。</Text>
+            <Text style={styles.note}>支持单个/批量 JSON 配置，也可粘贴仓库订阅清单。订阅中只有提供完整 JSON 接口配置的书源会导入；脚本规则会跳过，不执行任意代码。</Text>
             <Pressable style={styles.exampleButton} onPress={() => { setSourceDraft(SOURCE_EXAMPLE); setSourceMessage("已填入示例模板，请替换为你有权访问的网站地址。"); }}>
               <Text style={styles.exampleButtonText}>填入 JSON 示例</Text>
             </Pressable>
-            <TextInput value={sourceDraft} onChangeText={(value) => { setSourceDraft(value); setSourceMessage(""); }} placeholder="粘贴单个 JSON 对象或书源 JSON 数组…" placeholderTextColor="#A39F94" multiline autoCapitalize="none" style={styles.sourceInput} textAlignVertical="top" />
+            <TextInput value={sourceDraft} onChangeText={(value) => { setSourceDraft(value); setSourceMessage(""); }} placeholder="粘贴 JSON 书源配置或订阅清单…" placeholderTextColor="#A39F94" multiline autoCapitalize="none" style={styles.sourceInput} textAlignVertical="top" />
             <Pressable style={[styles.importButton, !sourceDraft.trim() && styles.importButtonDisabled]} disabled={!sourceDraft.trim()} onPress={importSource}>
               <Text style={styles.importButtonText}>校验并批量导入</Text>
             </Pressable>
