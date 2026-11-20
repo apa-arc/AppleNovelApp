@@ -1080,7 +1080,7 @@ export default function App() {
                 <Text style={styles.chapterRowMeta}>{index === activeChapterIndex ? "正在阅读" : "在线章节"}</Text>
               </Pressable>
             )) : (localReading ? localChapters : SAMPLE_CHAPTERS).map((chapter, index) => (
-              <Pressable key={chapter.id || chapter.title} onPress={() => { saveReadingPosition(currentBook.id, index); setShowCatalog(false); }} style={[styles.chapterRow, readerTheme === "night" && styles.nightCard, index === activeChapterIndex && styles.chapterRowActive]}>
+              <Pressable key={chapter.title + '-' + index} onPress={() => { saveReadingPosition(currentBook.id, index); setShowCatalog(false); }} style={[styles.chapterRow, readerTheme === "night" && styles.nightCard, index === activeChapterIndex && styles.chapterRowActive]}>
                 <Text style={[styles.chapterRowTitle, readerTheme === "night" && styles.nightText]}>{chapter.title}</Text>
                 <Text style={styles.chapterRowMeta}>{index === activeChapterIndex ? "正在阅读" : localReading ? "本地章节" : "演示章节"}</Text>
               </Pressable>
