@@ -1,4 +1,5 @@
 import type { NovelSource } from "./source";
+import { parseHtmlNovelDetail, parseHtmlChapterList, parseHtmlChapterContent } from "./html-source-parser";
 import { createSourceHttpClient, type SourceHttpClient } from "./source-runtime";
 import type { NovelChapter, NovelContent, NovelDetail, NovelSummary } from "./novel";
 
@@ -142,6 +143,10 @@ export async function fetchNovelDetail(
   client: SourceHttpClient = createSourceHttpClient(source)
 ): Promise<NovelDetail> {
   const response = await client.get("bookUrl", summary.bookUrl);
+  if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
+    if (!source.htmlRules?.detail) throw new Error("该书源详情返回 HTML，但未配置 CSS 详情规则。");
+    return parseHtmlNovelDetail(response.body, summary, source.htmlRules.detail);
+  }
   return parseJsonNovelDetail(response.body, summary);
 }
 
@@ -152,6 +157,10 @@ export async function fetchNovelChapterList(
 ): Promise<NovelChapter[]> {
   const templated = replaceTemplate(source.chapterListUrl, { bookUrl: summary.bookUrl, book: summary.bookUrl });
   const response = await client.get("chapterListUrl", templated || source.chapterListUrl);
+  if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
+    if (!source.htmlRules?.chapters) throw new Error("该书源目录返回 HTML，但未配置 CSS 章节规则。");
+    return parseHtmlChapterList(response.body, summary.id, response.url, source.htmlRules.chapters);
+  }
   return parseJsonChapterList(response.body, summary.id, response.url);
 }
 
@@ -162,6 +171,11 @@ export async function fetchNovelChapterContent(
 ): Promise<NovelContent> {
   const templated = replaceTemplate(source.chapterUrl, { chapterUrl: chapter.url, url: chapter.url });
   const response = await client.get("chapterUrl", templated || chapter.url);
+  if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
+    if (!source.htmlRules?.content) throw new Error("该书源正文返回 HTML，但未配置 CSS 正文规则。");
+    const htmlContent = parseHtmlChapterContent(response.body, chapter.title, source.htmlRules.content);
+    return { ...htmlContent, chapterId: chapter.id };
+  }
   const content = parseJsonChapterContent(response.body, chapter.title);
   return { ...content, chapterId: chapter.id };
 }
