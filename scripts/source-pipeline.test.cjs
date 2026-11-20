@@ -126,3 +126,17 @@ test("source config rejects unknown HTML rule groups", () => {
   };
   assert.throws(() => parseNovelSourceJson(JSON.stringify(raw)), /不支持的规则组/);
 });
+
+test("source config rejects unknown HTML rule fields", () => {
+  const { parseNovelSourceJson } = require("../.test-build/source.js");
+  const raw = {
+    name: "invalid HTML rule field",
+    baseUrl: "https://mock-api.example.invalid",
+    searchUrl: "https://mock-api.example.invalid/search",
+    bookUrl: "https://mock-api.example.invalid/book",
+    chapterListUrl: "https://mock-api.example.invalid/chapters",
+    chapterUrl: "https://mock-api.example.invalid/chapter",
+    htmlRules: { search: { itemSelector: ".book", titleSelector: "a", urlSelector: "a", executeJavaScript: "alert(1)" } },
+  };
+  assert.throws(() => parseNovelSourceJson(JSON.stringify(raw)), /不支持的字段/);
+});
