@@ -1,9 +1,5 @@
 name: Offline Kokoro iOS native smoke test
 
-concurrency:
-  group: offline-kokoro-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 on:
   pull_request:
     branches: [main]
