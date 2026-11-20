@@ -31,8 +31,8 @@
 ## 当前功能边界
 
 - App 在线书源运行时支持受限 HTTPS JSON 接口和声明式 CSS HTML 规则；不执行上游 JavaScript。
-- HTML 解析目前仅作为受限的声明式适配层；已验证常见标签、ID、class 和属性选择器。复杂 XPath、正则替换、JavaScript 规则及组合选择器仍不纳入当前可用承诺。
-- 目前尚无通用 HTML/CSS/XPath 解析器，因此 Legado 选择器脚本不能直接运行。
+- HTML 解析是受限的声明式 CSS 适配层；支持标签、ID、class、属性、后代/子代组合、逗号分组及 first/last/nth-child。未支持的选择器会明确报错，不会静默忽略。
+- 这不是完整浏览器 DOM；XPath、正则替换、JavaScript 规则、动态加载内容及复杂 Legado 脚本不能直接运行。
 - 云端 Kokoro TTS 服务端代码、App HTTPS 客户端和 WAV 播放队列已接入；设备授权凭据通过 iOS SecureStore 保存，服务端支持撤销。需在自己的服务器部署 Docker 服务，并在 App「声音」设置填写 HTTPS 地址、管理员绑定码后才可实际联网朗读。
 - 后台/锁屏音频配置已加入 Expo 项目，但必须经 EAS 原生构建后才能验证。
 - 离线 Kokoro 原生推理、模型真实下载/解压尚未完成。候选 React Native 模块在 Expo 54 / RN 0.81.5 新架构下存在未解决的 TurboModule 注册问题，暂不接入生产主线。
