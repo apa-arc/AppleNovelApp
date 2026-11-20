@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TTS_MAX_CONCURRENT=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl bzip2 libsndfile1 \
+    ca-certificates curl bzip2 libsndfile1 libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /data /models/kokoro
