@@ -80,7 +80,7 @@ export function normalizeCloudTtsEndpoint(value: unknown): string | null {
   try {
     const url = new URL(value.trim());
     if (url.protocol !== "https:" || !url.hostname || url.username || url.password) return null;
-    if (url.hash) return null;
+    if (url.hash || url.search) return null;
     return url.toString().replace(/\/$/, "");
   } catch {
     return null;
