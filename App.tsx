@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Speech from "expo-speech";
 import { NovelSource, parseNovelSourceJson } from "./src/source";
 import { searchNovelSource } from "./src/source-search";
-import { fetchNovelDetail, fetchNovelChapterList } from "./src/source-catalog";
+import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
 import {
   SafeAreaView,
@@ -118,6 +118,11 @@ export default function App() {
   const [loadedChapters, setLoadedChapters] = useState<NovelChapter[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [catalogMessage, setCatalogMessage] = useState("");
+  const [onlineReading, setOnlineReading] = useState(false);
+  const [onlineChapterIndex, setOnlineChapterIndex] = useState(0);
+  const [onlineChapterContent, setOnlineChapterContent] = useState("");
+  const [onlineChapterTitle, setOnlineChapterTitle] = useState("");
+  const [loadingOnlineChapter, setLoadingOnlineChapter] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -275,6 +280,43 @@ export default function App() {
     }
   };
 
+  const openOnlineChapter = async (chapter: NovelChapter) => {
+    if (!selectedSearchNovel || !selectedSourceId) return;
+    const source = sources.find((item) => item.id === selectedSourceId);
+    const option = selectedSearchNovel.sources.find((item) => item.summary.sourceId === selectedSourceId);
+    if (!source || !source.enabled || !option) {
+      setCatalogMessage("所选书源已不可用，请重新选择书源。");
+      return;
+    }
+    stopSpeech();
+    setLoadingOnlineChapter(true);
+    setCatalogMessage("");
+    try {
+      const result = await fetchNovelChapterContent(source, chapter);
+      setOnlineChapterIndex(chapter.index);
+      setOnlineChapterContent(result.content);
+      setOnlineChapterTitle(result.title || chapter.title);
+      setOnlineReading(true);
+      setSelectedBook({
+        id: option.summary.id,
+        title: option.summary.title,
+        author: option.summary.author,
+        description: option.summary.description,
+        category: option.summary.category || "网络小说",
+        progress: 0,
+        color: "#E5E9DF",
+        lastChapter: chapter.title,
+        chapterIndex: chapter.index,
+      });
+      setShowCatalog(false);
+      setShowReaderSettings(false);
+    } catch (error) {
+      setCatalogMessage(error instanceof Error ? error.message : "章节正文获取失败，请尝试其他书源。");
+    } finally {
+      setLoadingOnlineChapter(false);
+    }
+  };
+
   const stopSpeech = () => {
     Speech.stop();
     setIsSpeaking(false);
@@ -282,6 +324,7 @@ export default function App() {
 
   const openBook = (book: Book) => {
     stopSpeech();
+    setOnlineReading(false);
     setSelectedBook(book);
     setChapterIndex(Math.min(Math.max(book.chapterIndex ?? 0, 0), SAMPLE_CHAPTERS.length - 1));
     setShowCatalog(false);
@@ -291,6 +334,7 @@ export default function App() {
   const closeReader = () => {
     stopSpeech();
     setSelectedBook(null);
+    setOnlineReading(false);
     setShowCatalog(false);
     setShowReaderSettings(false);
   };
@@ -301,7 +345,9 @@ export default function App() {
       stopSpeech();
       return;
     }
-    const textToRead = selectedBook.title + "。" + SAMPLE_CHAPTERS[chapterIndex].title + "。" + SAMPLE_CHAPTERS[chapterIndex].content;
+    const chapterTitle = onlineReading ? onlineChapterTitle : SAMPLE_CHAPTERS[chapterIndex].title;
+    const chapterText = onlineReading ? onlineChapterContent : SAMPLE_CHAPTERS[chapterIndex].content;
+    const textToRead = selectedBook.title + "。" + chapterTitle + "。" + chapterText;
     setIsSpeaking(true);
     Speech.speak(textToRead, {
       language: "zh-CN",
@@ -329,6 +375,12 @@ export default function App() {
 
   const changeChapter = (delta: number) => {
     if (!selectedBook) return;
+    if (onlineReading) {
+      const nextOnline = onlineChapterIndex + delta;
+      const chapter = loadedChapters[nextOnline];
+      if (chapter) void openOnlineChapter(chapter);
+      return;
+    }
     const next = chapterIndex + delta;
     if (next < 0 || next >= SAMPLE_CHAPTERS.length) return;
     saveReadingPosition(selectedBook.id, next);
@@ -407,12 +459,13 @@ export default function App() {
               </Pressable>
               {!!catalogMessage && <Text style={styles.searchFeedback}>{catalogMessage}</Text>}
               {loadedChapters.map((chapter) => (
-                <View key={chapter.id} style={styles.chapterRow}>
+                <Pressable key={chapter.id} onPress={() => openOnlineChapter(chapter)} disabled={loadingOnlineChapter} style={styles.chapterRow}>
                   <Text style={styles.chapterRowTitle}>{chapter.title}</Text>
-                  <Text style={styles.chapterRowMeta}>第 {chapter.index + 1} 章</Text>
-                </View>
+                  <Text style={styles.chapterRowMeta}>第 {chapter.index + 1} 章 · 阅读</Text>
+                </Pressable>
               ))}
-              {!!loadedChapters.length && <Text style={styles.note}>目录已成功读取。章节正文和在线阅读将在下一阶段接入。</Text>}
+              {loadingOnlineChapter && <ActivityIndicator color="#65745D" style={{ marginVertical: 12 }} />}
+              {!!loadedChapters.length && <Text style={styles.note}>点击任意章节即可加载正文。当前内容由所选书源实时获取。</Text>}
             </View>
           )}
         </ScrollView>
@@ -422,7 +475,9 @@ export default function App() {
 
   if (selectedBook) {
     const currentBook = books.find((book) => book.id === selectedBook.id) || selectedBook;
-    const activeChapter = SAMPLE_CHAPTERS[chapterIndex];
+    const activeChapter = onlineReading ? { title: onlineChapterTitle, content: onlineChapterContent } : SAMPLE_CHAPTERS[chapterIndex];
+    const activeChapterIndex = onlineReading ? onlineChapterIndex : chapterIndex;
+    const activeChapterCount = onlineReading ? loadedChapters.length : SAMPLE_CHAPTERS.length;
     const readerBackground = readerTheme === "night" ? "#20231F" : "#F8F7F3";
     const readerTextColor = readerTheme === "night" ? "#E6E3D9" : "#45453D";
     return (
@@ -438,24 +493,27 @@ export default function App() {
         {showCatalog ? (
           <ScrollView contentContainerStyle={styles.catalogContent}>
             <Text style={[styles.catalogHeading, readerTheme === "night" && styles.nightText]}>章节目录</Text>
-            <Text style={[styles.catalogSub, readerTheme === "night" && styles.nightMuted]}>{currentBook.title} · 共 {SAMPLE_CHAPTERS.length} 章（演示）</Text>
-            {SAMPLE_CHAPTERS.map((chapter, index) => (
-              <Pressable key={chapter.title} onPress={() => { saveReadingPosition(currentBook.id, index); setShowCatalog(false); }} style={[styles.chapterRow, readerTheme === "night" && styles.nightCard, index === chapterIndex && styles.chapterRowActive]}>
+            <Text style={[styles.catalogSub, readerTheme === "night" && styles.nightMuted]}>{currentBook.title} · 共 {activeChapterCount} 章{onlineReading ? "" : "（演示）"}</Text>
+            {onlineReading ? loadedChapters.map((chapter, index) => (
+              <Pressable key={chapter.id} onPress={() => void openOnlineChapter(chapter)} style={[styles.chapterRow, readerTheme === "night" && styles.nightCard, index === activeChapterIndex && styles.chapterRowActive]}>
                 <Text style={[styles.chapterRowTitle, readerTheme === "night" && styles.nightText]}>{chapter.title}</Text>
-                <Text style={styles.chapterRowMeta}>{index === chapterIndex ? "正在阅读" : "演示章节"}</Text>
+                <Text style={styles.chapterRowMeta}>{index === activeChapterIndex ? "正在阅读" : "在线章节"}</Text>
+              </Pressable>
+            )) : SAMPLE_CHAPTERS.map((chapter, index) => (
+              <Pressable key={chapter.title} onPress={() => { saveReadingPosition(currentBook.id, index); setShowCatalog(false); }} style={[styles.chapterRow, readerTheme === "night" && styles.nightCard, index === activeChapterIndex && styles.chapterRowActive]}>
+                <Text style={[styles.chapterRowTitle, readerTheme === "night" && styles.nightText]}>{chapter.title}</Text>
+                <Text style={styles.chapterRowMeta}>{index === activeChapterIndex ? "正在阅读" : "演示章节"}</Text>
               </Pressable>
             ))}
-            <Text style={[styles.catalogDisclaimer, readerTheme === "night" && styles.nightMuted]}>当前为内置演示目录，接入书源后将替换为小说真实章节。</Text>
+            {!onlineReading && <Text style={[styles.catalogDisclaimer, readerTheme === "night" && styles.nightMuted]}>当前为内置演示目录。</Text>}
           </ScrollView>
         ) : (
           <ScrollView contentContainerStyle={styles.readerContent}>
             <Text style={styles.chapterLabel}>{activeChapter.title}</Text>
             <Text style={[styles.readerTitle, readerTheme === "night" && styles.nightText]}>{currentBook.title}</Text>
-            <Text style={[styles.readerParagraph, { fontSize: readerFontSize, lineHeight: Math.round(readerFontSize * 1.9), color: readerTextColor }]}>
-              {currentBook.description}{"\n\n"}{activeChapter.content}
-            </Text>
+            {loadingOnlineChapter ? <ActivityIndicator size="large" color="#65745D" /> : <Text style={[styles.readerParagraph, { fontSize: readerFontSize, lineHeight: Math.round(readerFontSize * 1.9), color: readerTextColor }]}>{onlineReading ? activeChapter.content : currentBook.description + "\n\n" + activeChapter.content}</Text>}
             <View style={styles.readerFooter}>
-              <Text style={[styles.muted, readerTheme === "night" && styles.nightMuted]}>第 {chapterIndex + 1} / {SAMPLE_CHAPTERS.length} 章</Text>
+              <Text style={[styles.muted, readerTheme === "night" && styles.nightMuted]}>第 {activeChapterIndex + 1} / {activeChapterCount} 章</Text>
               <Text style={[styles.muted, readerTheme === "night" && styles.nightMuted]}>已读 {currentBook.progress}%</Text>
             </View>
           </ScrollView>
@@ -470,8 +528,8 @@ export default function App() {
           </View>
         )}
         <View style={[styles.readerBottomBar, readerTheme === "night" && styles.nightCard]}>
-          <Pressable disabled={chapterIndex === 0 || showCatalog} onPress={() => changeChapter(-1)} style={styles.chapterNavButton}>
-            <Text style={[styles.chapterNavText, (chapterIndex === 0 || showCatalog) && styles.disabledText]}>上一章</Text>
+          <Pressable disabled={activeChapterIndex === 0 || showCatalog || loadingOnlineChapter} onPress={() => changeChapter(-1)} style={styles.chapterNavButton}>
+            <Text style={[styles.chapterNavText, (activeChapterIndex === 0 || showCatalog || loadingOnlineChapter) && styles.disabledText]}>上一章</Text>
           </Pressable>
           <Pressable onPress={() => setShowReaderSettings((value) => !value)} style={styles.playerButton}>
             <Text style={styles.playerAction}>Aa 设置</Text>
@@ -479,8 +537,8 @@ export default function App() {
           <Pressable onPress={speakCurrentBook} style={styles.playerButton}>
             <Text style={styles.playerAction}>{isSpeaking ? "停止朗读" : "听书"}</Text>
           </Pressable>
-          <Pressable disabled={chapterIndex === SAMPLE_CHAPTERS.length - 1 || showCatalog} onPress={() => changeChapter(1)} style={styles.chapterNavButton}>
-            <Text style={[styles.chapterNavText, (chapterIndex === SAMPLE_CHAPTERS.length - 1 || showCatalog) && styles.disabledText]}>下一章</Text>
+          <Pressable disabled={activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter} onPress={() => changeChapter(1)} style={styles.chapterNavButton}>
+            <Text style={[styles.chapterNavText, (activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter) && styles.disabledText]}>下一章</Text>
           </Pressable>
         </View>
       </SafeAreaView>
