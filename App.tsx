@@ -440,6 +440,7 @@ export default function App() {
       setOnlineChapterIndex(chapter.index);
       setReaderParagraphIndex(0);
       restoreReaderPositionRef.current = true;
+      setReaderContentHeight(0);
       setOnlineChapterContent(result.content);
       setOnlineChapterTitle(result.title || chapter.title);
       setOnlineReading(true);
@@ -472,7 +473,6 @@ export default function App() {
         onlineSummary: option.summary,
         onlineChapters: loadedChapters,
         onlineChapterId: chapter.id,
-        readerParagraphIndex: 0,
       })));
       setShowCatalog(false);
       setShowReaderSettings(false);
@@ -590,6 +590,7 @@ export default function App() {
         const savedParagraph = refreshedBook?.onlineChapterId === targetChapter.id ? (refreshedBook.readerParagraphIndex ?? 0) : 0;
         setReaderParagraphIndex(savedParagraph);
         restoreReaderPositionRef.current = true;
+        setReaderContentHeight(0);
         setOnlineChapterContent(result.content);
         setOnlineChapterTitle(result.title || targetChapter.title);
       } catch (error) {
@@ -607,6 +608,7 @@ export default function App() {
     setChapterIndex(Math.min(Math.max(book.chapterIndex ?? 0, 0), SAMPLE_CHAPTERS.length - 1));
     setReaderParagraphIndex(Math.max(0, book.readerParagraphIndex ?? 0));
     restoreReaderPositionRef.current = true;
+    setReaderContentHeight(0);
     setShowCatalog(false);
     setShowReaderSettings(false);
   };
@@ -652,6 +654,7 @@ export default function App() {
     setChapterIndex(safeIndex);
     setReaderParagraphIndex(0);
     restoreReaderPositionRef.current = true;
+    setReaderContentHeight(0);
     setBooks((current) => current.map((book) => {
       if (book.id !== bookId) return book;
       return {
