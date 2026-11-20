@@ -10,10 +10,12 @@ export type CloudSpeechRequest = {
 export async function requestCloudSpeech(
   endpoint: string,
   request: CloudSpeechRequest,
+  deviceToken: string,
   fetcher: typeof fetch = fetch
 ): Promise<Uint8Array> {
   const baseUrl = normalizeCloudTtsEndpoint(endpoint);
   if (!baseUrl) throw new Error("AI 语音服务器地址必须是有效的 HTTPS 地址。");
+  if (!deviceToken.trim()) throw new Error("请先绑定此设备后再使用 AI 朗读。");
   const voice = findSpeechVoice(request.voiceId);
   if (!voice) throw new Error("所选 AI 音色无效，请重新选择。");
   const text = request.text.trim();
@@ -25,7 +27,7 @@ export async function requestCloudSpeech(
   try {
     response = await fetcher(baseUrl + "/v1/audio/speech", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "audio/wav" },
+      headers: { "Content-Type": "application/json", Accept: "audio/wav", Authorization: "Bearer " + deviceToken },
       body: JSON.stringify({
         model: voice.modelId,
         speaker_id: voice.speakerId,
@@ -87,4 +89,49 @@ export async function checkCloudTtsServer(
     throw new Error("服务器已响应，但 Kokoro 模型尚未就绪或版本不匹配。");
   }
   return { model: payload.model, speakerCount: payload.speaker_count };
+}
+
+
+export async function enrollCloudSpeechDevice(
+  endpoint: string,
+  enrollmentCode: string,
+  fetcher: typeof fetch = fetch
+): Promise<string> {
+  const baseUrl = normalizeCloudTtsEndpoint(endpoint);
+  if (!baseUrl) throw new Error("AI 语音服务器地址必须是有效的 HTTPS 地址。");
+  if (enrollmentCode.trim().length < 8) throw new Error("设备绑定码至少需要 8 个字符。");
+  let response: Response;
+  try {
+    response = await fetcher(baseUrl + "/v1/devices/enroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ enrollment_code: enrollmentCode.trim() }),
+    });
+  } catch {
+    throw new Error("无法连接 AI 语音服务器，请检查网络或服务器地址。");
+  }
+  if (!response.ok) {
+    let detail = "";
+    try { const body = await response.json() as { detail?: unknown }; if (typeof body.detail === "string") detail = body.detail; } catch { /* ignore */ }
+    throw new Error(detail || "设备绑定失败（" + response.status + "）。");
+  }
+  const body = await response.json() as { access_token?: unknown; token_type?: unknown };
+  if (typeof body.access_token !== "string" || body.access_token.length < 32 || body.token_type !== "bearer") {
+    throw new Error("服务器返回的设备凭据无效。");
+  }
+  return body.access_token;
+}
+
+export async function revokeCloudSpeechDevice(
+  endpoint: string,
+  deviceToken: string,
+  fetcher: typeof fetch = fetch
+): Promise<void> {
+  const baseUrl = normalizeCloudTtsEndpoint(endpoint);
+  if (!baseUrl) throw new Error("AI 语音服务器地址必须是有效的 HTTPS 地址。");
+  const response = await fetcher(baseUrl + "/v1/devices/revoke", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + deviceToken, Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error("设备解绑失败（" + response.status + "）。");
 }
