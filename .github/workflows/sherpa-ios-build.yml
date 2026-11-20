@@ -1,0 +1,34 @@
+name: Sherpa iOS simulator build spike
+
+on:
+  push:
+    branches:
+      - experiment/sherpa-onnx-ios-registration
+    paths:
+      - "app.json"
+      - "package.json"
+      - "app.config.js"
+      - "plugins/**"
+      - "scripts/patch-sherpa-native.js"
+      - ".github/workflows/sherpa-ios-build.yml"
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install JavaScript dependencies and patch Sherpa
+        run: npm install
+      - name: Generate iOS project
+        run: npx expo prebuild --platform ios --no-install --clean
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install --repo-update
+      - name: Show Xcode schemes
+        run: xcodebuild -list -workspace ios/*.xcworkspace
+      - name: Compile iOS simulator app
+        run: xcodebuild -workspace ios/AppleNovelApp.xcworkspace -scheme AppleNovelApp -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build CODE_SIGNING_ALLOWED=NO build
