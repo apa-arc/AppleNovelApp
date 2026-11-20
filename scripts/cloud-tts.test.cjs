@@ -1,0 +1,41 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { requestCloudSpeech } = require("../.test-build/cloud-tts.js");
+
+test("cloud client sends the selected Kokoro speaker and bounded speed", async () => {
+  let request;
+  const fakeFetch = async (url, init) => {
+    request = { url, init, body: JSON.parse(init.body) };
+    return new Response(new Uint8Array(44), { status: 200, headers: { "content-type": "audio/wav" } });
+  };
+  const bytes = await requestCloudSpeech("https://tts.example.com/", {
+    voiceId: "kokoro-multi-lang-v1_1:speaker-3", text: " 你好 ", speed: 2.4,
+  }, fakeFetch);
+  assert.equal(request.url, "https://tts.example.com/v1/audio/speech");
+  assert.deepEqual(request.body, { model: "kokoro-multi-lang-v1_1", speaker_id: 3, text: "你好", speed: 2 });
+  assert.equal(bytes.byteLength, 44);
+});
+
+test("cloud client rejects non-HTTPS endpoints before making a request", async () => {
+  let called = false;
+  await assert.rejects(
+    requestCloudSpeech("http://tts.example.com", { voiceId: "kokoro-multi-lang-v1_1:speaker-3", text: "你好", speed: 1 }, async () => {
+      called = true;
+      return new Response(new Uint8Array(44), { headers: { "content-type": "audio/wav" } });
+    }),
+    /HTTPS/,
+  );
+  assert.equal(called, false);
+});
+
+test("cloud client rejects invalid voices, non-audio responses and oversized text", async () => {
+  const fakeFetch = async () => new Response("not audio", { status: 200, headers: { "content-type": "text/plain" } });
+  await assert.rejects(requestCloudSpeech("https://tts.example.com", { voiceId: "missing", text: "你好", speed: 1 }, fakeFetch), /音色无效/);
+  await assert.rejects(requestCloudSpeech("https://tts.example.com", { voiceId: "kokoro-multi-lang-v1_1:speaker-3", text: "x".repeat(421), speed: 1 }, fakeFetch), /420/);
+  await assert.rejects(requestCloudSpeech("https://tts.example.com", { voiceId: "kokoro-multi-lang-v1_1:speaker-3", text: "你好", speed: 1 }, fakeFetch), /非 WAV/);
+});
+
+test("cloud client surfaces server errors without exposing request secrets", async () => {
+  const fakeFetch = async () => new Response(JSON.stringify({ detail: "model not ready" }), { status: 503, headers: { "content-type": "application/json" } });
+  await assert.rejects(requestCloudSpeech("https://tts.example.com", { voiceId: "kokoro-multi-lang-v1_1:speaker-3", text: "你好", speed: 1 }, fakeFetch), /model not ready/);
+});
