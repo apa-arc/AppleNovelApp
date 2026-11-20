@@ -167,3 +167,14 @@ export async function synthesizeOfflineKokoro(
   return encodePcm16Wav(audio.samples, audio.sampleRate);
 }
 
+
+
+/** Verifies the native TurboModule bridge before enabling local model downloads. */
+export async function verifyOfflineKokoroNativeModule(): Promise<string> {
+  const nativeApi = require("react-native-sherpa-onnx") as { testSherpaInit: () => Promise<string> };
+  const result = await nativeApi.testSherpaInit();
+  if (result !== "Sherpa ONNX loaded!") {
+    throw new Error("SherpaOnnx 原生模块未能完成初始化。");
+  }
+  return result;
+}
