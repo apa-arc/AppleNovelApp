@@ -5,6 +5,7 @@ import { NovelSource, parseNovelSourceJson } from "./src/source";
 import { searchNovelSource } from "./src/source-search";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
+import { compareChapterUpdates } from "./src/subscription";
 import {
   SafeAreaView,
   View,
@@ -34,6 +35,7 @@ type Book = {
   onlineSummary?: NovelSummary;
   onlineChapters?: NovelChapter[];
   onlineChapterId?: string;
+  onlineLastCheckedAt?: number;
 };
 
 const STORAGE_KEY = "@private_novel/books_v1";
@@ -134,6 +136,7 @@ export default function App() {
   const [loadingOnlineChapter, setLoadingOnlineChapter] = useState(false);
   const [rankingChapterCounts, setRankingChapterCounts] = useState(false);
   const [openedFromShelf, setOpenedFromShelf] = useState(false);
+  const [checkingSubscription, setCheckingSubscription] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -420,45 +423,117 @@ export default function App() {
     setIsSpeaking(false);
   };
 
-  const openBook = (book: Book) => {
+  const checkOnlineSubscription = async (book: Book, showNoUpdates = false): Promise<Book | null> => {
+    if (!book.onlineSourceId || !book.onlineSummary) return null;
+    const source = sources.find((item) => item.id === book.onlineSourceId && item.enabled);
+    if (!source) {
+      Alert.alert("书源不可用", "这本小说订阅的书源已停用或删除。请先重新启用书源，或重新选择阅读源。");
+      return null;
+    }
+    setCheckingSubscription(true);
+    try {
+      const latestChapters = await fetchNovelChapterList(source, book.onlineSummary);
+      if (latestChapters.length === 0) throw new Error("书源返回了空目录，已保留原有订阅目录。");
+      const previousChapters = book.onlineChapters || [];
+      const update = compareChapterUpdates(
+        previousChapters,
+        latestChapters,
+        book.onlineChapterId,
+        book.chapterIndex ?? 0
+      );
+      const currentChapter = latestChapters[update.currentChapterIndex];
+      const refreshedBook: Book = {
+        ...book,
+        onlineChapters: latestChapters,
+        onlineChapterId: currentChapter?.id,
+        chapterIndex: update.currentChapterIndex,
+        lastChapter: currentChapter?.title || book.lastChapter,
+        onlineLastCheckedAt: Date.now(),
+        progress: latestChapters.length
+          ? Math.round(((update.currentChapterIndex + 1) / latestChapters.length) * 100)
+          : book.progress,
+      };
+      setBooks((current) => current.map((item) => item.id === book.id ? refreshedBook : item));
+      setSelectedBook((current) => current?.id === book.id ? refreshedBook : current);
+      setLoadedChapters(latestChapters);
+      setOnlineChapterIndex(update.currentChapterIndex);
+      if (update.newChapters.length > 0) {
+        const latestTitles = update.newChapters.slice(-3).map((chapter) => chapter.title).join("、");
+        Alert.alert(
+          "发现新章节",
+          "《" + book.title + "》更新了 " + update.newChapters.length + " 章。" +
+          (latestTitles ? "\\n最新章节：" + latestTitles : "") +
+          "\\n已自动更新订阅目录。"
+        );
+      } else if (showNoUpdates) {
+        Alert.alert("订阅检查完成", "暂时没有发现新章节，当前目录共 " + latestChapters.length + " 章。");
+      }
+      return refreshedBook;
+    } catch (error) {
+      Alert.alert(
+        "订阅检查失败",
+        (error instanceof Error ? error.message : "暂时无法读取最新目录。") + "\\n已保留本地目录，可以稍后重试。"
+      );
+      return null;
+    } finally {
+      setCheckingSubscription(false);
+    }
+  };
+
+  const openBook = async (book: Book) => {
     stopSpeech();
-    setOpenedFromShelf(true);
     if (book.onlineSourceId && book.onlineSummary && book.onlineChapters?.length) {
       const source = sources.find((item) => item.id === book.onlineSourceId && item.enabled);
       if (!source) {
         Alert.alert("书源不可用", "这本小说保存的书源已停用或删除。请到「书源」页面重新启用，或到「发现」重新选择其他书源。");
         return;
       }
-      const chapters = book.onlineChapters;
-      const savedIndex = chapters.findIndex((chapter) => chapter.id === book.onlineChapterId);
-      const chapterIndexToOpen = savedIndex >= 0 ? savedIndex : Math.min(Math.max(book.chapterIndex ?? 0, 0), chapters.length - 1);
+      setOpenedFromShelf(true);
       const summary = book.onlineSummary;
+      const initialChapters = book.onlineChapters;
+      const initialIndex = Math.min(Math.max(book.chapterIndex ?? 0, 0), initialChapters.length - 1);
       setSelectedSearchNovel({
         id: getOnlineBookId(book.title, book.author),
         title: book.title,
         author: book.author,
         description: book.description,
-        sources: [{ summary, latencyMs: 0, chapterCount: chapters.length }],
+        sources: [{ summary, latencyMs: 0, chapterCount: initialChapters.length }],
       });
       setSelectedSourceId(source.id);
-      setLoadedChapters(chapters);
+      setLoadedChapters(initialChapters);
       setLoadedNovelDetail(null);
       setShowCatalog(false);
       setShowReaderSettings(false);
       setOnlineReading(true);
-      setOnlineChapterIndex(chapterIndexToOpen);
+      setOnlineChapterIndex(initialIndex);
       setSelectedBook(book);
       setLoadingOnlineChapter(true);
-      void fetchNovelChapterContent(source, chapters[chapterIndexToOpen]).then((result) => {
+
+      // Check the subscribed source every time a saved online novel is opened.
+      const refreshedBook = await checkOnlineSubscription(book);
+      const chapters = refreshedBook?.onlineChapters || initialChapters;
+      const targetIndex = refreshedBook?.chapterIndex ?? initialIndex;
+      const targetChapter = chapters[targetIndex] || chapters[0];
+      if (!targetChapter) {
+        setLoadingOnlineChapter(false);
+        Alert.alert("目录为空", "当前没有可打开的章节，请稍后重新检查订阅。");
+        return;
+      }
+      try {
+        const result = await fetchNovelChapterContent(source, targetChapter);
+        setOnlineChapterIndex(targetChapter.index);
         setOnlineChapterContent(result.content);
-        setOnlineChapterTitle(result.title || chapters[chapterIndexToOpen].title);
-      }).catch((error) => {
+        setOnlineChapterTitle(result.title || targetChapter.title);
+      } catch (error) {
         Alert.alert("章节加载失败", error instanceof Error ? error.message : "请检查书源后重试。");
         setSelectedBook(null);
         setOnlineReading(false);
-      }).finally(() => setLoadingOnlineChapter(false));
+      } finally {
+        setLoadingOnlineChapter(false);
+      }
       return;
     }
+    setOpenedFromShelf(true);
     setOnlineReading(false);
     setSelectedBook(book);
     setChapterIndex(Math.min(Math.max(book.chapterIndex ?? 0, 0), SAMPLE_CHAPTERS.length - 1));
@@ -643,6 +718,11 @@ export default function App() {
         <View style={styles.readerHeader}>
           <Pressable onPress={closeReader}><Text style={styles.backText}>‹ 返回</Text></Pressable>
           <Text style={[styles.readerHeaderTitle, readerTheme === "night" && styles.nightMuted]}>正在阅读</Text>
+          {onlineReading && (
+            <Pressable disabled={checkingSubscription} onPress={() => { if (currentBook) void checkOnlineSubscription(currentBook, true); }}>
+              <Text style={[styles.headerAction, checkingSubscription && styles.disabledText]}>{checkingSubscription ? "检查中…" : "检查更新"}</Text>
+            </Pressable>
+          )}
           <Pressable onPress={() => { setShowCatalog((value) => !value); setShowReaderSettings(false); }}>
             <Text style={styles.headerAction}>{showCatalog ? "返回正文" : "目录"}</Text>
           </Pressable>
