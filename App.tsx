@@ -14,6 +14,9 @@ import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type ReaderSettings, 
 import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } from "./src/reading-progress";
 import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
 import { SPEECH_VOICES } from "./src/speech-voice-catalog";
+import { splitSpeechText, normalizeCloudTtsEndpoint } from "./src/speech-engine";
+import { requestCloudSpeech } from "./src/cloud-tts";
+import { playCloudWav, type CloudAudioPlayback } from "./src/cloud-audio-playback";
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
 import {
   SafeAreaView,
@@ -137,6 +140,10 @@ export default function App() {
   const [speechVoiceMessage, setSpeechVoiceMessage] = useState("");
   const [speechVoiceIdentifier, setSpeechVoiceIdentifier] = useState<string | null>(null);
   const [speechModelVoiceId, setSpeechModelVoiceId] = useState(DEFAULT_READER_SETTINGS.speechModelVoiceId);
+  const [speechCloudEndpoint, setSpeechCloudEndpoint] = useState(DEFAULT_READER_SETTINGS.speechCloudEndpoint);
+  const [speechPaused, setSpeechPaused] = useState(false);
+  const speechRunIdRef = useRef(0);
+  const cloudPlaybackRef = useRef<CloudAudioPlayback | null>(null);
   const [speechVoiceCategoryFilter, setSpeechVoiceCategoryFilter] = useState<"全部" | "中文女声" | "中文男声" | "英语女声">("全部");
   const [speechRate, setSpeechRate] = useState(DEFAULT_READER_SETTINGS.speechRate);
   const [speechPitch, setSpeechPitch] = useState(DEFAULT_READER_SETTINGS.speechPitch);
@@ -275,6 +282,7 @@ export default function App() {
           setReaderHorizontalPadding(settings.horizontalPadding);
           setSpeechVoiceIdentifier(settings.speechVoiceIdentifier);
           setSpeechModelVoiceId(settings.speechModelVoiceId);
+          setSpeechCloudEndpoint(settings.speechCloudEndpoint);
           setSpeechRate(settings.speechRate);
           setSpeechPitch(settings.speechPitch);
         }
@@ -314,11 +322,11 @@ export default function App() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    const settings: ReaderSettings = normalizeReaderSettings({ fontSize: readerFontSize, theme: readerTheme, readingMode: readerMode, lineSpacing: readerLineSpacing, paragraphSpacing: readerParagraphSpacing, horizontalPadding: readerHorizontalPadding, speechVoiceIdentifier, speechModelVoiceId, speechRate, speechPitch });
+    const settings: ReaderSettings = normalizeReaderSettings({ speechCloudEndpoint, fontSize: readerFontSize, theme: readerTheme, readingMode: readerMode, lineSpacing: readerLineSpacing, paragraphSpacing: readerParagraphSpacing, horizontalPadding: readerHorizontalPadding, speechVoiceIdentifier, speechModelVoiceId, speechRate, speechPitch });
     AsyncStorage.setItem(READER_SETTINGS_STORAGE_KEY, JSON.stringify(settings)).catch(() => {
       Alert.alert("保存失败", "阅读设置暂时未能保存，请检查手机存储空间。");
     });
-  }, [readerFontSize, readerTheme, readerMode, readerLineSpacing, readerParagraphSpacing, readerHorizontalPadding, speechVoiceIdentifier, speechModelVoiceId, speechRate, speechPitch, isLoaded]);
+  }, [readerFontSize, readerTheme, readerMode, readerLineSpacing, readerParagraphSpacing, readerHorizontalPadding, speechVoiceIdentifier, speechModelVoiceId, speechCloudEndpoint, speechRate, speechPitch, isLoaded]);
 
   useEffect(() => {
     if (!restoreReaderPositionRef.current || readerContentHeight <= 0 || readerViewportHeight <= 0) return;
@@ -642,8 +650,22 @@ export default function App() {
   };
 
   const stopSpeech = () => {
+    speechRunIdRef.current += 1;
     Speech.stop();
+    cloudPlaybackRef.current?.stop();
+    cloudPlaybackRef.current = null;
     setIsSpeaking(false);
+    setSpeechPaused(false);
+  };
+
+  const pauseSpeech = () => {
+    setSpeechPaused(true);
+    cloudPlaybackRef.current?.pause();
+  };
+
+  const resumeSpeech = () => {
+    setSpeechPaused(false);
+    cloudPlaybackRef.current?.resume();
   };
 
   const checkOnlineSubscription = async (book: Book, showNoUpdates = false): Promise<Book | null> => {
@@ -889,25 +911,51 @@ export default function App() {
     });
   };
 
-  const speakCurrentBook = () => {
+  const speakCurrentBook = async () => {
     if (!selectedBook) return;
     if (isSpeaking) {
       stopSpeech();
       return;
     }
+    const endpoint = normalizeCloudTtsEndpoint(speechCloudEndpoint);
+    if (!endpoint) {
+      Alert.alert("AI 朗读服务未配置", "先在「声音」设置中填写你部署的 Kokoro 服务 HTTPS 地址。AI 朗读不会偷偷切换成 iPhone 系统语音。");
+      setShowSpeechSettings(true);
+      return;
+    }
     const chapterTitle = onlineReading ? onlineChapterTitle : localReading ? localChapters[chapterIndex]?.title || "全文" : SAMPLE_CHAPTERS[chapterIndex].title;
     const chapterText = onlineReading ? onlineChapterContent : localReading ? localChapters[chapterIndex]?.content || "" : SAMPLE_CHAPTERS[chapterIndex].content;
-    const textToRead = selectedBook.title + "。" + chapterTitle + "。" + chapterText;
+    const chunks = splitSpeechText(selectedBook.title + "。" + chapterTitle + "。" + chapterText, 420);
+    if (chunks.length === 0) return;
+    const runId = ++speechRunIdRef.current;
     setIsSpeaking(true);
-    Speech.speak(textToRead, {
-      language: availableSpeechVoices.find((voice) => voice.identifier === speechVoiceIdentifier)?.language || "zh-CN",
-      voice: availableSpeechVoices.find((voice) => voice.identifier === speechVoiceIdentifier)?.identifier,
-      rate: speechRate,
-      pitch: speechPitch,
-      onDone: () => setIsSpeaking(false),
-      onStopped: () => setIsSpeaking(false),
-      onError: () => setIsSpeaking(false),
-    });
+    setSpeechPaused(false);
+    try {
+      for (const chunk of chunks) {
+        if (runId !== speechRunIdRef.current) break;
+        const audioBytes = await requestCloudSpeech(endpoint, {
+          voiceId: speechModelVoiceId,
+          text: chunk,
+          speed: speechRate,
+        });
+        if (runId !== speechRunIdRef.current) break;
+        const playback = await playCloudWav(audioBytes, { title: selectedBook.title, artist: selectedBook.author });
+        cloudPlaybackRef.current = playback;
+        if (speechPaused) playback.pause();
+        await playback.finished;
+        if (cloudPlaybackRef.current === playback) cloudPlaybackRef.current = null;
+      }
+    } catch (error) {
+      if (runId === speechRunIdRef.current) {
+        Alert.alert("AI 朗读失败", error instanceof Error ? error.message : "请检查 AI 语音服务器后重试。");
+      }
+    } finally {
+      if (runId === speechRunIdRef.current) {
+        cloudPlaybackRef.current = null;
+        setIsSpeaking(false);
+        setSpeechPaused(false);
+      }
+    }
   };
 
   const saveReadingPosition = (bookId: string, nextChapterIndex: number) => {
@@ -1200,6 +1248,19 @@ export default function App() {
             <View style={[styles.voiceOption, readerTheme === "night" && styles.nightVoiceOption, { flexDirection: "column", alignItems: "flex-start", marginBottom: 10 }]}>
               <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>AI 朗读模型 · Kokoro 中文多音色</Text>
               <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>103 种音色 · 离线模型约 147 MB · 中文 / 英文</Text>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText, { marginTop: 12 }]}>在线 Kokoro 服务地址（HTTPS）</Text>
+              <TextInput
+                value={speechCloudEndpoint}
+                onChangeText={setSpeechCloudEndpoint}
+                onEndEditing={() => setSpeechCloudEndpoint(normalizeCloudTtsEndpoint(speechCloudEndpoint) || "")}
+                placeholder="https://你的Kokoro服务器域名"
+                placeholderTextColor="#A39F94"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                style={[styles.searchInput, { width: "100%", marginTop: 7 }]}
+              />
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>服务端部署完成后填入 HTTPS 地址。服务端保存模型，App 不保存服务端密钥。</Text>
               <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>一个模型包包含全部 103 个音色。先选好声音；模型下载与 AI 试听接入后，才会真正生成语音。</Text>
               <Text style={[styles.voiceSelected, { marginTop: 6 }]}>当前状态：模型尚未下载，AI 朗读尚未启用</Text>
             </View>
@@ -1289,8 +1350,11 @@ export default function App() {
             <Text style={styles.playerAction}>声音</Text>
           </Pressable>
           <Pressable onPress={speakCurrentBook} style={styles.playerButton}>
-            <Text style={styles.playerAction}>{isSpeaking ? "停止朗读" : "系统朗读"}</Text>
+            <Text style={styles.playerAction}>{isSpeaking ? "停止" : "AI朗读"}</Text>
           </Pressable>
+          {isSpeaking && <Pressable onPress={speechPaused ? resumeSpeech : pauseSpeech} style={styles.playerButton}>
+            <Text style={styles.playerAction}>{speechPaused ? "继续" : "暂停"}</Text>
+          </Pressable>}
           <Pressable disabled={activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter} onPress={() => changeChapter(1)} style={styles.chapterNavButton}>
             <Text style={[styles.chapterNavText, (activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter) && styles.disabledText]}>下一章</Text>
           </Pressable>
