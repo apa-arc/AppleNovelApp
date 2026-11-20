@@ -10,7 +10,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "test:source-runtime": "tsc src/source.ts src/source-runtime.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-runtime.test.cjs",
-    "test": "npm run test:source-runtime"
+    "test:novel-model": "tsc src/novel.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/novel-model.test.cjs",
+    "test": "npm run test:source-runtime && npm run test:novel-model"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -24,4 +25,4 @@
     "@types/react": "~19.1.10",
     "typescript": "~5.9.2"
   }
-}
+}\n
