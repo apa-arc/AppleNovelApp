@@ -14,13 +14,14 @@
 - [x] 书源许可、质量报告和真实宿主验证门禁
 - [x] 自托管 Kokoro TTS 服务端核心逻辑单元测试
 - [x] 本地 TXT 解析、云端 TTS 请求校验自动化测试
+- [ ] 在 GitHub Actions 配置 `EXPO_TOKEN` secret 与 `EAS_PROJECT_ID` repository variable
 - [ ] CI 通过后生成 iOS 安装包
 - [ ] TestFlight 上传和邀请测试
 
 ## 真机测试前必须具备
 
-1. EAS 项目已绑定，并在 Expo 项目中配置 projectId。
-2. Expo 账号授权和 EAS_TOKEN/EXPO_TOKEN 可用于云构建。
+1. EAS 项目已创建并绑定，GitHub Actions repository variable `EAS_PROJECT_ID` 已配置。
+2. GitHub Actions secret `EXPO_TOKEN` 已配置，可用于云构建和 OTA 发布。
 3. iOS Bundle Identifier 与 Apple Developer 账号团队配置一致。
 4. Apple 签名证书、Provisioning Profile 或 EAS 托管凭据可用。
 5. iPhone 安装预览包或 TestFlight 包，逐项验证权限、网络、阅读、朗读、更新和持久化。
@@ -30,9 +31,9 @@
 ## 当前功能边界
 
 - App 在线书源运行时支持受限 HTTPS JSON 接口和声明式 CSS HTML 规则；不执行上游 JavaScript。
-- CSS 选择器引擎已支持常见标签、ID、class、属性、后代/子代关系、first/last/nth-child。复杂 XPath、正则替换、JavaScript 规则仍未支持。
+- HTML 解析目前仅作为受限的声明式适配层；已验证常见标签、ID、class 和属性选择器。复杂 XPath、正则替换、JavaScript 规则及组合选择器仍不纳入当前可用承诺。
 - 目前尚无通用 HTML/CSS/XPath 解析器，因此 Legado 选择器脚本不能直接运行。
-- 云端 Kokoro TTS 服务端代码、App HTTPS 客户端和 WAV 播放队列已接入；设备授权凭据通过 iOS SecureStore 保存，服务端支持撤销。需部署服务端并在 App「声音」设置填写 HTTPS 地址、管理员绑定码后才可实际联网朗读。
+- 云端 Kokoro TTS 服务端代码、App HTTPS 客户端和 WAV 播放队列已接入；设备授权凭据通过 iOS SecureStore 保存，服务端支持撤销。需在自己的服务器部署 Docker 服务，并在 App「声音」设置填写 HTTPS 地址、管理员绑定码后才可实际联网朗读。
 - 后台/锁屏音频配置已加入 Expo 项目，但必须经 EAS 原生构建后才能验证。
 - 离线 Kokoro 原生推理、模型真实下载/解压尚未完成。候选 React Native 模块在 Expo 54 / RN 0.81.5 新架构下存在未解决的 TurboModule 注册问题，暂不接入生产主线。
 - OTA 更新需要 EAS projectId、首次原生构建和发布凭据；仅有工作流文件不代表更新服务已上线。
