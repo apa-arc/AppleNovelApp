@@ -68,6 +68,6 @@ test("fetch functions use the selected source endpoints", async () => {
   assert.equal(content.content, "章节正文");
   assert.equal(calls[0].endpoint, "bookUrl");
   assert.equal(calls[0].url, summary.bookUrl);
-  assert.match(calls[1].url, /book%3A/);
+  assert.match(calls[1].url, /https%3A%2F%2Fbooks/);
   assert.match(calls[2].url, /chapter%2F1/);
 });
