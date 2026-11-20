@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Speech from "expo-speech";
+import * as Updates from "expo-updates";
 import { NovelSource, parseNovelSourceJsonBatch } from "./src/source";
 import { parseSourceSubscription } from "./src/source-subscription";
 import { searchNovelSource } from "./src/source-search";
@@ -151,6 +152,76 @@ export default function App() {
   const [rankingChapterCounts, setRankingChapterCounts] = useState(false);
   const [openedFromShelf, setOpenedFromShelf] = useState(false);
   const [checkingSubscription, setCheckingSubscription] = useState(false);
+  const [appUpdateAvailable, setAppUpdateAvailable] = useState(false);
+  const [appUpdateDownloaded, setAppUpdateDownloaded] = useState(false);
+  const [appUpdateBusy, setAppUpdateBusy] = useState(false);
+  const [appUpdateStatus, setAppUpdateStatus] = useState("尚未检查");
+  const [appUpdateCheckedAt, setAppUpdateCheckedAt] = useState<number | null>(null);
+
+  const checkForAppUpdate = async (silent = false) => {
+    if (__DEV__) {
+      setAppUpdateStatus("开发预览模式暂不支持在线热更新检查");
+      return;
+    }
+    if (!Updates.isEnabled) {
+      setAppUpdateStatus("更新服务尚未完成云端配置；完成首次正式构建后即可启用");
+      return;
+    }
+    if (appUpdateBusy) return;
+    setAppUpdateBusy(true);
+    if (!silent) setAppUpdateStatus("正在连接更新服务器…");
+    try {
+      const result = await Updates.checkForUpdateAsync();
+      setAppUpdateCheckedAt(Date.now());
+      if (result.isAvailable) {
+        setAppUpdateAvailable(true);
+        setAppUpdateDownloaded(false);
+        setAppUpdateStatus("发现新版本，可以下载更新");
+      } else {
+        setAppUpdateAvailable(false);
+        setAppUpdateDownloaded(false);
+        setAppUpdateStatus("当前已是最新版本");
+      }
+    } catch {
+      setAppUpdateStatus("检查失败，请检查网络后重试");
+    } finally {
+      setAppUpdateBusy(false);
+    }
+  };
+
+  const downloadAppUpdate = async () => {
+    if (!Updates.isEnabled || appUpdateBusy) return;
+    setAppUpdateBusy(true);
+    setAppUpdateStatus("正在下载更新包，请保持网络连接…");
+    try {
+      const result = await Updates.fetchUpdateAsync();
+      if (result.isNew) {
+        setAppUpdateDownloaded(true);
+        setAppUpdateAvailable(false);
+        setAppUpdateStatus("更新包已下载完成，重启后生效");
+      } else {
+        setAppUpdateAvailable(false);
+        setAppUpdateStatus("没有需要下载的新内容");
+      }
+    } catch {
+      setAppUpdateStatus("下载失败，当前版本不会受到影响，请稍后重试");
+    } finally {
+      setAppUpdateBusy(false);
+    }
+  };
+
+  const applyAppUpdate = async () => {
+    try {
+      await Updates.reloadAsync();
+    } catch {
+      setAppUpdateStatus("暂时无法重启应用，请关闭后重新打开");
+    }
+  };
+
+  useEffect(() => {
+    if (!isLoaded || __DEV__ || !Updates.isEnabled) return;
+    void checkForAppUpdate(true);
+  }, [isLoaded]);
 
   useEffect(() => {
     let active = true;
@@ -1076,6 +1147,32 @@ export default function App() {
             <Text style={styles.profileTitle}>我的阅读空间</Text>
             <Text style={styles.note}>本地阅读器 · 持续开发中</Text>
           </View>
+          <View style={styles.updateCard}>
+            <View style={styles.updateHeader}>
+              <View style={styles.updateIcon}><Text style={styles.updateIconText}>↻</Text></View>
+              <View style={styles.updateHeaderInfo}>
+                <Text style={styles.updateTitle}>应用在线更新</Text>
+                <Text style={styles.updateVersion}>运行环境：{Updates.runtimeVersion || "开发预览版"}</Text>
+              </View>
+              {appUpdateBusy ? <ActivityIndicator color="#65745D" /> : null}
+            </View>
+            <Text style={styles.updateStatus}>{appUpdateStatus}</Text>
+            {appUpdateCheckedAt ? <Text style={styles.updateTime}>上次检查：{new Date(appUpdateCheckedAt).toLocaleString()}</Text> : null}
+            {appUpdateDownloaded ? (
+              <Pressable style={styles.updatePrimaryButton} onPress={applyAppUpdate}>
+                <Text style={styles.updatePrimaryText}>立即重启并应用更新</Text>
+              </Pressable>
+            ) : appUpdateAvailable ? (
+              <Pressable style={[styles.updatePrimaryButton, appUpdateBusy && styles.updateButtonDisabled]} disabled={appUpdateBusy} onPress={downloadAppUpdate}>
+                <Text style={styles.updatePrimaryText}>下载并安装更新</Text>
+              </Pressable>
+            ) : (
+              <Pressable style={[styles.updateSecondaryButton, appUpdateBusy && styles.updateButtonDisabled]} disabled={appUpdateBusy} onPress={() => void checkForAppUpdate(false)}>
+                <Text style={styles.updateSecondaryText}>{appUpdateBusy ? "正在检查…" : "检查更新"}</Text>
+              </Pressable>
+            )}
+            <Text style={styles.updateFootnote}>普通界面、功能逻辑和资源可在线热更新；涉及 iOS 原生组件、权限或底层依赖的改动仍需重新构建安装。</Text>
+          </View>
           <View style={styles.settingRow}>
             <Text style={styles.settingText}>本地书架数据</Text>
             <Text style={styles.settingValue}>已启用</Text>
@@ -1192,6 +1289,21 @@ const styles = StyleSheet.create({
   sourceAction: { paddingVertical: 5, paddingHorizontal: 9, backgroundColor: "#EEF0E9", borderRadius: 8 },
   sourceActionText: { color: "#65745D", fontSize: 11, fontWeight: "700" },
   sourceDeleteText: { color: "#A66D62", fontSize: 11, fontWeight: "700" },
+  updateCard: { backgroundColor: "#FFFFFF", borderRadius: 18, padding: 17, marginBottom: 16, borderWidth: 1, borderColor: "#EAE8E0" },
+  updateHeader: { flexDirection: "row", alignItems: "center" },
+  updateIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: "#EEF0E9", alignItems: "center", justifyContent: "center", marginRight: 12 },
+  updateIconText: { color: "#65745D", fontSize: 26, fontWeight: "700" },
+  updateHeaderInfo: { flex: 1 },
+  updateTitle: { color: "#33352D", fontSize: 15, fontWeight: "800" },
+  updateVersion: { color: "#999486", fontSize: 10, marginTop: 5 },
+  updateStatus: { color: "#65745D", fontSize: 12, lineHeight: 19, marginTop: 14 },
+  updateTime: { color: "#AAA69B", fontSize: 10, marginTop: 4 },
+  updatePrimaryButton: { minHeight: 43, borderRadius: 11, backgroundColor: "#65745D", alignItems: "center", justifyContent: "center", marginTop: 13 },
+  updatePrimaryText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
+  updateSecondaryButton: { minHeight: 43, borderRadius: 11, backgroundColor: "#EEF0E9", alignItems: "center", justifyContent: "center", marginTop: 13 },
+  updateSecondaryText: { color: "#65745D", fontSize: 12, fontWeight: "800" },
+  updateButtonDisabled: { opacity: 0.5 },
+  updateFootnote: { color: "#AAA69B", fontSize: 10, lineHeight: 16, marginTop: 11 },
   profileCard: { alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 20, padding: 25, marginBottom: 16 },
   avatarLarge: { width: 68, height: 68, borderRadius: 34, backgroundColor: "#E9E5DA", alignItems: "center", justifyContent: "center" },
   avatarLargeText: { color: "#6F695B", fontSize: 25, fontWeight: "800" },
