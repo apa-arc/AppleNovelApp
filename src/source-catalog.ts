@@ -105,7 +105,7 @@ function replaceTemplate(template: string, values: Record<string, string>): stri
       : key === "bookPath"
         ? value.split("/").map(encodeURIComponent).join("/")
         : encodeURIComponent(value);
-    output = output.split(token).join(replacement);
+    output = absoluteUrlAsTarget ? replacement : output.split(token).join(replacement);
     replaced = true;
   }
   return replaced ? output : null;
