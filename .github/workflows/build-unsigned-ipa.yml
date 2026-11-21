@@ -114,6 +114,8 @@ jobs:
           test "$EMBEDDED_CHANNEL" = "production"
 
       - name: Install iOS pods
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx pod-install
 
       - name: Build unsigned iOS app
