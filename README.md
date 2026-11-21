@@ -56,7 +56,7 @@ App 内置的《星海来信》模拟源只用于本地联调，不访问网络�
 - 下载状态：显示真实的下载中/完成/失败状态。Expo Updates 当前客户端接口不提供可用的百分比回调，因此不会伪造下载百分比。
 - 兼容保护：使用 fingerprint runtime version；只有 runtime 兼容的 JS、界面和静态资源更新才通过 OTA 下发。
 - 原生边界：原生模块、权限、Bundle Identifier 或底层依赖变更必须重新构建并安装新 iOS 包。
-- 发布入口：GitHub Actions → Publish OTA update，选择 preview/production 通道并填写更新说明。需要仓库 Secret `EXPO_TOKEN` 和变量 `EAS_PROJECT_ID`。
+- 发布入口：GitHub Actions → Publish OTA update，选择 preview/production 通道并填写更新说明。需要有效的仓库 Secret `EXPO_TOKEN`；`EAS_PROJECT_ID` 可用仓库变量配置，也可使用仓库默认项目 ID。
 
 ## 听书现状
 
@@ -71,7 +71,7 @@ AI 朗读完全使用 Kokoro 云端合成，不调用 iPhone 系统语音或辅�
 - TypeScript
 
 ```bash
-npm install
+npm ci
 npm run typecheck
 npm test
 npx expo start
