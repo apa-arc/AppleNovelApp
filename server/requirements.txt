@@ -1,4 +1,6 @@
 fastapi==0.165.0
 uvicorn[standard]==0.54.0
+# Keep the 1.13.x Kokoro phonemization path; GHSA-f5q5-vp8g-wh4x concerns the unused transducer decoder, not OfflineTts.
+# Reassess before moving to 2.x because its phonemization/data_dir behavior changes.
 sherpa-onnx==1.13.8
 soundfile==0.13.1
