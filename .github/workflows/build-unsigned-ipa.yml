@@ -121,16 +121,9 @@ jobs:
         run: |
           set -euo pipefail
           WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
-          if [ -z "$WORKSPACE" ]; then
-            echo "::error::Expo did not generate an Xcode workspace."
-            exit 1
-          fi
+          test -n "$WORKSPACE"
           SCHEME="$(xcodebuild -list -json -workspace "$WORKSPACE" 2>/dev/null | ruby -rjson -e 'j=JSON.parse(STDIN.read); puts j.dig("workspace","schemes")&.find { |s| !s.start_with?("Pods-") }')"
-          if [ -z "$SCHEME" ]; then
-            echo "::error::Could not determine the application Xcode scheme."
-            exit 1
-          fi
-          echo "Building scheme: $SCHEME"
+          test -n "$SCHEME"
           xcodebuild \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
@@ -142,32 +135,32 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
           APP_PATH="$(find "$RUNNER_TEMP/AppleNovelDerivedData/Build/Products/Release-iphoneos" -maxdepth 1 -name '*.app' -print -quit)"
-          if [ -z "$APP_PATH" ]; then
-            echo "::error::Xcode build completed without an .app bundle."
-            exit 1
-          fi
+          test -n "$APP_PATH"
           APP_EXPO_PLIST="$APP_PATH/Expo.plist"
           APP_RUNTIME_POLICY="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRuntimeVersion' "$APP_EXPO_PLIST")"
           APP_CHANNEL="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRequestHeaders:expo-channel-name' "$APP_EXPO_PLIST")"
           APP_FINGERPRINT_FILE="$APP_PATH/EXUpdates.bundle/fingerprint"
           test -s "$APP_FINGERPRINT_FILE"
           APP_FINGERPRINT="$(cat "$APP_FINGERPRINT_FILE")"
-          echo "Built app runtime policy: $APP_RUNTIME_POLICY"
-          echo "Built app fingerprint: $APP_FINGERPRINT"
-          echo "Built app channel: $APP_CHANNEL"
           test "$APP_RUNTIME_POLICY" = "file:fingerprint"
           test "$APP_FINGERPRINT" = "$IOS_RUNTIME_FINGERPRINT"
           test "$APP_CHANNEL" = "production"
           mkdir -p "$RUNNER_TEMP/ipa/Payload"
           cp -R "$APP_PATH" "$RUNNER_TEMP/ipa/Payload/"
-          (cd "$RUNNER_TEMP/ipa" && /usr/bin/zip -qry "$GITHUB_WORKSPACE/AppleNovelApp-unsigned.ipa" Payload)
           IPA_PATH="$GITHUB_WORKSPACE/AppleNovelApp-unsigned.ipa"
+          (cd "$RUNNER_TEMP/ipa" && /usr/bin/zip -qry "$IPA_PATH" Payload)
           test -s "$IPA_PATH"
           /usr/bin/unzip -tq "$IPA_PATH"
           IPA_ENTRIES="$(/usr/bin/unzip -Z1 "$IPA_PATH")"
-          echo "$IPA_ENTRIES" | grep -Eq '^Payload/[^/]+\.app/Info\.plist
+          echo "$IPA_ENTRIES" | grep -Eq '^Payload/[^/]+[.]app/Info[.]plist$'
+          FINAL_EXPO_PLIST="$RUNNER_TEMP/ipa/Payload/$(basename "$APP_PATH")/Expo.plist"
+          FINAL_CHANNEL="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRequestHeaders:expo-channel-name' "$FINAL_EXPO_PLIST")"
+          test "$FINAL_CHANNEL" = "production"
+          IPA_SHA256="$(/usr/bin/shasum -a 256 "$IPA_PATH" | awk '{print $1}')"
+          IPA_SIZE="$(/usr/bin/stat -f%z "$IPA_PATH")"
+          echo "Verified IPA: $IPA_SIZE bytes; SHA256=$IPA_SHA256; OTA channel=$FINAL_CHANNEL"
 
-      - name: Upload unsigned IPA
+      - name: Upload unsigned IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: AppleNovelApp-unsigned-IPA
@@ -182,30 +175,30 @@ jobs:
       - name: Publish IPA to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.app-version.outputs.version }}-build.${{ github.run_number }}
-          name: AppleNovelApp v${{ steps.app-version.outputs.version }}
+          tag_name: v\${{ steps.app-version.outputs.version }}-build.\${{ github.run_number }}
+          name: AppleNovelApp v\${{ steps.app-version.outputs.version }}
           body: |
             本版本由 GitHub Actions 自动构建。
 
             - 文件：未签名 iOS IPA（需自行签名后安装）
             - OTA 更新通道：production
-            - 提交：${{ github.sha }}
+            - 提交：\${{ github.sha }}
           prerelease: true
           draft: false
           files: AppleNovelApp-unsigned.ipa
           fail_on_unmatched_files: true
-          generate_release_notes: true
           overwrite_files: true
+          generate_release_notes: true
 
-      - name: Verify published Release asset matches tested IPA
+      - name: Verify Release asset matches the built IPA
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APP_VERSION: ${{ steps.app-version.outputs.version }}
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          APP_VERSION: \${{ steps.app-version.outputs.version }}
         run: |
           set -euo pipefail
-          TAG="v${APP_VERSION}-build.${GITHUB_RUN_NUMBER}"
+          TAG="v\${APP_VERSION}-build.\${GITHUB_RUN_NUMBER}"
           LOCAL_SHA="sha256:$(/usr/bin/shasum -a 256 AppleNovelApp-unsigned.ipa | awk '{print $1}')"
-          REMOTE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq '.assets[] | select(.name == "AppleNovelApp-unsigned.ipa") | .digest')"
+          REMOTE_SHA="$(gh api "repos/\${GITHUB_REPOSITORY}/releases/tags/\${TAG}" --jq '.assets[] | select(.name == "AppleNovelApp-unsigned.ipa") | .digest')"
           if [ -z "$REMOTE_SHA" ] || [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
             echo "::error::Release IPA asset is missing or its SHA256 does not match the verified build."
             echo "Local: $LOCAL_SHA"
@@ -213,41 +206,3 @@ jobs:
             exit 1
           fi
           echo "Verified Release asset checksum: $REMOTE_SHA"
-
-          IPA_EXPO_PLIST="$RUNNER_TEMP/ipa/Payload/$(basename "$APP_PATH")/Expo.plist"
-          test -s "$IPA_EXPO_PLIST"
-          FINAL_CHANNEL="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRequestHeaders:expo-channel-name' "$IPA_EXPO_PLIST")"
-          test "$FINAL_CHANNEL" = "production"
-          IPA_SHA256="$(/usr/bin/shasum -a 256 "$IPA_PATH" | awk '{print $1}')"
-          IPA_SIZE="$(/usr/bin/stat -f%z "$IPA_PATH")"
-          echo "Verified IPA: $IPA_SIZE bytes; SHA256=$IPA_SHA256; OTA channel=$FINAL_CHANNEL"
-          echo "Unsigned IPA created and ZIP integrity verified."
-
-      - name: Upload unsigned IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: AppleNovelApp-unsigned-IPA
-          path: AppleNovelApp-unsigned.ipa
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Read app version
-        id: app-version
-        run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
-
-      - name: Publish IPA to GitHub Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.app-version.outputs.version }}-build.${{ github.run_number }}
-          name: AppleNovelApp v${{ steps.app-version.outputs.version }}
-          body: |
-            本版本由 GitHub Actions 自动构建。
-
-            - 文件：未签名 iOS IPA（需自行签名后安装）
-            - OTA 更新通道：production
-            - 提交：${{ github.sha }}
-          prerelease: true
-          draft: false
-          files: AppleNovelApp-unsigned.ipa
-          fail_on_unmatched_files: true
-          generate_release_notes: true
