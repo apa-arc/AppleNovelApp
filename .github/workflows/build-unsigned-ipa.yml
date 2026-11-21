@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-unsigned-ipa:
@@ -162,3 +162,24 @@ jobs:
           path: AppleNovelApp-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
+
+      - name: Read app version
+        id: app-version
+        run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Publish IPA to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.app-version.outputs.version }}-build.${{ github.run_number }}
+          name: AppleNovelApp v${{ steps.app-version.outputs.version }}（构建 ${{ github.run_number }}）
+          body: |
+            本版本由 GitHub Actions 自动构建。
+
+            - 文件：未签名 iOS IPA（需自行签名后安装）
+            - OTA 更新通道：production
+            - 提交：${{ github.sha }}
+          prerelease: true
+          draft: false
+          files: AppleNovelApp-unsigned.ipa
+          fail_on_unmatched_files: true
+          generate_release_notes: true
