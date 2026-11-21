@@ -1296,7 +1296,7 @@ export default function App() {
             </View>
           </View>
           {readingHistory.length === 0 ? <Text style={styles.emptyText}>还没有阅读记录，打开一本小说后会自动记录。</Text> : readingHistory.map((entry) => (
-            <Pressable key={entry.bookId} style={[styles.historyRow, appIsDark && styles.darkCard]} onPress={() => { setShowReadingHistory(false); resumeReadingHistory(entry); }}>
+            <Pressable key={entry.bookId} style={[styles.historyRow, appIsDark && styles.darkCard]} onPress={() => resumeReadingHistory(entry)}>
               <View style={styles.historyInfo}>
                 <Text style={[styles.bookTitle, appIsDark && styles.darkPrimaryText]}>{entry.title}</Text>
                 <Text style={[styles.bookAuthor, appIsDark && styles.darkSecondaryText]}>{entry.author} · {entry.chapterTitle}</Text>
