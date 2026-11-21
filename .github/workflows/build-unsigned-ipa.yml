@@ -8,6 +8,7 @@ on:
       - main
       - feature/tomato-style-audiobook-1.0.7
       - release/1.0.9-search-cover-grid
+      - release/1.1.0-tomato-reader
     paths:
       - "app.json"
       - "assets/icon.png.base64"
