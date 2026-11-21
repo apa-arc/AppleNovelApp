@@ -75,4 +75,7 @@ npx expo start
 
 ## 真机测试前准备
 
+Windows 电脑生成 iPhone 真机测试包的完整步骤见 [Windows iPhone 真机测试包指南](docs/ios-device-testing.md)。
+
+
 详见 [发布前准备与真机测试清单](docs/release-readiness.md)。
