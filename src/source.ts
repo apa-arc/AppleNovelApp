@@ -98,9 +98,13 @@ function isSafeHttpsUrl(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`字段「${field}」必须是非空网址`);
   }
+  // Keep {keyword}, {bookUrl}, {chapterUrl} and similar source tokens
+  // intact after validation. URL.toString() percent-encodes braces, which
+  // would silently disable the runtime's template replacement.
+  const templateSafeValue = value.trim().replace(/\\{([a-zA-Z][a-zA-Z0-9]*)\\}/g, "source-template-token");
   let parsed: URL;
   try {
-    parsed = new URL(value);
+    parsed = new URL(templateSafeValue);
   } catch {
     throw new Error(`字段「${field}」不是有效网址`);
   }
@@ -113,7 +117,7 @@ function isSafeHttpsUrl(value: unknown, field: string): string {
   if (isPrivateOrLocalHost(parsed.hostname)) {
     throw new Error(`字段「${field}」不能指向本机、局域网或内部地址`);
   }
-  return parsed.toString();
+  return value.trim();
 }
 
 export function parseNovelSourceJson(raw: string): Omit<NovelSource, "id" | "enabled" | "importedAt"> {
