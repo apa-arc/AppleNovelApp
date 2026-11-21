@@ -763,7 +763,7 @@ export default function App() {
     setOnlineResults(groupedResults);
     setSearching(false);
     setSearchSummary("搜索完成：成功 " + (enabledSources.length - failed) + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。");
-    setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（目前仅支持常见 JSON 列表）。" : "点击小说名称即可自动获取可用阅读源和章节目录。");
+    setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（支持常见 JSON 与已配置规则的 HTML）。" : "点击小说名称即可自动获取可用阅读源和章节目录。");
   };
 
   const loadNovelCatalogFor = async (novel: SearchNovelGroup) => {
@@ -1529,6 +1529,7 @@ export default function App() {
 
   if (selectedSearchNovel && !selectedBook) {
     const detailChapters = [...loadedChapters].sort((a, b) => chapterSortOrder === "asc" ? a.index - b.index : b.index - a.index);
+    const detailCoverUrl = (selectedSearchNovel.coverUrl && !failedCoverUrls[selectedSearchNovel.coverUrl] ? selectedSearchNovel.coverUrl : undefined) || selectedSearchNovel.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string])?.summary.coverUrl;
     return (
       <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
         <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
@@ -1539,8 +1540,8 @@ export default function App() {
         </View>
         <ScrollView contentContainerStyle={styles.pageContent}>
           <View style={[styles.detailHero, appIsDark && styles.darkCard, { flexDirection: "row", alignItems: "center", gap: 16 }]}>
-            {selectedSearchNovel.coverUrl && !failedCoverUrls[selectedSearchNovel.coverUrl] ? (
-              <Image source={{ uri: selectedSearchNovel.coverUrl }} style={{ width: 104, height: 142, borderRadius: 10, backgroundColor: "#EAE9E1" }} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [selectedSearchNovel.coverUrl as string]: true }))} />
+            {detailCoverUrl ? (
+              <Image source={{ uri: detailCoverUrl }} style={{ width: 104, height: 142, borderRadius: 10, backgroundColor: "#EAE9E1" }} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [detailCoverUrl]: true }))} />
             ) : (
               <View style={{ width: 104, height: 142, borderRadius: 10, backgroundColor: "#DDE4D6", alignItems: "center", justifyContent: "center", padding: 9 }}>
                 <Text style={{ color: "#394336", fontWeight: "800", textAlign: "center" }} numberOfLines={4}>{selectedSearchNovel.title}</Text>
@@ -2033,10 +2034,12 @@ export default function App() {
           {!!searchMessage && <Text style={styles.searchFeedback}>{searchMessage}</Text>}
           {onlineResults.length > 0 && (
             <View style={styles.searchResultGrid}>
-              {onlineResults.map((item) => (
+              {onlineResults.map((item) => {
+                const coverUrl = (item.coverUrl && !failedCoverUrls[item.coverUrl] ? item.coverUrl : undefined) || item.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string])?.summary.coverUrl;
+                return (
                 <Pressable key={item.id} style={styles.searchResultTile} onPress={() => openSearchNovel(item)}>
-                  {item.coverUrl && !failedCoverUrls[item.coverUrl] ? (
-                    <Image source={{ uri: item.coverUrl }} style={styles.searchResultCover} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [item.coverUrl as string]: true }))} />
+                  {coverUrl ? (
+                    <Image source={{ uri: coverUrl }} style={styles.searchResultCover} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [coverUrl]: true }))} />
                   ) : (
                     <View style={[styles.searchResultCover, styles.searchResultCoverFallback]}>
                       <Text style={styles.searchResultFallbackTitle} numberOfLines={4}>{item.title}</Text>
@@ -2046,7 +2049,8 @@ export default function App() {
                   <Text style={[styles.searchResultTitle, appIsDark && styles.darkPrimaryText]} numberOfLines={2}>{item.title}</Text>
                   {!!item.author && <Text style={[styles.searchResultAuthor, appIsDark && styles.darkMutedText]} numberOfLines={1}>{item.author}</Text>}
                 </Pressable>
-              ))}
+                );
+              })}
             </View>
           )}
           {!searching && onlineResults.length === 0 && !searchMessage && (
