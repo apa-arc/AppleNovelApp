@@ -13,6 +13,7 @@ module.exports = ({ config }) => {
 
   // The unsigned GitHub IPA build does not run through EAS Build, so
   // explicitly embed its update channel. EAS builds keep using eas.json.
+  // Versioned release branches package the current JS bundle in the self-sign IPA.
   const updateChannel = process.env.APP_UPDATE_CHANNEL;
   if (updateChannel) {
     updates.requestHeaders = {
