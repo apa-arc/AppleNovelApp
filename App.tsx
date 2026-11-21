@@ -5,7 +5,7 @@ import Constants from "expo-constants";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as SecureStore from "expo-secure-store";
-import { NovelSource, parseNovelSourceJsonBatch } from "./src/source";
+import type { NovelSource } from "./src/source";
 import { parseSourceSubscription } from "./src/source-subscription";
 import { searchNovelSource } from "./src/source-search";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
@@ -66,14 +66,6 @@ const SUBSCRIPTION_URLS_STORAGE_KEY = "@private_novel/subscription_urls_v1";
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
 const SPEECH_AUDIO_LIBRARY_STORAGE_KEY = "@private_novel/speech_audio_library_v1";
-const SOURCE_EXAMPLE = `{
-  "name": "我的书源",
-  "baseUrl": "https://example.com",
-  "searchUrl": "https://example.com/search",
-  "bookUrl": "https://example.com/book",
-  "chapterListUrl": "https://example.com/chapters",
-  "chapterUrl": "https://example.com/chapter"
-}`;
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
 type SearchNovelGroup = { id: string; title: string; author: string; description: string; sources: SearchSourceOption[] };
 type Chapter = { title: string; content: string };
@@ -115,6 +107,10 @@ const SAMPLE_BOOKS: Book[] = [
   },
 ];
 
+
+function getSourceClient(_source: NovelSource) {
+  return undefined;
+}
 
 function getOnlineBookId(title: string, author: string): string {
   return "online:" + normalizeNovelTitle(title) + "::" + normalizeNovelTitle(author);
@@ -235,13 +231,10 @@ export default function App() {
   const readerScrollRef = useRef<ScrollView | null>(null);
   const restoreReaderPositionRef = useRef(false);
   const [sources, setSources] = useState<NovelSource[]>([]);
-  const [sourceDraft, setSourceDraft] = useState("");
-  const [sourceMessage, setSourceMessage] = useState("");
   const [subscriptionUrl, setSubscriptionUrl] = useState("");
   const [subscriptionUrlMessage, setSubscriptionUrlMessage] = useState("");
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const [onlineQuery, setOnlineQuery] = useState("");
-  const [sourceSearchMode, setSourceSearchMode] = useState<"normal" | "adult">("normal");
   const [onlineResults, setOnlineResults] = useState<SearchNovelGroup[]>([]);
   const [selectedSearchNovel, setSelectedSearchNovel] = useState<SearchNovelGroup | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
@@ -391,7 +384,7 @@ export default function App() {
           if (parsedUrls && typeof parsedUrls === "object") {
             const urls = parsedUrls as { url?: unknown; normal?: unknown };
             if (typeof urls.url === "string") setSubscriptionUrl(urls.url);
-            else if (typeof urls.normal === "string" && urls.normal !== DEFAULT_NORMAL_SUBSCRIPTION_URL) setSubscriptionUrl(urls.normal);
+            else if (typeof urls.normal === "string") setSubscriptionUrl(urls.normal);
           }
         }
         const savedHistory = await AsyncStorage.getItem(READING_HISTORY_STORAGE_KEY);
@@ -500,61 +493,6 @@ export default function App() {
       Alert.alert("导入成功", "《" + book.title + "》已加入书架，共 " + parsed.chapters.length + " 章。文件已复制到 App 本地存储。");
     } catch (error) {
       Alert.alert("导入失败", error instanceof Error ? error.message : "读取文本文件失败，请重试。");
-    }
-  };
-
-  const importSource = () => {
-    try {
-      type ImportEntry = Omit<NovelSource, "id" | "enabled" | "importedAt"> & { remoteId?: string; version?: string };
-      let parsed: ImportEntry[];
-      let subscriptionNote = "";
-      const decoded: unknown = JSON.parse(sourceDraft);
-      if (decoded && typeof decoded === "object" && !Array.isArray(decoded) && "subscriptionId" in decoded) {
-        const subscription = parseSourceSubscription(sourceDraft);
-        const group: "normal" | "adult" = subscription.subscriptionId.toLowerCase().includes("adult") || /成人/.test(subscription.name) ? "adult" : "normal";
-        parsed = subscription.compatible.map((item) => ({
-          ...item,
-          subscriptionGroup: group,
-          subscriptionId: subscription.subscriptionId,
-          remoteSourceId: item.remoteId,
-          remoteVersion: item.version,
-        }));
-        subscriptionNote = "；" + subscription.unsupported.length + " 个脚本或不兼容书源已跳过";
-        if (parsed.length === 0) {
-          setSourceMessage("订阅已识别，但没有可导入的 JSON 兼容书源" + subscriptionNote + "。不会执行订阅中的 JavaScript。");
-          return;
-        }
-      } else {
-        parsed = parseNovelSourceJsonBatch(sourceDraft);
-      }
-      const existingNames = new Set(sources.map((item) => item.name.trim().toLocaleLowerCase()));
-      const existingUrls = new Set(sources.map((item) => item.baseUrl.toLocaleLowerCase()));
-      const duplicate = parsed.find((item) =>
-        existingNames.has(item.name.toLocaleLowerCase()) ||
-        existingUrls.has(item.baseUrl.toLocaleLowerCase())
-      );
-      if (duplicate) {
-        setSourceMessage("导入失败：「" + duplicate.name + "」与已导入书源名称或网址重复；本批次未导入任何内容。");
-        return;
-      }
-      const importedAt = Date.now();
-      const additions: NovelSource[] = parsed.map((item, index) => {
-        const { remoteId, version, ...config } = item;
-        return {
-          ...config,
-          id: importedAt.toString() + "-" + index.toString(),
-          enabled: true,
-          importedAt,
-          subscriptionGroup: item.subscriptionGroup || "normal",
-          ...(remoteId ? { remoteSourceId: remoteId } : {}),
-          ...(version ? { remoteVersion: version } : {}),
-        };
-      });
-      setSources((current) => [...current, ...additions]);
-      setSourceDraft("");
-      setSourceMessage("导入成功：已导入 " + additions.length + " 个书源" + subscriptionNote + "。");
-    } catch (error) {
-      setSourceMessage(error instanceof Error ? error.message : "书源校验失败。");
     }
   };
 
