@@ -48,7 +48,7 @@ jobs:
 
       - name: Validate OTA build settings
         env:
-          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
         run: |
           if [ -z "$EAS_PROJECT_ID" ]; then
             echo "::error::Set the EAS_PROJECT_ID repository variable once to enable OTA updates in this IPA."
@@ -64,7 +64,7 @@ jobs:
           '
       - name: Generate iOS native project
         env:
-          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
           APP_UPDATE_CHANNEL: production
         run: npx expo prebuild --platform ios --clean
 
