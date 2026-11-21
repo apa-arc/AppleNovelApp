@@ -320,7 +320,12 @@ export default function App() {
           setReaderLineSpacing(settings.lineSpacing);
           setReaderParagraphSpacing(settings.paragraphSpacing);
           setReaderHorizontalPadding(settings.horizontalPadding);
-          setSpeechModelVoiceId(settings.speechModelVoiceId);
+          const savedVoice = SPEECH_VOICES.find((voice) => voice.id === settings.speechModelVoiceId);
+          const chineseVoice = savedVoice && (savedVoice.category === "中文男声" || savedVoice.category === "中文女声")
+            ? savedVoice
+            : SPEECH_VOICES.find((voice) => voice.category === "中文女声");
+          setSpeechModelVoiceId(chineseVoice?.id || DEFAULT_READER_SETTINGS.speechModelVoiceId);
+          setSpeechVoiceCategoryFilter(chineseVoice?.category === "中文男声" ? "中文男声" : "中文女声");
           setSpeechRate(settings.speechRate);
         }
       } catch {
@@ -506,7 +511,7 @@ export default function App() {
       const reason = source.healthLevel === "完全可用" ? "无" : failures.join("；") || source.healthMessage || "尚未检测";
       return [source.name, reason];
     })];
-    const csv = "\\uFEFF" + rows.map((row) => row.map(cell).join(",")).join("\\r\\n");
+    const csv = "\uFEFF" + rows.map((row) => row.map(cell).join(",")).join("\r\n");
     try {
       if (!FileSystem.documentDirectory) throw new Error("无法访问本地文档目录。");
       const uri = FileSystem.documentDirectory + "书源检测结果-" + new Date().toISOString().slice(0, 10) + ".csv";
