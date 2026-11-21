@@ -101,3 +101,17 @@ test("source batch parser accepts an object array and validates every entry", ()
   assert.throws(() => parseNovelSourceJsonBatch("[]"), /不能为空/);
   assert.throws(() => parseNovelSourceJsonBatch(JSON.stringify(Array.from({ length: 101 }, (_, i) => make("源" + i, "host" + i + ".example")))), /最多导入 100 个/);
 });
+
+test("source parser preserves URL template tokens for native source adapters", () => {
+  const value = {
+    name: "模板源", baseUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?name={keyword}",
+    bookUrl: "https://books.example/",
+    chapterListUrl: "https://books.example/{bookUrl}",
+    chapterUrl: "https://books.example/{chapterUrl}",
+  };
+  const parsed = parseNovelSourceJson(JSON.stringify(value));
+  assert.equal(parsed.searchUrl, value.searchUrl);
+  assert.equal(parsed.chapterListUrl, value.chapterListUrl);
+  assert.equal(parsed.chapterUrl, value.chapterUrl);
+});
