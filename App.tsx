@@ -384,7 +384,7 @@ export default function App() {
           if (parsedUrls && typeof parsedUrls === "object") {
             const urls = parsedUrls as { url?: unknown; normal?: unknown };
             if (typeof urls.url === "string") setSubscriptionUrl(urls.url);
-            else if (typeof urls.normal === "string") setSubscriptionUrl(urls.normal);
+            else if (typeof urls.normal === "string" && urls.normal !== "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/app-subscription.json") setSubscriptionUrl(urls.normal);
           }
         }
         const savedHistory = await AsyncStorage.getItem(READING_HISTORY_STORAGE_KEY);
@@ -1739,14 +1739,14 @@ export default function App() {
       <StatusBar barStyle="dark-content" />
       <View style={styles.topBar}>
         <View>
-          <Text style={styles.eyebrow}>MY LITTLE LIBRARY</Text>
+          {tab !== "源" && <Text style={styles.eyebrow}>MY LITTLE LIBRARY</Text>}
           <Text style={styles.pageTitle}>{tab}</Text>
         </View>
         {tab === "搜索" ? (
           <Pressable onPress={() => setTab("源")} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "#E9E5DA" }}>
             <Text style={{ color: "#514F45", fontSize: 13, fontWeight: "700" }}>源</Text>
           </Pressable>
-        ) : <View style={styles.avatar}><Text style={styles.avatarText}>阅</Text></View>}
+        ) : tab === "源" ? null : <View style={styles.avatar}><Text style={styles.avatarText}>阅</Text></View>}
       </View>
 
       {tab === "书架" && (
@@ -1812,7 +1812,7 @@ export default function App() {
             <Pressable style={[styles.onlineSearchButton, searching && styles.importButtonDisabled]} onPress={searchOnlineNovels} disabled={searching}>
               {searching ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>搜索小说</Text>}
             </Pressable>
-            <Text style={styles.note}>支持 JSON 接口与声明式 CSS HTML 规则；不会执行第三方 JavaScript。普通和成人来源互相隔离。</Text>
+            <Text style={styles.note}>所有合并订阅中的书源统一搜索；不会执行第三方 JavaScript。</Text>
           </View>
           {!!searchSummary && <Text style={styles.searchSummary}>{searchSummary}</Text>}
           {searching && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={styles.note}>正在搜索，请稍候…</Text></View>}
