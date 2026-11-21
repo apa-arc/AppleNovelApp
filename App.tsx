@@ -70,6 +70,7 @@ const DEFAULT_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/apa-arc/Nove
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
 const SEARCH_LOGS_STORAGE_KEY = "@private_novel/search_logs_v1";
+const SEARCH_HISTORY_STORAGE_KEY = "@private_novel/search_history_v1";
 const SHELF_VIEW_STORAGE_KEY = "@private_novel/shelf_view_v1";
 const APPEARANCE_STORAGE_KEY = "@private_novel/appearance_v1";
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
@@ -163,6 +164,7 @@ export default function App() {
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const defaultSubscriptionAttemptedRef = useRef(false);
   const [onlineQuery, setOnlineQuery] = useState("");
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [onlineResults, setOnlineResults] = useState<SearchNovelGroup[]>([]);
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, boolean>>({});
   const [chapterSortOrder, setChapterSortOrder] = useState<"asc" | "desc">("asc");
@@ -325,6 +327,14 @@ export default function App() {
         if (savedShelfView === "grid" || savedShelfView === "list") setShelfView(savedShelfView);
         const savedAppearance = await AsyncStorage.getItem(APPEARANCE_STORAGE_KEY);
         setAppearanceMode(savedAppearance === "dark" ? "dark" : "light");
+        const savedSearchHistory = await AsyncStorage.getItem(SEARCH_HISTORY_STORAGE_KEY);
+        if (savedSearchHistory && active) {
+          const parsedHistory: unknown = JSON.parse(savedSearchHistory);
+          if (Array.isArray(parsedHistory)) {
+            const normalizedHistory = parsedHistory.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+            setSearchHistory([...new Set(normalizedHistory.map((item) => item.trim()))].slice(0, 10));
+          }
+        }
         const savedSearchLogs = await AsyncStorage.getItem(SEARCH_LOGS_STORAGE_KEY);
         if (savedSearchLogs && active) {
           const parsedLogs: unknown = JSON.parse(savedSearchLogs);
@@ -389,6 +399,11 @@ export default function App() {
     if (!isLoaded) return;
     AsyncStorage.setItem(SEARCH_LOGS_STORAGE_KEY, JSON.stringify(searchLogs.slice(0, 500))).catch(() => undefined);
   }, [searchLogs, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem(SEARCH_HISTORY_STORAGE_KEY, JSON.stringify(searchHistory.slice(0, 10))).catch(() => undefined);
+  }, [searchHistory, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -688,13 +703,14 @@ export default function App() {
     [books, query]
   );
 
-  const searchOnlineNovels = async () => {
-    const keyword = onlineQuery.trim();
+  const searchOnlineNovels = async (searchTerm = onlineQuery) => {
+    const keyword = searchTerm.trim();
     if (!keyword) {
       setSearchMessage("先输入小说名称再搜索。");
       setOnlineResults([]);
       return;
     }
+    setSearchHistory((current) => [keyword, ...current.filter((item) => item.toLocaleLowerCase() !== keyword.toLocaleLowerCase())].slice(0, 10));
     const enabledSources = sources.filter((source) => source.enabled);
     if (enabledSources.length === 0) {
       setSearchMessage("还没有启用的书源。请先到「源」页面添加订阅。");
@@ -1978,6 +1994,23 @@ export default function App() {
               {searching ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>搜索小说</Text>}
             </Pressable>
           </View>
+          {searchHistory.length > 0 && (
+            <View style={{ marginBottom: 18 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 11 }}>
+                <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText]}>搜索历史</Text>
+                <Pressable onPress={() => Alert.alert("清空搜索历史", "确定清空最近 10 条搜索记录吗？", [{ text: "取消", style: "cancel" }, { text: "清空", style: "destructive", onPress: () => setSearchHistory([]) }])}>
+                  <Text style={styles.sourceActionText}>清空</Text>
+                </Pressable>
+              </View>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
+                {searchHistory.map((item) => (
+                  <Pressable key={item} onPress={() => { setOnlineQuery(item); void searchOnlineNovels(item); }} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 18, backgroundColor: appIsDark ? "#30362F" : "#F0F0EB", borderWidth: 1, borderColor: appIsDark ? "#41483F" : "#E8E7E0" }}>
+                    <Text style={[{ color: appIsDark ? "#E8E8E0" : "#55564E", fontSize: 12 }]}>{item}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
           {!!searchSummary && <Text style={styles.searchSummary}>{searchSummary}</Text>}
           {searching && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={styles.note}>正在搜索，请稍候…</Text></View>}
           {!!searchMessage && <Text style={styles.searchFeedback}>{searchMessage}</Text>}
