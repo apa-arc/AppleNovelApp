@@ -14,7 +14,7 @@
 - [x] 书源许可、质量报告和真实宿主验证门禁
 - [x] 自托管 Kokoro TTS 服务端核心逻辑单元测试
 - [x] 本地 TXT 解析、云端 TTS 请求校验自动化测试
-- [ ] 在 GitHub Actions 配置 `EXPO_TOKEN` secret 与 `EAS_PROJECT_ID` repository variable（一次性）
+- [x] GitHub Actions `EXPO_TOKEN` secret 已通过 OTA 发布验证；`EAS_PROJECT_ID` 使用 repository variable 或仓库默认项目 ID
 - [ ] 生成并自签安装一份已嵌入 production OTA URL、channel 与 fingerprint runtime 的 IPA
 - [ ] 发布第一条 OTA 更新，验证自动检查、后台下载、用户确认重启和失败重试
 - [ ] 再发布第二条 OTA 更新，验证不重新签名安装也能连续更新
@@ -26,8 +26,8 @@
 
 Windows 用户的详细云构建和设备注册步骤见 [Windows iPhone 真机测试包指南](ios-device-testing.md)。
 
-1. EAS 项目已创建并绑定，GitHub Actions repository variable `EAS_PROJECT_ID` 已配置。
-2. GitHub Actions secret `EXPO_TOKEN` 已配置，可用于云构建和 OTA 发布。
+1. EAS 项目已创建并绑定；GitHub Actions 使用 `EAS_PROJECT_ID` repository variable，或确认仓库默认项目 ID 与实际项目一致。
+2. GitHub Actions secret `EXPO_TOKEN` 已配置，可用于 fingerprint 生成和 OTA 发布。
 3. iOS Bundle Identifier 与 Apple Developer 账号团队配置一致。
 4. Apple 签名证书、Provisioning Profile 或 EAS 托管凭据可用。
 5. iPhone 安装预览包或 TestFlight 包，逐项验证权限、网络、阅读、朗读、更新和持久化。
