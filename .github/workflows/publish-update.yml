@@ -1,6 +1,12 @@
 name: Publish OTA update
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "App.tsx"
+      - "src/**"
   workflow_dispatch:
     inputs:
       channel:
@@ -44,6 +50,7 @@ jobs:
       - name: Validate Expo OTA configuration
         env:
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          APP_UPDATE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'production' }}
         run: |
           if [ -z "$EAS_PROJECT_ID" ]; then
             echo "::error::Missing EAS_PROJECT_ID repository variable."
@@ -58,14 +65,17 @@ jobs:
             if (projectId !== process.env.EAS_PROJECT_ID) throw new Error("Resolved EAS project ID does not match EAS_PROJECT_ID.");
             if (updateUrl !== "https://u.expo.dev/" + process.env.EAS_PROJECT_ID) throw new Error("Expo Updates URL is missing or incorrect.");
             if (!config.runtimeVersion) throw new Error("runtimeVersion is required for OTA compatibility.");
-            console.log("OTA configuration validated for", projectId);
+            const channel = process.env.APP_UPDATE_CHANNEL;
+            if (config.updates?.requestHeaders?.["expo-channel-name"] !== channel) throw new Error("Embedded OTA channel does not match the publish channel.");
+            console.log("OTA configuration validated for", projectId, "channel", channel);
           '
       - name: Publish iOS Expo Update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
-          UPDATE_CHANNEL: ${{ inputs.channel }}
-          UPDATE_MESSAGE: ${{ inputs.message }}
+          UPDATE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'production' }}
+          UPDATE_MESSAGE: ${{ inputs.message || format('Automatic OTA update {0}', github.sha) }}
+          APP_UPDATE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'production' }}
         run: |
           if [ -z "$EXPO_TOKEN" ]; then
             echo "::error::Missing EXPO_TOKEN repository secret."
