@@ -79,6 +79,7 @@ test("resolves the First Edition mobile TOC path from its detail URL", async () 
   const mobileSource = {
     ...source,
     chapterListUrl: "https://m.111bz.cc/html/{bookPath}/index.html",
+    htmlRules: { chapters: { itemSelector: "a[href$='.html']", titleSelector: ":self", urlSelector: ":self" } },
   };
   const mobileSummary = { ...summary, bookUrl: "https://m.111bz.cc/7_7116/" };
   let requested = "";
