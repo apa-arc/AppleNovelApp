@@ -34,8 +34,9 @@
 - [ ] XPath/正则规则兼容层；复杂 XPath、正则脚本和 JavaScript 规则暂不执行
 - [ ] 部署自托管 Kokoro TTS 服务并在 App 中填写 HTTPS 服务地址（服务端代码已提交）
 - [x] 在线生成的章节 WAV 语音可由用户逐章手动保存到 App 本地目录、离线播放和单独删除；不会自动下载
-- [ ] EAS 项目绑定、Apple 签名凭据和首次 iOS 云构建
-- [ ] TestFlight 上传、iPhone 安装与真机验收
+- [ ] 免费自签 IPA 首次构建成功并完成 iPhone 安装
+- [ ] TestFlight/EAS 正式签名分发（可选，需要付费 Apple Developer 会员）
+- [ ] iPhone 真机验收
 
 ## 书源支持范围
 
@@ -75,7 +76,8 @@ npx expo start
 
 ## 真机测试前准备
 
-Windows 电脑生成 iPhone 真机测试包的完整步骤见 [Windows iPhone 真机测试包指南](docs/ios-device-testing.md)。
+- 免费自签：GitHub Actions → **Build unsigned iOS IPA**，构建完成后从 Artifacts 下载未签名 IPA，再用你已有的自签工具签名安装。详细步骤见 [免费自签 IPA 构建指南](docs/unsigned-ipa-build.md)。
+- EAS 正式分发：如以后需要 TestFlight 或 Ad Hoc 分发，再按 [Windows iPhone 真机测试包指南](docs/ios-device-testing.md) 配置付费开发者账号。
 
 
 详见 [发布前准备与真机测试清单](docs/release-readiness.md)。
