@@ -17,9 +17,17 @@ on:
         default: Bug fixes and improvements
         type: string
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ota-publish-${{ inputs.channel }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -27,9 +35,33 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
       - name: Install dependencies
         run: npm install
-      - name: Publish Expo Update
+      - name: Validate app before publishing
+        run: |
+          npm run typecheck
+          npm run test:app
+      - name: Validate Expo OTA configuration
+        env:
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+        run: |
+          if [ -z "$EAS_PROJECT_ID" ]; then
+            echo "::error::Missing EAS_PROJECT_ID repository variable."
+            exit 1
+          fi
+          npx expo config --type public --json > expo-config.json
+          node -e '
+            const fs = require("fs");
+            const config = JSON.parse(fs.readFileSync("expo-config.json", "utf8"));
+            const projectId = config.extra?.eas?.projectId;
+            const updateUrl = config.updates?.url;
+            if (projectId !== process.env.EAS_PROJECT_ID) throw new Error("Resolved EAS project ID does not match EAS_PROJECT_ID.");
+            if (updateUrl !== "https://u.expo.dev/" + process.env.EAS_PROJECT_ID) throw new Error("Expo Updates URL is missing or incorrect.");
+            if (!config.runtimeVersion) throw new Error("runtimeVersion is required for OTA compatibility.");
+            console.log("OTA configuration validated for", projectId);
+          '
+      - name: Publish iOS Expo Update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
@@ -37,11 +69,7 @@ jobs:
           UPDATE_MESSAGE: ${{ inputs.message }}
         run: |
           if [ -z "$EXPO_TOKEN" ]; then
-            echo "Missing EXPO_TOKEN repository secret."
+            echo "::error::Missing EXPO_TOKEN repository secret."
             exit 1
           fi
-          if [ -z "$EAS_PROJECT_ID" ]; then
-            echo "Missing EAS_PROJECT_ID repository variable."
-            exit 1
-          fi
-          npx eas-cli update --channel "$UPDATE_CHANNEL" --message "$UPDATE_MESSAGE" --non-interactive
+          npx eas-cli update --channel "$UPDATE_CHANNEL" --message "$UPDATE_MESSAGE" --platform ios --non-interactive
