@@ -5,6 +5,8 @@ on:
     branches:
       - main
     paths:
+      - "app.json"
+      - "app.config.js"
       - "App.tsx"
       - "src/**"
       - "assets/**"
@@ -42,7 +44,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Install dependencies
         run: npm install
       - name: Validate app before publishing
@@ -65,11 +67,12 @@ jobs:
             const projectId = config.extra?.eas?.projectId;
             const updateUrl = config.updates?.url;
             if (projectId !== process.env.EAS_PROJECT_ID) throw new Error("Resolved EAS project ID does not match EAS_PROJECT_ID.");
+            if (config.slug !== "xiaoshuo") throw new Error("Expo slug must match the linked xiaoshuo project.");
             if (updateUrl !== "https://u.expo.dev/" + process.env.EAS_PROJECT_ID) throw new Error("Expo Updates URL is missing or incorrect.");
             if (!config.runtimeVersion) throw new Error("runtimeVersion is required for OTA compatibility.");
             const channel = process.env.APP_UPDATE_CHANNEL;
             if (config.updates?.requestHeaders?.["expo-channel-name"] !== channel) throw new Error("Embedded OTA channel does not match the publish channel.");
-            console.log("OTA configuration validated for", projectId, "channel", channel);
+            console.log("OTA configuration validated for", projectId, "slug", config.slug, "channel", channel);
           '
       - name: Publish iOS Expo Update
         env:
