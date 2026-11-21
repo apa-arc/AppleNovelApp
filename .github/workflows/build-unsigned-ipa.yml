@@ -76,7 +76,7 @@ jobs:
           APP_UPDATE_CHANNEL: production
         run: |
           npx eas-cli@latest fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/ios-fingerprint.json"
-          node -e '
+          IOS_RUNTIME_FINGERPRINT="$(node -e '
             const fs = require("fs");
             const data = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/ios-fingerprint.json", "utf8"));
             const hash = data.hash || data.fingerprint?.hash || data.fingerprintHash;
@@ -84,10 +84,12 @@ jobs:
               console.error("Unexpected fingerprint output:", JSON.stringify(data).slice(0, 1000));
               process.exit(1);
             }
-            fs.appendFileSync(process.env.GITHUB_ENV, "IOS_RUNTIME_FINGERPRINT=" + hash + "\\n");
-            fs.appendFileSync(process.env.GITHUB_ENV, "EXPO_UPDATES_FINGERPRINT_OVERRIDE=" + hash + "\\n");
-            console.log("Resolved iOS runtime fingerprint:", hash);
-          '
+            process.stdout.write(hash);
+          ')"
+          echo "IOS_RUNTIME_FINGERPRINT=$IOS_RUNTIME_FINGERPRINT" >> "$GITHUB_ENV"
+          echo "EXPO_UPDATES_FINGERPRINT_OVERRIDE=$IOS_RUNTIME_FINGERPRINT" >> "$GITHUB_ENV"
+          echo "Resolved iOS runtime fingerprint: $IOS_RUNTIME_FINGERPRINT"
+
 
       - name: Generate iOS native project
         env:
