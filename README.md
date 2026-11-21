@@ -49,7 +49,7 @@ App 内置的《星海来信》模拟源只用于本地联调，不访问网络�
 
 普通界面、功能逻辑和 JS 资源变更会通过 Expo Updates 在线下发，不需要重新下载 IPA、自签或安装。GitHub 主分支的 `App.tsx`、`src/**` 变更会自动执行检查和测试，通过后发布 production OTA。App 启动及回到前台时自动检查（最多每 6 小时一次），发现更新后自动后台下载，用户确认重启即可应用。
 
-首次使用需要一次性配置 EAS 项目 ID（`EAS_PROJECT_ID`）和 Expo Token（`EXPO_TOKEN`），并安装一份已嵌入 production 更新通道的 IPA。原生模块、权限、底层依赖或 iOS 原生配置变更仍必须重新构建、自签和安装新 IPA；普通 JS 代码改动不需要。
+首次使用需要有效的 Expo Token（GitHub Actions secret `EXPO_TOKEN`），并确认 EAS 项目 ID（`EAS_PROJECT_ID` 或仓库默认值）正确；随后安装一份已嵌入 production 更新通道和 fingerprint runtime 的 IPA。原生模块、权限、底层依赖或 iOS 原生配置变更仍必须重新构建、自签和安装新 IPA；普通 JS 代码改动不需要。
 
 - 更新检查：正式安装包启动并完成本地数据加载后自动检查，也可在「我的」页面手动检查。开发预览模式不执行 OTA 检查。
 - 更新策略：新版本默认可稍后更新，不会因下载失败锁死当前版本；下载完成后用户确认重启应用。
