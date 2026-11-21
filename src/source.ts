@@ -101,7 +101,7 @@ function isSafeHttpsUrl(value: unknown, field: string): string {
   // Keep {keyword}, {bookUrl}, {chapterUrl} and similar source tokens
   // intact after validation. URL.toString() percent-encodes braces, which
   // would silently disable the runtime's template replacement.
-  const templateSafeValue = value.trim().replace(/\\{([a-zA-Z][a-zA-Z0-9]*)\\}/g, "source-template-token");
+  const templateSafeValue = value.trim().replace(/\{([a-zA-Z][a-zA-Z0-9]*)\}/g, "source-template-token");
   let parsed: URL;
   try {
     parsed = new URL(templateSafeValue);
