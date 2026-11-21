@@ -37,6 +37,7 @@ import {
   Dimensions,
   Modal,
   Share,
+  Image,
 } from "react-native";
 
 type Tab = "书架" | "搜索" | "源" | "我的";
@@ -65,13 +66,14 @@ type Book = {
 const STORAGE_KEY = "@private_novel/books_v1";
 const SOURCES_STORAGE_KEY = "@private_novel/sources_v1";
 const SUBSCRIPTION_URLS_STORAGE_KEY = "@private_novel/subscription_urls_v1";
+const DEFAULT_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/app-subscription.json";
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
 const SEARCH_LOGS_STORAGE_KEY = "@private_novel/search_logs_v1";
 const SHELF_VIEW_STORAGE_KEY = "@private_novel/shelf_view_v1";
 const APPEARANCE_STORAGE_KEY = "@private_novel/appearance_v1";
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
-type SearchNovelGroup = { id: string; title: string; author: string; description: string; sources: SearchSourceOption[] };
+type SearchNovelGroup = { id: string; title: string; author: string; description: string; coverUrl?: string; sources: SearchSourceOption[] };
 type SearchLogEntry = { id: string; sourceId: string; sourceName: string; keyword: string; ok: boolean; resultCount: number; error?: string; searchedAt: number };
 type Chapter = { title: string; content: string };
 const SAMPLE_CHAPTERS: Chapter[] = [
@@ -156,7 +158,7 @@ export default function App() {
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
   const [testingSourceIds, setTestingSourceIds] = useState<string[]>([]);
   const [sourceTestMessage, setSourceTestMessage] = useState("");
-  const [subscriptionUrl, setSubscriptionUrl] = useState("");
+  const [subscriptionUrl, setSubscriptionUrl] = useState(DEFAULT_SUBSCRIPTION_URL);
   const [subscriptionUrlMessage, setSubscriptionUrlMessage] = useState("");
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const [onlineQuery, setOnlineQuery] = useState("");
@@ -311,8 +313,9 @@ export default function App() {
           const parsedUrls: unknown = JSON.parse(savedSubscriptionUrls);
           if (parsedUrls && typeof parsedUrls === "object") {
             const urls = parsedUrls as { url?: unknown; normal?: unknown };
-            if (typeof urls.url === "string") setSubscriptionUrl(urls.url);
-            else if (typeof urls.normal === "string" && urls.normal !== "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/app-subscription.json") setSubscriptionUrl(urls.normal);
+            if (typeof urls.url === "string" && urls.url.trim()) setSubscriptionUrl(urls.url);
+            else if (typeof urls.normal === "string" && urls.normal.trim() && urls.normal !== DEFAULT_SUBSCRIPTION_URL) setSubscriptionUrl(urls.normal);
+            else setSubscriptionUrl(DEFAULT_SUBSCRIPTION_URL);
           }
         }
         const savedShelfView = await AsyncStorage.getItem(SHELF_VIEW_STORAGE_KEY);
@@ -718,9 +721,10 @@ export default function App() {
         const existing = groups.get(key);
         const option = { summary: item, latencyMs };
         if (!existing) {
-          groups.set(key, { id: key, title: item.title, author: item.author, description: item.description, sources: [option] });
+          groups.set(key, { id: key, title: item.title, author: item.author, description: item.description, coverUrl: item.coverUrl, sources: [option] });
         } else {
           if (item.description.length > existing.description.length) existing.description = item.description;
+          if (!existing.coverUrl && item.coverUrl) existing.coverUrl = item.coverUrl;
           if (!existing.sources.some((entry) => entry.summary.sourceId === item.sourceId)) existing.sources.push(option);
         }
       });
@@ -1920,14 +1924,24 @@ export default function App() {
           {!!searchSummary && <Text style={styles.searchSummary}>{searchSummary}</Text>}
           {searching && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={styles.note}>正在搜索，请稍候…</Text></View>}
           {!!searchMessage && <Text style={styles.searchFeedback}>{searchMessage}</Text>}
-          {onlineResults.map((item) => (
-            <Pressable key={item.id} style={[styles.onlineResultCard, appIsDark && styles.darkCard]} onPress={() => openSearchNovel(item)}>
-              <View style={styles.onlineResultInfo}>
-                <Text style={[styles.onlineResultTitle, appIsDark && styles.darkPrimaryText]}>{item.title}</Text>
-              </View>
-              <Text style={styles.resultChevron}>›</Text>
-            </Pressable>
-          ))}
+          {onlineResults.length > 0 && (
+            <View style={styles.searchResultGrid}>
+              {onlineResults.map((item) => (
+                <Pressable key={item.id} style={styles.searchResultTile} onPress={() => openSearchNovel(item)}>
+                  <Text style={[styles.searchResultTitle, appIsDark && styles.darkPrimaryText]} numberOfLines={2}>{item.title}</Text>
+                  {item.coverUrl ? (
+                    <Image source={{ uri: item.coverUrl }} style={styles.searchResultCover} resizeMode="cover" />
+                  ) : (
+                    <View style={[styles.searchResultCover, styles.searchResultCoverFallback]}>
+                      <Text style={styles.searchResultFallbackTitle} numberOfLines={4}>{item.title}</Text>
+                      <Text style={styles.searchResultFallbackLabel}>暂无封面</Text>
+                    </View>
+                  )}
+                  {!!item.author && <Text style={[styles.searchResultAuthor, appIsDark && styles.darkMutedText]} numberOfLines={1}>{item.author}</Text>}
+                </Pressable>
+              ))}
+            </View>
+          )}
           {!searching && onlineResults.length === 0 && !searchMessage && (
             <Text style={styles.emptyText}>输入书名开始搜索。需要先在搜索页右上角「源」中添加书源订阅。</Text>
           )}
@@ -2178,6 +2192,14 @@ const styles = StyleSheet.create({
   searchSummary: { color: "#65745D", fontSize: 12, lineHeight: 18, marginBottom: 12 },
   searchLoading: { alignItems: "center", paddingVertical: 18 },
   searchFeedback: { color: "#9A6A50", fontSize: 12, lineHeight: 19, marginBottom: 12 },
+  searchResultGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 18, marginTop: 4 },
+  searchResultTile: { width: "31.5%", marginBottom: 2 },
+  searchResultTitle: { color: "#292A24", fontSize: 12, lineHeight: 17, fontWeight: "800", minHeight: 36, marginBottom: 7 },
+  searchResultCover: { width: "100%", aspectRatio: 0.68, borderRadius: 9, backgroundColor: "#EAE9E1" },
+  searchResultCoverFallback: { alignItems: "center", justifyContent: "center", padding: 9, borderWidth: 1, borderColor: "#DDDCD2" },
+  searchResultFallbackTitle: { color: "#59614F", fontSize: 13, lineHeight: 19, fontWeight: "800", textAlign: "center" },
+  searchResultFallbackLabel: { color: "#999486", fontSize: 9, marginTop: 10 },
+  searchResultAuthor: { color: "#8D897F", fontSize: 10, marginTop: 5 },
   onlineResultCard: { backgroundColor: "#FFFFFF", borderRadius: 15, padding: 15, marginBottom: 10, borderWidth: 1, borderColor: "#EEECE5" },
   detailHeader: { height: 54, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   detailHero: { backgroundColor: "#343B32", borderRadius: 20, padding: 22, marginBottom: 18 },
