@@ -77,7 +77,7 @@ const SOURCE_EXAMPLE = `{
   "chapterListUrl": "https://example.com/chapters",
   "chapterUrl": "https://example.com/chapter"
 }`;
-type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null };
+type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
 type SearchNovelGroup = { id: string; title: string; author: string; description: string; sources: SearchSourceOption[] };
 type Chapter = { title: string; content: string };
 const SAMPLE_CHAPTERS: Chapter[] = [
@@ -723,38 +723,44 @@ export default function App() {
     if (!selectedSearchNovel || rankingChapterCounts) return;
     setRankingChapterCounts(true);
     setCatalogMessage("正在逐个读取各书源目录，统计章节数量…");
-    const ranked = await Promise.all(selectedSearchNovel.sources.map(async (option) => {
-      const source = sources.find((item) => item.id === option.summary.sourceId);
-      if (!source || !source.enabled) return { ...option, chapterCount: null };
-      try {
-        const chapters = await fetchNovelChapterList(source, option.summary, getSourceClient(source));
-        return { ...option, chapterCount: chapters.length };
-      } catch {
-        return { ...option, chapterCount: null };
+    try {
+      const ranked = await Promise.all(selectedSearchNovel.sources.map(async (option) => {
+        const source = sources.find((item) => item.id === option.summary.sourceId);
+        if (!source || !source.enabled) return { ...option, chapterCount: null, chapterError: "书源未启用或已不存在。" };
+        try {
+          const chapters = await fetchNovelChapterList(source, option.summary, getSourceClient(source));
+          return { ...option, chapterCount: chapters.length, chapterError: undefined };
+        } catch (error) {
+          return { ...option, chapterCount: null, chapterError: error instanceof Error ? error.message : "目录读取失败。" };
+        }
+      }));
+      const valid = ranked.filter((item) => item.chapterCount !== null && item.chapterCount !== undefined);
+      const speedOrder = [...ranked].sort((a, b) => a.latencyMs - b.latencyMs);
+      const chapterOrder = [...valid].sort((a, b) => (b.chapterCount ?? 0) - (a.chapterCount ?? 0));
+      const speedRanks = new Map(speedOrder.map((item, index) => [item.summary.sourceId, index]));
+      const chapterRanks = new Map(chapterOrder.map((item, index) => [item.summary.sourceId, index]));
+      const sorted = [...ranked].sort((a, b) => {
+        const ar = chapterRanks.get(a.summary.sourceId);
+        const br = chapterRanks.get(b.summary.sourceId);
+        if (ar === undefined) return 1;
+        if (br === undefined) return -1;
+        const as = (speedRanks.get(a.summary.sourceId) ?? ranked.length) + ar;
+        const bs = (speedRanks.get(b.summary.sourceId) ?? ranked.length) + br;
+        return as - bs || a.latencyMs - b.latencyMs;
+      });
+      setSelectedSearchNovel({ ...selectedSearchNovel, sources: sorted });
+      if (valid.length > 0) {
+        setSelectedSourceId(sorted[0].summary.sourceId);
+        setLoadedNovelDetail(null);
+        setLoadedChapters([]);
       }
-    }));
-    const valid = ranked.filter((item) => item.chapterCount !== null && item.chapterCount !== undefined);
-    const speedOrder = [...ranked].sort((a, b) => a.latencyMs - b.latencyMs);
-    const chapterOrder = [...valid].sort((a, b) => (b.chapterCount ?? 0) - (a.chapterCount ?? 0));
-    const speedRanks = new Map(speedOrder.map((item, index) => [item.summary.sourceId, index]));
-    const chapterRanks = new Map(chapterOrder.map((item, index) => [item.summary.sourceId, index]));
-    const sorted = ranked.sort((a, b) => {
-      const ar = chapterRanks.get(a.summary.sourceId);
-      const br = chapterRanks.get(b.summary.sourceId);
-      if (ar === undefined) return 1;
-      if (br === undefined) return -1;
-      const as = (speedRanks.get(a.summary.sourceId) ?? ranked.length) + ar;
-      const bs = (speedRanks.get(b.summary.sourceId) ?? ranked.length) + br;
-      return as - bs || a.latencyMs - b.latencyMs;
-    });
-    setSelectedSearchNovel({ ...selectedSearchNovel, sources: sorted });
-    if (sorted[0]?.chapterCount !== null && sorted[0]?.chapterCount !== undefined) {
-      setSelectedSourceId(sorted[0].summary.sourceId);
-      setLoadedNovelDetail(null);
-      setLoadedChapters([]);
+      const failed = ranked.length - valid.length;
+      setCatalogMessage("目录统计完成：成功 " + valid.length + " 个，失败 " + failed + " 个。" + (failed > 0 ? "失败原因已显示在对应书源下方。" : "所有书源目录均已读取。"));
+    } catch (error) {
+      setCatalogMessage(error instanceof Error ? "目录统计异常：" + error.message : "目录统计异常，请稍后重试。");
+    } finally {
+      setRankingChapterCounts(false);
     }
-    setCatalogMessage("综合排序完成：同时考虑响应速度和章节数量，两项排名相加后分数越低越靠前；无法读取目录的来源排在后面。");
-    setRankingChapterCounts(false);
   };
 
   const saveOnlineBookToShelf = () => {
@@ -816,9 +822,22 @@ export default function App() {
       ]);
       setLoadedNovelDetail(detail);
       setLoadedChapters(chapters);
+      setSelectedSearchNovel((current) => current ? ({
+        ...current,
+        sources: current.sources.map((item) => item.summary.sourceId === selectedSourceId
+          ? { ...item, chapterCount: chapters.length, chapterError: undefined }
+          : item),
+      }) : current);
       setCatalogMessage("获取成功，共 " + chapters.length + " 章。");
     } catch (error) {
-      setCatalogMessage(error instanceof Error ? error.message : "获取详情或目录失败，请尝试其他书源。");
+      const message = error instanceof Error ? error.message : "获取详情或目录失败，请尝试其他书源。";
+      setSelectedSearchNovel((current) => current ? ({
+        ...current,
+        sources: current.sources.map((item) => item.summary.sourceId === selectedSourceId
+          ? { ...item, chapterCount: null, chapterError: message }
+          : item),
+      }) : current);
+      setCatalogMessage(message);
     } finally {
       setLoadingCatalog(false);
     }
@@ -1485,7 +1504,7 @@ export default function App() {
                 }} style={[styles.sourceChoice, isSelected && styles.sourceChoiceSelected]}>
                   <View style={styles.sourceChoiceInfo}>
                     <Text style={styles.sourceChoiceName}>{option.summary.sourceName}</Text>
-                    <Text style={styles.sourceChoiceLatency}>{option.chapterCount === null || option.chapterCount === undefined ? `${option.latencyMs} ms · 尚未统计目录` : `${option.chapterCount} 章 · ${option.latencyMs} ms`}</Text>
+                    <Text style={styles.sourceChoiceLatency}>{option.chapterCount === null || option.chapterCount === undefined ? `${option.latencyMs} ms · ${option.chapterError ? "目录读取失败" : "尚未检测目录"}` : `${option.chapterCount} 章 · ${option.latencyMs} ms`}</Text>
                   </View>
                   {isRecommended && <Text style={styles.recommendTag}>综合推荐</Text>}
                   {isSelected && <Text style={styles.selectedTag}>已选择</Text>}
