@@ -5,3 +5,5 @@ test("HTML parsing rejects unsafe links and missing selectors",()=>{assert.throw
 test("CSS parser supports compound, descendant, child, attribute and nth-child selectors",()=>{const root=p.parseHtmlDocument('<main id="main"><div class="x"><a data-id="1">one</a></div><div class="x"><a data-id="2">two</a></div></main>');assert.equal(p.selectHtmlNodes(root,"main > div.x a[data-id='2']").length,1);assert.equal(p.selectHtmlNodes(root,"#main div.x:nth-child(2)").length,1);});
 
 test("unsupported pseudo selectors fail clearly instead of being ignored",()=>{const root=p.parseHtmlDocument("<div><p>text</p></div>");assert.throws(()=>p.selectHtmlNodes(root,"div:has(p)"),/暂不支持/);});
+
+test("supports attribute suffix selectors for chapter links",()=>{const root=p.parseHtmlDocument('<div><a href="/book/1.html">第一章</a><a href="/book/cover.jpg">封面</a></div>');assert.equal(p.selectHtmlNodes(root,"a[href$='.html']").length,1);});
