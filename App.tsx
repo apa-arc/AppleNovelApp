@@ -145,6 +145,7 @@ export default function App() {
   const [speechAudioEntries, setSpeechAudioEntries] = useState<SpeechAudioEntry[]>([]);
   const [speechAudioLibraryLoaded, setSpeechAudioLibraryLoaded] = useState(false);
   const [downloadingSpeechAudio, setDownloadingSpeechAudio] = useState(false);
+  const [speechDownloadProgress, setSpeechDownloadProgress] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -1232,6 +1233,7 @@ export default function App() {
     const directory = root + "speech-audio/";
     const createdFiles: string[] = [];
     setDownloadingSpeechAudio(true);
+    setSpeechDownloadProgress(`准备生成语音（共 ${chunks.length} 段）`);
     try {
       await FileSystem.makeDirectoryAsync(directory, { intermediates: true }).catch(() => undefined);
       let totalBytes = 0;
@@ -1246,6 +1248,7 @@ export default function App() {
         await FileSystem.writeAsStringAsync(uri, encode(exactBuffer), { encoding: FileSystem.EncodingType.Base64 });
         createdFiles.push(uri);
         totalBytes += audioBytes.byteLength;
+        setSpeechDownloadProgress(`正在生成并保存第 ${index + 1} / ${chunks.length} 段`);
       }
       const entry: SpeechAudioEntry = {
         key,
@@ -1267,6 +1270,7 @@ export default function App() {
       Alert.alert("下载失败", error instanceof Error ? error.message : "请检查网络后重试。");
     } finally {
       setDownloadingSpeechAudio(false);
+      setSpeechDownloadProgress("");
     }
   };
 
@@ -1297,6 +1301,16 @@ export default function App() {
         speechPausedRef.current = false;
       }
     }
+  };
+
+  const deleteSavedSpeechAudio = (entry: SpeechAudioEntry) => {
+    Alert.alert("删除离线语音", `确定删除《${entry.bookTitle}》· ${entry.chapterTitle} 的离线语音吗？`, [
+      { text: "取消", style: "cancel" },
+      { text: "删除", style: "destructive", onPress: () => {
+        void Promise.all(entry.files.map((uri) => FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined)));
+        setSpeechAudioEntries((current) => current.filter((item) => item.key !== entry.key));
+      } },
+    ]);
   };
 
   const deleteCurrentChapterSpeech = () => {
@@ -1633,7 +1647,7 @@ export default function App() {
               )}
               <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>在线 AI 负责生成语音；你可以按章节手动保存生成后的音频。不会自动下载，也不需要下载整个语音模型。</Text>
               <Pressable onPress={() => void downloadCurrentChapterSpeech()} disabled={downloadingSpeechAudio || !selectedBook} style={[styles.catalogLoadButton, (downloadingSpeechAudio || !selectedBook) && styles.importButtonDisabled]}>
-                {downloadingSpeechAudio ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>下载本章语音到本地</Text>}
+                {downloadingSpeechAudio ? <><ActivityIndicator color="#FFFFFF" /><Text style={styles.importButtonText}>{speechDownloadProgress || "正在生成语音…"}</Text></> : <Text style={styles.importButtonText}>下载本章语音到本地</Text>}
               </Pressable>
               {getCurrentSpeechAudioEntry() ? (
                 <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
@@ -1900,6 +1914,26 @@ export default function App() {
               <Text style={styles.chevron}>›</Text>
             </Pressable>
           ))}
+          <View style={styles.sectionHeading}>
+            <Text style={styles.sectionTitle}>离线语音管理</Text>
+            <Text style={styles.sectionMeta}>{speechAudioEntries.length} 章 · {(speechAudioEntries.reduce((sum, entry) => sum + entry.totalBytes, 0) / 1024 / 1024).toFixed(1)} MB</Text>
+          </View>
+          {speechAudioEntries.length === 0 ? (
+            <Text style={styles.emptyText}>还没有下载的语音。阅读小说时可在「声音」设置中手动下载当前章节。</Text>
+          ) : speechAudioEntries.slice().sort((a, b) => b.createdAt - a.createdAt).map((entry) => (
+            <View key={entry.key} style={styles.historyRow}>
+              <View style={styles.historyInfo}>
+                <Text style={styles.bookTitle} numberOfLines={1}>{entry.bookTitle}</Text>
+                <Text style={styles.bookAuthor} numberOfLines={1}>{entry.chapterTitle}</Text>
+                <Text style={styles.progressText}>{SPEECH_VOICES.find((voice) => voice.id === entry.voiceId)?.label || entry.voiceId} · {entry.speed.toFixed(2)} 倍速 · {(entry.totalBytes / 1024 / 1024).toFixed(1)} MB</Text>
+                <Text style={styles.progressText}>下载于 {new Date(entry.createdAt).toLocaleString()}</Text>
+              </View>
+              <Pressable onPress={() => deleteSavedSpeechAudio(entry)} style={styles.sourceAction}>
+                <Text style={styles.sourceDeleteText}>删除</Text>
+              </Pressable>
+            </View>
+          ))}
+          <Text style={styles.note}>离线语音保存在本机，不会自动下载。更换音色或语速后需要重新手动生成；删除语音不会删除小说或阅读记录。</Text>
           <View style={styles.updateCard}>
             <View style={styles.updateHeader}>
               <View style={styles.updateIcon}><Text style={styles.updateIconText}>↻</Text></View>
