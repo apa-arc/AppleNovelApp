@@ -475,7 +475,15 @@ export default function App() {
         return;
       }
       const importedAt = Date.now();
-      const next = [...sources];
+      // Reconcile this subscription as a complete snapshot: remove entries that
+      // were previously imported from this subscription but are no longer listed.
+      const currentRemoteIds = new Set(subscription.compatible.map((item) => item.remoteId));
+      const next = sources.filter((source) =>
+        source.subscriptionId !== subscription.subscriptionId ||
+        !source.remoteSourceId ||
+        currentRemoteIds.has(source.remoteSourceId)
+      );
+      const removed = sources.length - next.length;
       let added = 0;
       let updated = 0;
       let skipped = 0;
@@ -512,7 +520,7 @@ export default function App() {
         }
       }
       setSources(next);
-      setSubscriptionUrlMessage(subscription.name + " 更新完成：新增 " + added + "，更新 " + updated + "，重复跳过 " + skipped + "，不兼容 " + subscription.unsupported.length + "。");
+      setSubscriptionUrlMessage(subscription.name + " 更新完成：新增 " + added + "，更新 " + updated + "，移除已下架 " + removed + "，重复跳过 " + skipped + "，不兼容 " + subscription.unsupported.length + "。");
     } catch (error) {
       setSubscriptionUrlMessage(error instanceof Error ? error.message : "订阅导入失败，请检查地址和网络。");
     } finally {
