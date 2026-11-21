@@ -12,8 +12,8 @@ const {
 const source = {
   id: "s1", name: "测试源", baseUrl: "https://books.example",
   searchUrl: "https://books.example/search", bookUrl: "https://books.example/book",
-  chapterListUrl: "https://books.example/toc?book={bookUrl}",
-  chapterUrl: "https://books.example/chapter?url={chapterUrl}",
+  chapterListUrl: "https://books.example/{bookUrl}",
+  chapterUrl: "https://books.example/{chapterUrl}",
   enabled: true, importedAt: 1,
 };
 const summary = {
@@ -71,6 +71,21 @@ test("fetch functions use the selected source endpoints", async () => {
   assert.equal(content.content, "章节正文");
   assert.equal(calls[0].endpoint, "bookUrl");
   assert.equal(calls[0].url, summary.bookUrl);
-  assert.match(calls[1].url, /https%3A%2F%2Fbooks/);
-  assert.match(calls[2].url, /chapter%2F1/);
+  assert.equal(calls[1].url, summary.bookUrl);
+  assert.equal(calls[2].url, chapters[0].url);
+});
+
+test("resolves the First Edition mobile TOC path from its detail URL", async () => {
+  const mobileSource = {
+    ...source,
+    chapterListUrl: "https://m.111bz.cc/html/{bookPath}/index.html",
+  };
+  const mobileSummary = { ...summary, bookUrl: "https://m.111bz.cc/7_7116/" };
+  let requested = "";
+  const client = { get: async (_endpoint, url) => {
+    requested = url;
+    return { url, contentType: "text/html", body: "<ul><li><a href='/7_7116/118838.html'>第一章</a></li></ul>" };
+  } };
+  await fetchNovelChapterList(mobileSource, mobileSummary, client);
+  assert.equal(requested, "https://m.111bz.cc/html/7/7116/index.html");
 });
