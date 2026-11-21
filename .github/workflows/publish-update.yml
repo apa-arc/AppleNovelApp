@@ -49,7 +49,7 @@ jobs:
           npm run test:app
       - name: Validate Expo OTA configuration
         env:
-          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
           APP_UPDATE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'production' }}
         run: |
           if [ -z "$EAS_PROJECT_ID" ]; then
@@ -72,7 +72,7 @@ jobs:
       - name: Publish iOS Expo Update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
           UPDATE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'production' }}
           UPDATE_MESSAGE: ${{ inputs.message || format('Automatic OTA update {0}', github.sha) }}
           APP_UPDATE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'production' }}
