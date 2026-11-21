@@ -13,7 +13,7 @@
     "test:reading-progress": "tsc src/reading-progress.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/reading-progress.test.cjs",
     "test:reader-settings": "tsc src/reader-settings.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/reader-settings.test.cjs",
     "test:novel-model": "tsc src/novel.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/novel-model.test.cjs",
-    "test": "npm run test:source-runtime && npm run test:local-book && npm run test:reading-progress && npm run test:reading-history && npm run test:reader-settings && npm run test:novel-model && npm run test:source-search && npm run test:source-catalog && npm run test:subscription && npm run test:source-subscription && npm run test:speech-engine && npm run test:cloud-tts && npm run test:speech-voice-catalog && npm run test:offline-model-download && npm run test:speech-model-download && npm run test:source-pipeline && npm run test:mock-source && npm run test:html-source && npm run test:html-source-pipeline && npm run test:speech-audio-library",
+    "test": "npm run test:source-runtime && npm run test:local-book && npm run test:reading-progress && npm run test:reading-history && npm run test:reader-settings && npm run test:novel-model && npm run test:source-search && npm run test:source-catalog && npm run test:subscription && npm run test:source-subscription && npm run test:speech-engine && npm run test:speech-voice-catalog && npm run test:offline-model-download && npm run test:speech-model-download && npm run test:source-pipeline && npm run test:mock-source && npm run test:html-source && npm run test:html-source-pipeline && npm run test:speech-audio-library && npm run test:wav-encoder",
     "test:source-search": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/source-search.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-search.test.cjs",
     "test:source-catalog": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/source-catalog.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-catalog.test.cjs",
     "test:subscription": "tsc src/novel.ts src/subscription.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/subscription.test.cjs",
@@ -25,12 +25,13 @@
     "test:speech-model-download": "tsc src/speech-model-download.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/speech-model-download.test.cjs",
     "test:local-book": "tsc src/local-book.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/local-book.test.cjs",
     "test:source-pipeline": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/source-search.ts src/source-catalog.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-pipeline.test.cjs",
-    "test:cloud-tts": "tsc src/speech-engine.ts src/speech-voice-catalog.ts src/cloud-tts.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/cloud-tts.test.cjs",
     "test:mock-source": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/source-search.ts src/source-catalog.ts src/mock-source.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/mock-source.test.cjs",
     "test:html-source": "tsc src/source.ts src/novel.ts src/html-source-parser.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/html-source-parser.test.cjs",
     "test:html-source-pipeline": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/html-source-parser.ts src/source-search.ts src/source-catalog.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/html-source-pipeline.test.cjs",
-    "test:app": "npm run test:local-book && npm run test:reading-progress && npm run test:reading-history && npm run test:reader-settings && npm run test:novel-model && npm run test:speech-engine && npm run test:cloud-tts && npm run test:speech-voice-catalog && npm run test:offline-model-download && npm run test:speech-model-download && npm run test:source-runtime && npm run test:source-search && npm run test:source-catalog && npm run test:source-subscription && npm run test:subscription && npm run test:source-pipeline && npm run test:mock-source && npm run test:html-source && npm run test:html-source-pipeline && npm run test:speech-audio-library",
-    "test:speech-audio-library": "tsc src/speech-audio-library.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/speech-audio-library.test.cjs"
+    "test:app": "npm run test:local-book && npm run test:reading-progress && npm run test:reading-history && npm run test:reader-settings && npm run test:novel-model && npm run test:speech-engine && npm run test:speech-voice-catalog && npm run test:offline-model-download && npm run test:speech-model-download && npm run test:source-runtime && npm run test:source-search && npm run test:source-catalog && npm run test:source-subscription && npm run test:subscription && npm run test:source-pipeline && npm run test:mock-source && npm run test:html-source && npm run test:html-source-pipeline && npm run test:speech-audio-library && npm run test:wav-encoder",
+    "test:speech-audio-library": "tsc src/speech-audio-library.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/speech-audio-library.test.cjs",
+    "postinstall": "node scripts/patch-sherpa-native.js",
+    "test:wav-encoder": "tsc src/wav-encoder.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/wav-encoder.test.cjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -41,12 +42,13 @@
     "expo-constants": "~18.0.14",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.24",
-    "expo-secure-store": "~15.0.8",
-    "expo-speech": "~14.0.8",
     "expo-status-bar": "~3.0.8",
     "expo-updates": "~29.0.20",
     "react": "19.1.0",
-    "react-native": "0.81.5"
+    "react-native": "0.81.5",
+    "@dr.pogodin/react-native-fs": "2.33.1",
+    "@kesha-antonov/react-native-background-downloader": "^4.5.4",
+    "react-native-sherpa-onnx": "0.4.4"
   },
   "devDependencies": {
     "@types/react": "~19.1.10",
@@ -56,6 +58,10 @@
     "postcss": "8.5.33",
     "image-size": "2.1.0",
     "glob": "14.0.6",
-    "minimatch": "11.0.9"
+    "minimatch": "11.0.9",
+    "@babel/parser": "7.29.14",
+    "@babel/plugin-transform-block-scoping": "7.29.13",
+    "@babel/core": "7.29.13",
+    "@babel/preset-env": "7.29.7"
   }
 }

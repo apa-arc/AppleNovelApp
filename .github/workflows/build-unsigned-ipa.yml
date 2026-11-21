@@ -46,7 +46,7 @@ jobs:
           pod --version
 
       - name: Install JavaScript dependencies
-        run: npm ci
+        run: npm install
 
       - name: Restore app icon asset
         run: |

@@ -1,9 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Updates from "expo-updates";
-import * as Speech from "expo-speech";
 import Constants from "expo-constants";
-import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import type { NovelSource } from "./src/source";
 import { parseSourceSubscription } from "./src/source-subscription";
@@ -15,7 +13,15 @@ import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type ReaderSettings, 
 import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } from "./src/reading-progress";
 import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
+import { SPEECH_VOICES } from "./src/speech-voice-catalog";
 import { splitSpeechText } from "./src/speech-engine";
+import {
+  createOfflineKokoroEngine, deleteOfflineKokoroModel, downloadOfflineKokoroModel,
+  getOfflineKokoroModel, isOfflineKokoroPause, pauseOfflineKokoroModel,
+  resumeOfflineKokoroModel, synthesizeOfflineKokoro, verifyOfflineKokoroNativeModule,
+  type OfflineKokoroEngine, type OfflineKokoroProgress,
+} from "./src/offline-kokoro-runtime";
+import { playWavAudio, type WavAudioPlayback } from "./src/wav-audio-playback";
 import {
   AppState,
   SafeAreaView,
@@ -30,6 +36,7 @@ import {
   Alert,
   Dimensions,
   Modal,
+  useColorScheme,
 } from "react-native";
 
 type Tab = "书架" | "搜索" | "源" | "我的";
@@ -60,7 +67,8 @@ const SOURCES_STORAGE_KEY = "@private_novel/sources_v1";
 const SUBSCRIPTION_URLS_STORAGE_KEY = "@private_novel/subscription_urls_v1";
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
-const SYSTEM_SPEECH_VOICE_KEY = "@private_novel/system_speech_voice_v1";
+const SHELF_VIEW_STORAGE_KEY = "@private_novel/shelf_view_v1";
+const APPEARANCE_STORAGE_KEY = "@private_novel/appearance_v1";
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
 type SearchNovelGroup = { id: string; title: string; author: string; description: string; sources: SearchSourceOption[] };
 type Chapter = { title: string; content: string };
@@ -69,38 +77,7 @@ const SAMPLE_CHAPTERS: Chapter[] = [
   { title: "第二章 · 远方来信", content: "桌面上多了一封没有署名的信。信纸很薄，字迹却清晰。\n\n这是一段演示文本，用来检查章节切换、目录跳转和阅读位置保存是否正常。\n\n真正的章节内容将在后续接入经过授权的在线书源或用户导入的本地文本后展示。" },
   { title: "第三章 · 向前一步", content: "有些答案需要亲自走出去才能找到。合上信纸，他决定在今天启程。\n\n你现在看到的是第三段演示内容。可以通过底部按钮切换章节，也可以打开目录直接跳转。\n\n章节阅读进度会保存在当前设备。" },
 ];
-const SAMPLE_BOOKS: Book[] = [
-  {
-    id: "1",
-    title: "星海漫游指南",
-    author: "示例作者",
-    description: "一段关于远方、选择与成长的故事。这里是演示书籍，用于体验书架和阅读界面。",
-    category: "科幻",
-    progress: 36,
-    color: "#DCE8F8",
-    lastChapter: "第一章 · 故事的开始",
-  },
-  {
-    id: "2",
-    title: "山海旧闻",
-    author: "示例作者",
-    description: "从一座临海小城开始，寻找散落在旧时光里的故事。",
-    category: "奇幻",
-    progress: 12,
-    color: "#F4E6D8",
-    lastChapter: "序章",
-  },
-  {
-    id: "3",
-    title: "长街灯火",
-    author: "示例作者",
-    description: "平凡街巷里的日常与温暖。",
-    category: "都市",
-    progress: 0,
-    color: "#E5E9DF",
-    lastChapter: "尚未开始",
-  },
-];
+
 
 
 function getSourceClient(_source: NovelSource) {
@@ -111,9 +88,9 @@ function getOnlineBookId(title: string, author: string): string {
   return "online:" + normalizeNovelTitle(title) + "::" + normalizeNovelTitle(author);
 }
 
-function BookCover({ book }: { book: Book }) {
+function BookCover({ book, grid = false }: { book: Book; grid?: boolean }) {
   return (
-    <View style={[styles.cover, { backgroundColor: book.color }]}>
+    <View style={[styles.cover, grid && styles.gridCover, { backgroundColor: book.color }]}>
       <Text style={styles.coverTitle} numberOfLines={3}>{book.title}</Text>
       <View style={styles.coverRule} />
       <Text style={styles.coverAuthor}>{book.author}</Text>
@@ -123,41 +100,35 @@ function BookCover({ book }: { book: Book }) {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("书架");
+  const systemColorScheme = useColorScheme();
+  const [appearanceMode, setAppearanceMode] = useState<"system" | "light" | "dark">("system");
+  const appIsDark = appearanceMode === "dark" || (appearanceMode === "system" && systemColorScheme === "dark");
+  const [shelfView, setShelfView] = useState<"list" | "grid">("list");
   const [query, setQuery] = useState("");
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [books, setBooks] = useState<Book[]>(SAMPLE_BOOKS);
+  const [books, setBooks] = useState<Book[]>([]);
   const [readingHistory, setReadingHistory] = useState<ReadingHistoryEntry[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [systemSpeechVoices, setSystemSpeechVoices] = useState<Speech.Voice[]>([]);
-  const [systemSpeechVoiceId, setSystemSpeechVoiceId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    void Promise.all([Speech.getAvailableVoicesAsync(), AsyncStorage.getItem(SYSTEM_SPEECH_VOICE_KEY)]).then(([voices, savedVoiceId]) => {
-      if (!active) return;
-      const chineseVoices = voices.filter((voice) => voice.language.toLowerCase().startsWith("zh"));
-      setSystemSpeechVoices(chineseVoices);
-      setSystemSpeechVoiceId(savedVoiceId && chineseVoices.some((voice) => voice.identifier === savedVoiceId)
-        ? savedVoiceId
-        : chineseVoices.find((voice) => voice.quality === Speech.VoiceQuality.Enhanced)?.identifier || chineseVoices[0]?.identifier || null);
-    }).catch(() => undefined);
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    if (systemSpeechVoiceId) void AsyncStorage.setItem(SYSTEM_SPEECH_VOICE_KEY, systemSpeechVoiceId).catch(() => undefined);
-  }, [systemSpeechVoiceId]);
 
   const [chapterIndex, setChapterIndex] = useState(0);
   const [showCatalog, setShowCatalog] = useState(false);
   const [showReaderSettings, setShowReaderSettings] = useState(false);
   const [showSpeechSettings, setShowSpeechSettings] = useState(false);
   const [speechModelVoiceId, setSpeechModelVoiceId] = useState(DEFAULT_READER_SETTINGS.speechModelVoiceId);
-  const [speechCloudEndpoint, setSpeechCloudEndpoint] = useState(DEFAULT_READER_SETTINGS.speechCloudEndpoint);
   const [speechPaused, setSpeechPaused] = useState(false);
   const speechPausedRef = useRef(false);
   const speechRunIdRef = useRef(0);
+  const speechPlaybackRef = useRef<WavAudioPlayback | null>(null);
+  const [speechVoiceCategoryFilter, setSpeechVoiceCategoryFilter] = useState<"全部" | "中文女声" | "中文男声" | "英语女声">("全部");
+  const [offlineModelStatus, setOfflineModelStatus] = useState<"checking" | "not-downloaded" | "downloading" | "paused" | "installed" | "failed" | "unavailable">("checking");
+  const [offlineModelProgress, setOfflineModelProgress] = useState(0);
+  const [offlineModelPhase, setOfflineModelPhase] = useState<OfflineKokoroProgress["phase"] | null>(null);
+  const [offlineModelPath, setOfflineModelPath] = useState<string | null>(null);
+  const [offlineModelError, setOfflineModelError] = useState<string | null>(null);
+  const offlineModelPhaseRef = useRef<OfflineKokoroProgress["phase"]>("downloading");
+  const offlineModelBusyRef = useRef(false);
+  const offlineEngineRef = useRef<OfflineKokoroEngine | null>(null);
   const [speechRate, setSpeechRate] = useState(DEFAULT_READER_SETTINGS.speechRate);
   const [readerFontSize, setReaderFontSize] = useState(DEFAULT_READER_SETTINGS.fontSize);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(DEFAULT_READER_SETTINGS.theme);
@@ -307,7 +278,7 @@ export default function App() {
         const saved = await AsyncStorage.getItem(STORAGE_KEY);
         if (saved && active) {
           const parsed: unknown = JSON.parse(saved);
-          if (Array.isArray(parsed)) setBooks(parsed as Book[]);
+          if (Array.isArray(parsed)) setBooks((parsed as Book[]).filter((book) => !["1", "2", "3"].includes(book.id)));
         }
         const savedSources = await AsyncStorage.getItem(SOURCES_STORAGE_KEY);
         if (savedSources && active) {
@@ -329,6 +300,10 @@ export default function App() {
             else if (typeof urls.normal === "string" && urls.normal !== "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/app-subscription.json") setSubscriptionUrl(urls.normal);
           }
         }
+        const savedShelfView = await AsyncStorage.getItem(SHELF_VIEW_STORAGE_KEY);
+        if (savedShelfView === "grid" || savedShelfView === "list") setShelfView(savedShelfView);
+        const savedAppearance = await AsyncStorage.getItem(APPEARANCE_STORAGE_KEY);
+        if (savedAppearance === "system" || savedAppearance === "light" || savedAppearance === "dark") setAppearanceMode(savedAppearance);
         const savedHistory = await AsyncStorage.getItem(READING_HISTORY_STORAGE_KEY);
         if (savedHistory && active) setReadingHistory(normalizeReadingHistory(JSON.parse(savedHistory)));
         const savedReaderSettings = await AsyncStorage.getItem(READER_SETTINGS_STORAGE_KEY);
@@ -341,7 +316,6 @@ export default function App() {
           setReaderParagraphSpacing(settings.paragraphSpacing);
           setReaderHorizontalPadding(settings.horizontalPadding);
           setSpeechModelVoiceId(settings.speechModelVoiceId);
-          setSpeechCloudEndpoint(settings.speechCloudEndpoint);
           setSpeechRate(settings.speechRate);
         }
       } catch {
@@ -372,6 +346,16 @@ export default function App() {
 
   useEffect(() => {
     if (!isLoaded) return;
+    AsyncStorage.setItem(SHELF_VIEW_STORAGE_KEY, shelfView).catch(() => undefined);
+  }, [shelfView, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem(APPEARANCE_STORAGE_KEY, appearanceMode).catch(() => undefined);
+  }, [appearanceMode, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
     AsyncStorage.setItem(READING_HISTORY_STORAGE_KEY, JSON.stringify(readingHistory)).catch(() => {
       Alert.alert("保存失败", "阅读记录暂时未能保存，请检查手机存储空间。");
     });
@@ -386,11 +370,46 @@ export default function App() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    const settings: ReaderSettings = normalizeReaderSettings({ speechCloudEndpoint, fontSize: readerFontSize, theme: readerTheme, readingMode: readerMode, lineSpacing: readerLineSpacing, paragraphSpacing: readerParagraphSpacing, horizontalPadding: readerHorizontalPadding, speechModelVoiceId, speechRate });
+    const settings: ReaderSettings = normalizeReaderSettings({ fontSize: readerFontSize, theme: readerTheme, readingMode: readerMode, lineSpacing: readerLineSpacing, paragraphSpacing: readerParagraphSpacing, horizontalPadding: readerHorizontalPadding, speechModelVoiceId, speechRate });
     AsyncStorage.setItem(READER_SETTINGS_STORAGE_KEY, JSON.stringify(settings)).catch(() => {
       Alert.alert("保存失败", "阅读设置暂时未能保存，请检查手机存储空间。");
     });
-  }, [readerFontSize, readerTheme, readerMode, readerLineSpacing, readerParagraphSpacing, readerHorizontalPadding, speechModelVoiceId, speechCloudEndpoint, speechRate, isLoaded]);
+  }, [readerFontSize, readerTheme, readerMode, readerLineSpacing, readerParagraphSpacing, readerHorizontalPadding, speechModelVoiceId, speechRate, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    let active = true;
+    void verifyOfflineKokoroNativeModule().then(() => getOfflineKokoroModel()).then((model) => {
+      if (!active) return;
+      console.log("[KOKORO_NATIVE_READY] SherpaOnnx TurboModule is registered and responsive.");
+      if (model.installed && model.localPath) {
+        setOfflineModelPath(model.localPath);
+        setOfflineModelStatus("installed");
+        setOfflineModelProgress(100);
+      } else if (model.pendingPhase) {
+        offlineModelPhaseRef.current = model.pendingPhase;
+        setOfflineModelPhase(model.pendingPhase);
+        setOfflineModelStatus("paused");
+      } else {
+        setOfflineModelStatus("not-downloaded");
+      }
+    }).catch((error) => {
+      if (!active) return;
+      console.error("[KOKORO_NATIVE_UNAVAILABLE]", error instanceof Error ? error.message : String(error));
+      setOfflineModelStatus("unavailable");
+      setOfflineModelError(error instanceof Error ? error.message : "当前构建暂未包含 Kokoro 原生引擎。");
+    });
+    return () => { active = false; };
+  }, [isLoaded]);
+
+  useEffect(() => () => {
+    speechRunIdRef.current += 1;
+    speechPlaybackRef.current?.stop();
+    speechPlaybackRef.current = null;
+    const engine = offlineEngineRef.current;
+    offlineEngineRef.current = null;
+    if (engine) void engine.destroy().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!restoreReaderPositionRef.current || readerContentHeight <= 0 || readerViewportHeight <= 0) return;
@@ -401,44 +420,7 @@ export default function App() {
     restoreReaderPositionRef.current = false;
   }, [readerContentHeight, readerViewportHeight, readerParagraphIndex, onlineReading, onlineChapterContent, chapterIndex, selectedBook?.id]);
 
-  const importLocalTextBook = async () => {
-    try {
-      const picked = await DocumentPicker.getDocumentAsync({ type: ["text/plain", "text/markdown"], copyToCacheDirectory: true, multiple: false });
-      if (picked.canceled || !picked.assets?.length) return;
-      const asset = picked.assets[0];
-      if (!/\\.(txt|text|md)$/i.test(asset.name)) {
-        Alert.alert("暂不支持此文件", "目前支持 TXT、TEXT 和 Markdown 文本文件。");
-        return;
-      }
-      const info = await FileSystem.getInfoAsync(asset.uri);
-      if (!info.exists) throw new Error("无法读取所选文件，请重新选择。");
-      if (typeof info.size === "number" && info.size > 20 * 1024 * 1024) throw new Error("文件超过 20 MB。请先拆分文件再导入。");
-      const rawText = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.UTF8 });
-      const parsed = parseLocalTextBook(asset.name, rawText);
-      const root = FileSystem.documentDirectory;
-      if (!root) throw new Error("当前设备暂时无法创建本地小说存储目录。");
-      const folder = root + "novels/";
-      await FileSystem.makeDirectoryAsync(folder, { intermediates: true });
-      const safeName = asset.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const storedUri = folder + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "-" + safeName;
-      await FileSystem.copyAsync({ from: asset.uri, to: storedUri });
-      const book: Book = {
-        id: "local:" + Date.now().toString() + ":" + Math.random().toString(36).slice(2, 8),
-        title: parsed.title, author: "本地导入",
-        description: "本地文本 · " + parsed.characterCount.toLocaleString() + " 字 · " + parsed.chapters.length + " 章",
-        category: "本地小说", progress: 0, color: "#E5E9DF",
-        lastChapter: parsed.chapters[0]?.title || "全文", chapterIndex: 0, readerParagraphIndex: 0,
-        localFileUri: storedUri, localFileName: asset.name, localChapterCount: parsed.chapters.length,
-      };
-      setBooks((current) => [book, ...current]);
-      setTab("书架");
-      Alert.alert("导入成功", "《" + book.title + "》已加入书架，共 " + parsed.chapters.length + " 章。文件已复制到 App 本地存储。");
-    } catch (error) {
-      Alert.alert("导入失败", error instanceof Error ? error.message : "读取文本文件失败，请重试。");
-    }
-  };
-
-  const importSubscriptionFromUrl = async () => {
+  const importSubscriptionFromUrl = async (action: "add" | "update" = "add") => {
     if (subscriptionLoading) return;
     const address = subscriptionUrl.trim();
     setSubscriptionLoading(true);
@@ -520,7 +502,7 @@ export default function App() {
         }
       }
       setSources(next);
-      setSubscriptionUrlMessage(subscription.name + " 更新完成：新增 " + added + "，更新 " + updated + "，移除已下架 " + removed + "，重复跳过 " + skipped + "，不兼容 " + subscription.unsupported.length + "。");
+      setSubscriptionUrlMessage(subscription.name + (action === "add" ? " 添加完成：" : " 更新完成：") + "新增 " + added + "，更新 " + updated + "，移除已下架 " + removed + "，重复跳过 " + skipped + "，不兼容 " + subscription.unsupported.length + "。");
     } catch (error) {
       setSubscriptionUrlMessage(error instanceof Error ? error.message : "订阅导入失败，请检查地址和网络。");
     } finally {
@@ -782,7 +764,8 @@ export default function App() {
 
   const stopSpeech = () => {
     speechRunIdRef.current += 1;
-    void Speech.stop();
+    speechPlaybackRef.current?.stop();
+    speechPlaybackRef.current = null;
     setIsSpeaking(false);
     setSpeechPaused(false);
     speechPausedRef.current = false;
@@ -791,13 +774,108 @@ export default function App() {
   const pauseSpeech = () => {
     setSpeechPaused(true);
     speechPausedRef.current = true;
-    void Speech.pause();
+    speechPlaybackRef.current?.pause();
   };
 
   const resumeSpeech = () => {
     setSpeechPaused(false);
     speechPausedRef.current = false;
-    void Speech.resume();
+    speechPlaybackRef.current?.resume();
+  };
+
+  const updateOfflineModelProgress = (progress: OfflineKokoroProgress) => {
+    offlineModelPhaseRef.current = progress.phase;
+    setOfflineModelPhase(progress.phase);
+    setOfflineModelProgress(progress.percent);
+  };
+
+  const runOfflineModelTransfer = async (resume: boolean) => {
+    if (offlineModelBusyRef.current) return;
+    offlineModelBusyRef.current = true;
+    setOfflineModelStatus("downloading");
+    setOfflineModelError(null);
+    try {
+      const localPath = resume
+        ? await resumeOfflineKokoroModel(offlineModelPhaseRef.current, updateOfflineModelProgress)
+        : await downloadOfflineKokoroModel(updateOfflineModelProgress);
+      setOfflineModelPath(localPath);
+      setOfflineModelProgress(100);
+      setOfflineModelPhase(null);
+      setOfflineModelStatus("installed");
+      Alert.alert("离线模型已就绪", "Kokoro 中文多音色模型已下载并通过完整性校验，103 种音色均可离线使用。");
+    } catch (error) {
+      if (isOfflineKokoroPause(error)) {
+        setOfflineModelStatus("paused");
+      } else {
+        const message = error instanceof Error ? error.message : "模型下载或解压失败，请重试。";
+        setOfflineModelError(message);
+        setOfflineModelStatus("failed");
+        Alert.alert("离线模型准备失败", message);
+      }
+    } finally {
+      offlineModelBusyRef.current = false;
+    }
+  };
+
+  const requestOfflineModelDownload = () => Alert.alert(
+    "下载 Kokoro 离线模型",
+    "将下载约 147 MB 的官方 int8 多语言模型，并解压到 iPhone 本地。解压后还会占用额外存储空间。一个模型包含全部 103 种音色。只有确认后才会开始下载。",
+    [
+      { text: "取消", style: "cancel" },
+      { text: "确认下载", onPress: () => { void runOfflineModelTransfer(false); } },
+    ]
+  );
+
+  const pauseOfflineModelDownload = async () => {
+    if (offlineModelStatus !== "downloading" || !offlineModelPhase) return;
+    try {
+      await pauseOfflineKokoroModel(offlineModelPhase);
+    } catch (error) {
+      Alert.alert("暂停失败", error instanceof Error ? error.message : "暂时无法暂停模型下载。");
+    }
+  };
+
+  const requestOfflineModelResume = () => { void runOfflineModelTransfer(true); };
+
+  const requestOfflineModelDelete = () => Alert.alert(
+    "删除离线模型",
+    "删除后将释放本地存储空间。再次朗读前需要重新下载模型。",
+    [
+      { text: "取消", style: "cancel" },
+      {
+        text: "删除模型",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            try {
+              const engine = offlineEngineRef.current;
+              offlineEngineRef.current = null;
+              if (engine) await engine.destroy();
+              await deleteOfflineKokoroModel();
+              setOfflineModelPath(null);
+              setOfflineModelProgress(0);
+              setOfflineModelPhase(null);
+              setOfflineModelError(null);
+              setOfflineModelStatus("not-downloaded");
+            } catch (error) {
+              Alert.alert("删除失败", error instanceof Error ? error.message : "无法删除离线模型。");
+            }
+          })();
+        },
+      },
+    ]
+  );
+
+  const synthesizeKokoroChunk = async (text: string, voiceId: string): Promise<Uint8Array> => {
+    const voice = SPEECH_VOICES.find((item) => item.id === voiceId);
+    if (!voice) throw new Error("所选 Kokoro 音色不存在。");
+    if (offlineModelStatus !== "installed" || !offlineModelPath) {
+      throw new Error("Kokoro 离线模型尚未安装。请先在声音设置中下载模型；下载完成后无需联网即可朗读。");
+    }
+    if (!offlineEngineRef.current) {
+      offlineEngineRef.current = await createOfflineKokoroEngine(offlineModelPath);
+    }
+    return synthesizeOfflineKokoro(offlineEngineRef.current, text, voice.speakerId, speechRate);
   };
 
   const checkOnlineSubscription = async (book: Book, showNoUpdates = false): Promise<Book | null> => {
@@ -1010,6 +1088,34 @@ export default function App() {
     setShowSpeechSettings(true);
   };
 
+  const previewKokoroVoice = async (voiceId: string) => {
+    if (isSpeaking) stopSpeech();
+    const runId = ++speechRunIdRef.current;
+    setIsSpeaking(true);
+    setSpeechPaused(false);
+    speechPausedRef.current = false;
+    try {
+      const voice = SPEECH_VOICES.find((item) => item.id === voiceId);
+      const bytes = await synthesizeKokoroChunk("你好，欢迎使用私人小说。这是一段 Kokoro 离线音色试听。", voiceId);
+      if (runId !== speechRunIdRef.current) return;
+      const playback = await playWavAudio(bytes, { title: "Kokoro 音色试听", artist: voice?.label || "私人小说" });
+      speechPlaybackRef.current = playback;
+      if (speechPausedRef.current) playback.pause();
+      await playback.finished;
+    } catch (error) {
+      if (runId === speechRunIdRef.current) {
+        Alert.alert("音色试听失败", error instanceof Error ? error.message : "请检查 Kokoro 离线模型。");
+      }
+    } finally {
+      if (runId === speechRunIdRef.current) {
+        speechPlaybackRef.current = null;
+        setIsSpeaking(false);
+        setSpeechPaused(false);
+        speechPausedRef.current = false;
+      }
+    }
+  };
+
   const speakCurrentBook = async () => {
     if (!selectedBook) return;
     if (isSpeaking) {
@@ -1027,24 +1133,21 @@ export default function App() {
     try {
       for (const chunk of chunks) {
         if (runId !== speechRunIdRef.current) break;
-        await new Promise<void>((resolve, reject) => {
-          Speech.speak(chunk, {
-            language: "zh-CN",
-            voice: systemSpeechVoiceId || undefined,
-            rate: Math.min(1, Math.max(0.25, speechRate * 0.5)),
-            useApplicationAudioSession: true,
-            onDone: resolve,
-            onStopped: resolve,
-            onError: reject,
-          });
-        });
+        const audioBytes = await synthesizeKokoroChunk(chunk, speechModelVoiceId);
+        if (runId !== speechRunIdRef.current) break;
+        const playback = await playWavAudio(audioBytes, { title: selectedBook.title, artist: selectedBook.author });
+        speechPlaybackRef.current = playback;
+        if (speechPausedRef.current) playback.pause();
+        await playback.finished;
+        if (speechPlaybackRef.current === playback) speechPlaybackRef.current = null;
       }
     } catch (error) {
       if (runId === speechRunIdRef.current) {
-        Alert.alert("朗读失败", error instanceof Error ? error.message : "iPhone 系统语音暂时无法使用，请检查系统语音设置。");
+        Alert.alert("Kokoro 朗读失败", error instanceof Error ? error.message : "请检查 Kokoro 离线模型是否安装。");
       }
     } finally {
       if (runId === speechRunIdRef.current) {
+        speechPlaybackRef.current = null;
         setIsSpeaking(false);
         setSpeechPaused(false);
         speechPausedRef.current = false;
@@ -1340,25 +1443,62 @@ export default function App() {
         )}
         {showSpeechSettings && !showCatalog && (
           <View style={[styles.readerSettings, styles.speechSettings, readerTheme === "night" && styles.nightCard]}>
-            <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>免费系统朗读</Text>
-            <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6, marginBottom: 12 }]}>直接使用 iPhone 自带中文语音，不连接 AI 服务器、不需要账号或 API Key，也不会产生朗读费用。声音由 iOS 系统提供。</Text>
-            <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>中文声音</Text>
-            {systemSpeechVoices.length > 0 ? systemSpeechVoices.map((voice) => (
-              <Pressable key={voice.identifier} style={[styles.voiceOption, systemSpeechVoiceId === voice.identifier && styles.voiceOptionSelected, readerTheme === "night" && styles.nightVoiceOption]} onPress={() => setSystemSpeechVoiceId(voice.identifier)}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>{voice.name}</Text>
-                  <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>{voice.language} · {voice.quality === Speech.VoiceQuality.Enhanced ? "增强语音" : "系统语音"}</Text>
-                </View>
-                <Text style={styles.voiceSelected}>{systemSpeechVoiceId === voice.identifier ? "已选择" : "选择"}</Text>
-              </Pressable>
-            )) : <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>正在读取系统中文语音；如果没有可选声音，请到 iPhone「设置 - 辅助功能 - 朗读内容 - 声音」下载中文语音。</Text>}
-            <View style={[styles.readerSettingRow, { marginTop: 12 }]}>
+            <View style={[styles.voiceOption, readerTheme === "night" && styles.nightVoiceOption, { flexDirection: "column", alignItems: "flex-start", marginBottom: 10 }]}>
+              <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>Kokoro 中文离线朗读</Text>
+              <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>103 种音色 · 模型约 147 MB · 中文 / 英文</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 8 }]}>完全本地生成语音，不使用苹果系统朗读，不连接云端 AI 服务。首次下载模型后即可断网朗读。</Text>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText, { marginTop: 14 }]}>离线模型</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 5 }]}>{offlineModelStatus === "checking" ? "正在检查本地模型…" : offlineModelStatus === "installed" ? "模型已安装 · 103 种音色可离线使用" : offlineModelStatus === "downloading" ? "正在" + (offlineModelPhase === "extracting" || offlineModelPhase === "extracting_resume_skipping" ? "解压" : "下载") + " · " + Math.round(offlineModelProgress) + "%" : offlineModelStatus === "paused" ? "下载已暂停，可继续上次任务" : offlineModelStatus === "unavailable" ? "当前构建尚未包含 Kokoro 原生引擎" : offlineModelStatus === "failed" ? "模型准备失败，可重试" : "尚未下载 · 需要时可手动下载约 147 MB 模型"}</Text>
+              {(offlineModelStatus === "downloading" || offlineModelStatus === "installed" || offlineModelStatus === "paused") && <View style={{ height: 6, borderRadius: 4, backgroundColor: "#E5E6DF", overflow: "hidden", marginTop: 8 }}><View style={{ height: 6, width: (Math.round(offlineModelProgress) + "%") as any, backgroundColor: "#7D8B70" }} /></View>}
+              {!!offlineModelError && <Text style={[styles.note, { color: "#B45B4A", marginTop: 5 }]}>{offlineModelError}</Text>}
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 9 }}>
+                {(offlineModelStatus === "not-downloaded" || offlineModelStatus === "failed") && <Pressable onPress={requestOfflineModelDownload} style={styles.fontButton}><Text style={styles.fontButtonText}>{offlineModelStatus === "failed" ? "重新下载模型" : "下载离线模型"}</Text></Pressable>}
+                {offlineModelStatus === "downloading" && <Pressable onPress={() => void pauseOfflineModelDownload()} style={styles.fontButton}><Text style={styles.fontButtonText}>暂停下载</Text></Pressable>}
+                {offlineModelStatus === "paused" && <Pressable onPress={requestOfflineModelResume} style={styles.fontButton}><Text style={styles.fontButtonText}>继续下载</Text></Pressable>}
+                {offlineModelStatus === "installed" && <Pressable onPress={requestOfflineModelDelete} disabled={isSpeaking} style={[styles.fontButton, isSpeaking && styles.importButtonDisabled]}><Text style={styles.fontButtonText}>删除离线模型</Text></Pressable>}
+              </View>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>音色试听和正文朗读都由本机模型生成，不会请求网络。</Text>
+            </View>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>选择 Kokoro 音色 · 103 种</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 4, marginBottom: 8 }]}>当前选择：{SPEECH_VOICES.find((voice) => voice.id === speechModelVoiceId)?.label || "声音 01"}。点击「试听」可以试听本机生成效果。</Text>
+              {isSpeaking && <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+                <Pressable style={styles.fontButton} onPress={speechPaused ? resumeSpeech : pauseSpeech}><Text style={styles.fontButtonText}>{speechPaused ? "继续播放" : "暂停播放"}</Text></Pressable>
+                <Pressable style={styles.fontButton} onPress={stopSpeech}><Text style={styles.fontButtonText}>停止</Text></Pressable>
+              </View>}
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                {(["全部", "中文女声", "中文男声", "英语女声"] as const).map((category) => (
+                  <Pressable key={category} style={[styles.themeButton, speechVoiceCategoryFilter === category && styles.modeButtonActive]} onPress={() => setSpeechVoiceCategoryFilter(category)}>
+                    <Text style={styles.fontButtonText}>{category}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <ScrollView style={styles.voiceList} nestedScrollEnabled>
+                {SPEECH_VOICES.filter((voice) => speechVoiceCategoryFilter === "全部" || (speechVoiceCategoryFilter === "英语女声" ? voice.category === "美式女声" || voice.category === "英式女声" : voice.category === speechVoiceCategoryFilter)).map((voice) => {
+                  const selected = speechModelVoiceId === voice.id;
+                  return (
+                    <Pressable key={voice.id} style={[styles.voiceOption, selected && styles.voiceOptionSelected, readerTheme === "night" && styles.nightVoiceOption]} onPress={() => setSpeechModelVoiceId(voice.id)}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>{voice.label}</Text>
+                        <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>speaker ID · {voice.speakerId}</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <Text style={styles.voiceSelected}>{selected ? "已选择" : "选择"}</Text>
+                        <Pressable style={styles.fontButton} onPress={() => { setSpeechModelVoiceId(voice.id); void previewKokoroVoice(voice.id); }}>
+                          <Text style={styles.fontButtonText}>试听</Text>
+                        </Pressable>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+            <View style={styles.readerSettingRow}>
               <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>朗读速度</Text>
               <Pressable style={styles.fontButton} onPress={() => setSpeechRate((v) => Math.max(0.5, Math.round((v - 0.1) * 10) / 10))}><Text style={styles.fontButtonText}>−</Text></Pressable>
               <Text style={[styles.fontSizeValue, readerTheme === "night" && styles.nightText]}>{speechRate.toFixed(1)}×</Text>
               <Pressable style={styles.fontButton} onPress={() => setSpeechRate((v) => Math.min(2, Math.round((v + 0.1) * 10) / 10))}><Text style={styles.fontButtonText}>＋</Text></Pressable>
             </View>
-            <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>提示：系统语音音色和自然度取决于 iPhone 已安装的语音包；下载增强语音后效果通常更好。</Text>
           </View>
         )}
         {readerChromeVisible && <View style={[styles.readerBottomBar, readerTheme === "night" && styles.nightCard]}>
@@ -1375,7 +1515,7 @@ export default function App() {
             <Text style={styles.playerAction}>声音</Text>
           </Pressable>
           <Pressable onPress={speakCurrentBook} style={styles.playerButton}>
-            <Text style={styles.playerAction}>{isSpeaking ? "停止" : "免费朗读"}</Text>
+            <Text style={styles.playerAction}>{isSpeaking ? "停止" : "Kokoro朗读"}</Text>
           </Pressable>
           {isSpeaking && <Pressable onPress={speechPaused ? resumeSpeech : pauseSpeech} style={styles.playerButton}>
             <Text style={styles.playerAction}>{speechPaused ? "继续" : "暂停"}</Text>
@@ -1389,76 +1529,82 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" />
-      <View style={styles.topBar}>
+    <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
+      <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
+      <View style={[styles.topBar, appIsDark && styles.darkTopBar]}>
         <View>
-          {tab !== "源" && <Text style={styles.eyebrow}>MY LITTLE LIBRARY</Text>}
-          <Text style={styles.pageTitle}>{tab}</Text>
+          {tab !== "源" && <Text style={[styles.eyebrow, appIsDark && styles.darkEyebrow]}>MY LITTLE LIBRARY</Text>}
+          <Text style={[styles.pageTitle, appIsDark && styles.darkPrimaryText]}>{tab}</Text>
         </View>
         {tab === "搜索" ? (
-          <Pressable onPress={() => setTab("源")} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "#E9E5DA" }}>
-            <Text style={{ color: "#514F45", fontSize: 13, fontWeight: "700" }}>源</Text>
+          <Pressable onPress={() => setTab("源")} style={[{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "#E9E5DA" }, appIsDark && styles.darkCard]}>
+            <Text style={[{ color: "#514F45", fontSize: 13, fontWeight: "700" }, appIsDark && styles.darkPrimaryText]}>源</Text>
           </Pressable>
-        ) : tab === "源" ? null : <View style={styles.avatar}><Text style={styles.avatarText}>阅</Text></View>}
+        ) : tab === "源" ? null : <View style={[styles.avatar, appIsDark && styles.darkCard]}><Text style={[styles.avatarText, appIsDark && styles.darkPrimaryText]}>阅</Text></View>}
       </View>
 
       {tab === "书架" && (
         <ScrollView contentContainerStyle={styles.pageContent}>
-          <View style={styles.welcomeCard}>
-            <Text style={styles.welcomeEyebrow}>WELCOME BACK</Text>
-            <Text style={styles.welcomeTitle}>给自己一点，安静阅读的时间。</Text>
-            <Text style={styles.welcomeSub}>你的故事，从这里继续。</Text>
-          </View>
           <TextInput
             value={query}
             onChangeText={setQuery}
             placeholder="搜索书架中的书名、作者"
             placeholderTextColor="#9A9A9A"
-            style={styles.search}
+            style={[styles.search, appIsDark && styles.darkSearch]}
             returnKeyType="search"
           />
-          <Pressable style={styles.importLocalButton} onPress={() => void importLocalTextBook()}>
-            <Text style={styles.importLocalButtonText}>＋ 导入本地 TXT 小说</Text>
-          </Pressable>
           <View style={styles.sectionHeading}>
-            <Text style={styles.sectionTitle}>我的书架</Text>
-            <Text style={styles.sectionMeta}>{filteredBooks.length} 本藏书</Text>
+            <Text style={[styles.sectionTitle, appIsDark && styles.darkPrimaryText]}>我的书架</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <Text style={[styles.sectionMeta, appIsDark && styles.darkMutedText]}>{filteredBooks.length} 本藏书</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={shelfView === "list" ? "切换为封面网格视图" : "切换为列表视图"}
+                onPress={() => setShelfView((current) => current === "list" ? "grid" : "list")}
+                style={styles.shelfViewToggle}
+              >
+                <Text style={styles.shelfViewToggleText}>{shelfView === "list" ? "▦" : "☷"}</Text>
+              </Pressable>
+            </View>
           </View>
           {filteredBooks.length === 0 ? (
-            <Text style={styles.emptyText}>没有找到相关书籍，试试其他关键词。</Text>
-          ) : filteredBooks.map((book) => (
-            <Pressable key={book.id} style={styles.bookRow} onPress={() => openBook(book)} onLongPress={() => removeBookFromShelf(book)} delayLongPress={550}>
-              <BookCover book={book} />
-              <View style={styles.bookInfo}>
-                <Text style={styles.bookTitle}>{book.title}</Text>
-                <Text style={styles.bookAuthor}>{book.author} · {book.category}</Text>
-                <Text style={styles.bookDescription} numberOfLines={2}>{book.description}</Text>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: `${book.progress}%` as `${number}%` }]} />
-                </View>
-                <Text style={styles.progressText}>{book.progress > 0 ? "已读 " + book.progress + "%" : "尚未开始"}</Text>
-              </View>
-            </Pressable>
-          ))}
-          <Text style={styles.storageNote}>书架和阅读进度保存在当前设备。长按书籍可将其移出书架。</Text>
+            <Text style={styles.emptyText}>{query.trim() ? "没有找到相关书籍，试试其他关键词。" : "书架还是空的。去「搜索」发现并添加喜欢的小说吧。"}</Text>
+          ) : (
+            <View style={shelfView === "grid" ? styles.bookGrid : undefined}>
+              {filteredBooks.map((book) => (
+                <Pressable key={book.id} style={[styles.bookRow, shelfView === "grid" && styles.bookGridCard, appIsDark && styles.darkCard]} onPress={() => openBook(book)} onLongPress={() => removeBookFromShelf(book)} delayLongPress={550}>
+                  <BookCover book={book} grid={shelfView === "grid"} />
+                  <View style={[styles.bookInfo, shelfView === "grid" && styles.bookGridInfo]}>
+                    <Text style={[styles.bookTitle, appIsDark && styles.darkPrimaryText]}>{book.title}</Text>
+                    <Text style={[styles.bookAuthor, appIsDark && styles.darkSecondaryText]}>{book.author} · {book.category}</Text>
+                    <Text style={[styles.bookDescription, appIsDark && styles.darkSecondaryText]} numberOfLines={2}>{book.description}</Text>
+                    <View style={styles.progressTrack}>
+                      <View style={[styles.progressFill, { width: `${book.progress}%` as `${number}%` }]} />
+                    </View>
+                    <Text style={[styles.progressText, appIsDark && styles.darkMutedText]}>{book.progress > 0 ? "已读 " + book.progress + "%" : "尚未开始"}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          )}
+          <Text style={[styles.storageNote, appIsDark && styles.darkMutedText]}>书架和阅读进度保存在当前设备。长按书籍可将其移出书架。</Text>
         </ScrollView>
       )}
 
       {tab === "搜索" && (
         <ScrollView contentContainerStyle={styles.pageContent} keyboardShouldPersistTaps="handled">
-          <View style={styles.welcomeCard}>
+          <View style={[styles.welcomeCard, appIsDark && styles.darkCard]}>
             <Text style={styles.welcomeEyebrow}>DISCOVER</Text>
-            <Text style={styles.welcomeTitle}>搜索你想读的小说。</Text>
-            <Text style={styles.welcomeSub}>所有订阅书源统一搜索，结果会自动去重。</Text>
+            <Text style={[styles.welcomeTitle, appIsDark && styles.darkPrimaryText]}>搜索你想读的小说。</Text>
+            <Text style={[styles.welcomeSub, appIsDark && styles.darkSecondaryText]}>所有订阅书源统一搜索，结果会自动去重。</Text>
           </View>
-          <View style={styles.onlineSearchCard}>
+          <View style={[styles.onlineSearchCard, appIsDark && styles.darkCard]}>
             <TextInput
               value={onlineQuery}
               onChangeText={(value) => { setOnlineQuery(value); setSearchMessage(""); }}
               placeholder="输入小说名称或关键词"
               placeholderTextColor="#9A9A9A"
-              style={styles.searchInput}
+              style={[styles.searchInput, appIsDark && styles.darkInput]}
               returnKeyType="search"
               onSubmitEditing={searchOnlineNovels}
               editable={!searching}
@@ -1466,15 +1612,15 @@ export default function App() {
             <Pressable style={[styles.onlineSearchButton, searching && styles.importButtonDisabled]} onPress={searchOnlineNovels} disabled={searching}>
               {searching ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>搜索小说</Text>}
             </Pressable>
-            <Text style={styles.note}>所有合并订阅中的书源统一搜索；不会执行第三方 JavaScript。</Text>
+            <Text style={[styles.note, appIsDark && styles.darkMutedText]}>所有合并订阅中的书源统一搜索；不会执行第三方 JavaScript。</Text>
           </View>
           {!!searchSummary && <Text style={styles.searchSummary}>{searchSummary}</Text>}
           {searching && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={styles.note}>正在搜索，请稍候…</Text></View>}
           {!!searchMessage && <Text style={styles.searchFeedback}>{searchMessage}</Text>}
           {onlineResults.map((item) => (
-            <Pressable key={item.id} style={styles.onlineResultCard} onPress={() => openSearchNovel(item)}>
+            <Pressable key={item.id} style={[styles.onlineResultCard, appIsDark && styles.darkCard]} onPress={() => openSearchNovel(item)}>
               <View style={styles.onlineResultInfo}>
-                <Text style={styles.onlineResultTitle}>{item.title}</Text>
+                <Text style={[styles.onlineResultTitle, appIsDark && styles.darkPrimaryText]}>{item.title}</Text>
               </View>
               <Text style={styles.resultChevron}>›</Text>
             </Pressable>
@@ -1487,8 +1633,8 @@ export default function App() {
 
       {tab === "源" && (
         <ScrollView contentContainerStyle={styles.pageContent} keyboardShouldPersistTaps="handled">
-          <View style={styles.sourceCard}>
-            <Text style={styles.sourceTitle}>添加订阅</Text>
+          <View style={[styles.sourceCard, appIsDark && styles.darkCard]}>
+            <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText]}>添加订阅</Text>
             <TextInput
               value={subscriptionUrl}
               onChangeText={(value) => { setSubscriptionUrl(value); setSubscriptionUrlMessage(""); }}
@@ -1499,13 +1645,22 @@ export default function App() {
               keyboardType="url"
               style={[styles.searchInput, { marginTop: 8 }]}
             />
-            <Pressable
-              style={[styles.importButton, (!subscriptionUrl.trim() || subscriptionLoading) && styles.importButtonDisabled]}
-              disabled={!subscriptionUrl.trim() || subscriptionLoading}
-              onPress={() => void importSubscriptionFromUrl()}
-            >
-              {subscriptionLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>添加订阅</Text>}
-            </Pressable>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+              <Pressable
+                style={[styles.importButton, { flex: 1, marginTop: 0 }, (!subscriptionUrl.trim() || subscriptionLoading) && styles.importButtonDisabled]}
+                disabled={!subscriptionUrl.trim() || subscriptionLoading}
+                onPress={() => void importSubscriptionFromUrl("add")}
+              >
+                {subscriptionLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>添加订阅</Text>}
+              </Pressable>
+              <Pressable
+                style={[styles.importButton, styles.updateSubscriptionButton, { flex: 1, marginTop: 0 }, (!subscriptionUrl.trim() || subscriptionLoading) && styles.importButtonDisabled]}
+                disabled={!subscriptionUrl.trim() || subscriptionLoading}
+                onPress={() => void importSubscriptionFromUrl("update")}
+              >
+                {subscriptionLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.updateSubscriptionButtonText}>更新订阅</Text>}
+              </Pressable>
+            </View>
             {!!subscriptionUrlMessage && <Text style={styles.sourceMessage}>{subscriptionUrlMessage}</Text>}
           </View>
         </ScrollView>
@@ -1513,34 +1668,34 @@ export default function App() {
 
       {tab === "我的" && (
         <ScrollView contentContainerStyle={styles.pageContent}>
-          <View style={styles.profileCard}>
+          <View style={[styles.profileCard, appIsDark && styles.darkCard]}>
             <View style={styles.avatarLarge}><Text style={styles.avatarLargeText}>阅</Text></View>
-            <Text style={styles.profileTitle}>我的阅读空间</Text>
-            <Text style={styles.note}>本地阅读器 · 持续开发中</Text>
+            <Text style={[styles.profileTitle, appIsDark && styles.darkPrimaryText]}>我的阅读空间</Text>
+            <Text style={[styles.note, appIsDark && styles.darkMutedText]}>本地阅读器 · 持续开发中</Text>
           </View>
           <View style={styles.sectionHeading}>
-            <Text style={styles.sectionTitle}>最近阅读</Text>
+            <Text style={[styles.sectionTitle, appIsDark && styles.darkPrimaryText]}>最近阅读</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <Text style={styles.sectionMeta}>{readingHistory.length} 条记录</Text>
+              <Text style={[styles.sectionMeta, appIsDark && styles.darkMutedText]}>{readingHistory.length} 条记录</Text>
               {readingHistory.length > 0 && <Pressable onPress={() => Alert.alert("清空阅读记录", "只清除阅读历史，不会删除书架中的小说。", [{ text: "取消", style: "cancel" }, { text: "清空", style: "destructive", onPress: () => setReadingHistory([]) }])}><Text style={styles.sourceActionText}>清空</Text></Pressable>}
             </View>
           </View>
           {readingHistory.length === 0 ? <Text style={styles.emptyText}>还没有阅读记录，打开一本小说后会自动记录。</Text> : readingHistory.map((entry) => (
-            <Pressable key={entry.bookId} style={styles.historyRow} onPress={() => resumeReadingHistory(entry)}>
+            <Pressable key={entry.bookId} style={[styles.historyRow, appIsDark && styles.darkCard]} onPress={() => resumeReadingHistory(entry)}>
               <View style={styles.historyInfo}>
-                <Text style={styles.bookTitle}>{entry.title}</Text>
-                <Text style={styles.bookAuthor}>{entry.author} · {entry.chapterTitle}</Text>
+                <Text style={[styles.bookTitle, appIsDark && styles.darkPrimaryText]}>{entry.title}</Text>
+                <Text style={[styles.bookAuthor, appIsDark && styles.darkSecondaryText]}>{entry.author} · {entry.chapterTitle}</Text>
                 <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${entry.progress}%` as `${number}%` }]} /></View>
-                <Text style={styles.progressText}>已读 {entry.progress}% · {new Date(entry.updatedAt).toLocaleString()}</Text>
+                <Text style={[styles.progressText, appIsDark && styles.darkMutedText]}>已读 {entry.progress}% · {new Date(entry.updatedAt).toLocaleString()}</Text>
               </View>
               <Text style={styles.chevron}>›</Text>
             </Pressable>
           ))}
-          <View style={styles.updateCard}>
+          <View style={[styles.updateCard, appIsDark && styles.darkCard]}>
             <View style={styles.updateHeader}>
-              <View style={styles.updateIcon}><Text style={styles.updateIconText}>↻</Text></View>
+              <Pressable accessibilityRole="button" accessibilityLabel="检测应用更新" disabled={appUpdateBusy} onPress={() => void checkForAppUpdate(false)} style={styles.updateIcon}><Text style={styles.updateIconText}>↻</Text></Pressable>
               <View style={styles.updateHeaderInfo}>
-                <Text style={styles.updateTitle}>应用在线更新</Text>
+                <Text style={[styles.updateTitle, appIsDark && styles.darkPrimaryText]}>应用在线更新</Text>
                 <Text style={styles.updateVersion}>当前版本：{Constants.expoConfig?.version || "1.0.0"} · {Updates.isEnabled ? "在线更新已启用" : "等待云端配置"}</Text>
               </View>
               {appUpdateBusy ? <ActivityIndicator color="#65745D" /> : null}
@@ -1555,31 +1710,29 @@ export default function App() {
               <Pressable style={[styles.updatePrimaryButton, appUpdateBusy && styles.updateButtonDisabled]} disabled={appUpdateBusy} onPress={downloadAppUpdate}>
                 <Text style={styles.updatePrimaryText}>下载并安装更新</Text>
               </Pressable>
-            ) : (
-              <Pressable style={[styles.updateSecondaryButton, appUpdateBusy && styles.updateButtonDisabled]} disabled={appUpdateBusy} onPress={() => void checkForAppUpdate(false)}>
-                <Text style={styles.updateSecondaryText}>{appUpdateBusy ? "正在检查…" : "检查更新"}</Text>
-              </Pressable>
-            )}
+            ) : null}
             <Text style={styles.updateFootnote}>普通界面、功能逻辑和资源会自动检查并后台下载更新；确认重启即可应用，无需重新签名安装。涉及 iOS 原生组件、权限或底层依赖的改动仍需重新构建安装。</Text>
           </View>
-          <View style={styles.settingRow}>
-            <Text style={styles.settingText}>本地书架数据</Text>
-            <Text style={styles.settingValue}>已启用</Text>
+          <View style={[styles.appearanceCard, appIsDark && styles.darkCard]}>
+            <Text style={[styles.settingText, appIsDark && styles.darkPrimaryText]}>外观主题</Text>
+            <View style={styles.appearanceOptions}>
+              {([{ value: "system", label: "跟随系统" }, { value: "light", label: "浅色" }, { value: "dark", label: "深色" }] as const).map((option) => (
+                <Pressable key={option.value} onPress={() => setAppearanceMode(option.value)} style={[styles.appearanceOption, appearanceMode === option.value && styles.appearanceOptionActive]}>
+                  <Text style={[styles.appearanceOptionText, appearanceMode === option.value && styles.appearanceOptionTextActive]}>{option.label}</Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
-          <Pressable style={styles.settingRow} onPress={() => Alert.alert("私人小说", "当前版本为开发预览版，书源和章节功能正在建设中。")}>
-            <Text style={styles.settingText}>关于私人小说</Text>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
         </ScrollView>
       )}
 
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, appIsDark && styles.darkCard]}>
         {(["书架", "搜索", "我的"] as Tab[]).map((item) => (
           <Pressable key={item} onPress={() => { setTab(item); setQuery(""); }} style={styles.tabItem}>
-            <Text style={[styles.tabIcon, tab === item && styles.tabIconActive]}>
+            <Text style={[styles.tabIcon, appIsDark && styles.darkMutedText, tab === item && styles.tabIconActive]}>
               {item === "书架" ? "▤" : item === "搜索" ? "⌕" : "◯"}
             </Text>
-            <Text style={[styles.tabLabel, tab === item && styles.tabLabelActive]}>{item}</Text>
+            <Text style={[styles.tabLabel, appIsDark && styles.darkMutedText, tab === item && styles.tabLabelActive]}>{item}</Text>
           </Pressable>
         ))}
       </View>
@@ -1641,6 +1794,27 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F8F7F3" },
+  appDarkBackground: { backgroundColor: "#171916" },
+  darkTopBar: { backgroundColor: "#171916" },
+  darkPrimaryText: { color: "#E8E8E0" },
+  darkEyebrow: { color: "#9AA394" },
+  darkSecondaryText: { color: "#B0B5A9" },
+  darkMutedText: { color: "#92998C" },
+  darkInput: { backgroundColor: "#252923", color: "#E8E8E0", borderColor: "#3A4038" },
+  darkSearch: { backgroundColor: "#252923", color: "#E8E8E0", borderColor: "#3A4038" },
+  darkCard: { backgroundColor: "#252923", borderColor: "#3A4038" },
+  shelfViewToggle: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#EAECE5" },
+  shelfViewToggleText: { color: "#65745D", fontSize: 21, fontWeight: "700" },
+  bookGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 10 },
+  bookGridCard: { width: "48%", flexDirection: "column", alignItems: "center", padding: 10, marginBottom: 2 },
+  gridCover: { width: "100%", height: 190, borderRadius: 10, padding: 12 },
+  bookGridInfo: { paddingLeft: 0, paddingTop: 10, width: "100%" },
+  appearanceCard: { backgroundColor: "#FFFFFF", borderRadius: 16, borderWidth: 1, borderColor: "#EEECE5", padding: 16, marginTop: 16 },
+  appearanceOptions: { flexDirection: "row", gap: 8, marginTop: 12 },
+  appearanceOption: { flex: 1, minHeight: 38, borderRadius: 10, backgroundColor: "#F1F0EA", alignItems: "center", justifyContent: "center" },
+  appearanceOptionActive: { backgroundColor: "#DDE5D6", borderWidth: 1, borderColor: "#8A9A7C" },
+  appearanceOptionText: { color: "#777368", fontSize: 11, fontWeight: "700" },
+  appearanceOptionTextActive: { color: "#52634A" },
   loading: { alignItems: "center", justifyContent: "center" },
   loadingText: { color: "#777368", marginTop: 14, fontSize: 13 },
   topBar: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
@@ -1714,6 +1888,8 @@ const styles = StyleSheet.create({
   exampleButtonText: { color: "#65745D", fontSize: 12, fontWeight: "700" },
   importButton: { alignItems: "center", backgroundColor: "#65745D", borderRadius: 12, paddingVertical: 13, marginTop: 12 },
   importButtonDisabled: { opacity: 0.45 },
+  updateSubscriptionButton: { backgroundColor: "#EEF0E9", borderWidth: 1, borderColor: "#D8DED2" },
+  updateSubscriptionButtonText: { color: "#65745D", fontSize: 13, fontWeight: "800" },
   importLocalButton: { minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: "#D8DED2", backgroundColor: "#EEF0E9", alignItems: "center", justifyContent: "center", marginTop: -12, marginBottom: 22 },
   importLocalButtonText: { color: "#65745D", fontSize: 12, fontWeight: "800" },
   importButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
