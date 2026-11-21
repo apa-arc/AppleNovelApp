@@ -17,7 +17,9 @@ import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry
 import { SPEECH_VOICES } from "./src/speech-voice-catalog";
 import { splitSpeechText, normalizeCloudTtsEndpoint } from "./src/speech-engine";
 import { requestCloudSpeech, checkCloudTtsServer, enrollCloudSpeechDevice, revokeCloudSpeechDevice } from "./src/cloud-tts";
-import { playCloudWav, type CloudAudioPlayback } from "./src/cloud-audio-playback";
+import { playCloudWav, playLocalWavFile, type CloudAudioPlayback } from "./src/cloud-audio-playback";
+import { getSpeechAudioEntryKey, normalizeSpeechAudioEntries, type SpeechAudioEntry } from "./src/speech-audio-library";
+import { encode } from "base64-arraybuffer";
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
 import {
   SafeAreaView,
@@ -64,6 +66,7 @@ const DEFAULT_NORMAL_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/apa-a
 const DEFAULT_ADULT_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/adult-subscription.json";
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
+const SPEECH_AUDIO_LIBRARY_STORAGE_KEY = "@private_novel/speech_audio_library_v1";
 const SOURCE_EXAMPLE = `{
   "name": "我的书源",
   "baseUrl": "https://example.com",
@@ -138,6 +141,9 @@ export default function App() {
   const [books, setBooks] = useState<Book[]>(SAMPLE_BOOKS);
   const [readingHistory, setReadingHistory] = useState<ReadingHistoryEntry[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechAudioEntries, setSpeechAudioEntries] = useState<SpeechAudioEntry[]>([]);
+  const [speechAudioLibraryLoaded, setSpeechAudioLibraryLoaded] = useState(false);
+  const [downloadingSpeechAudio, setDownloadingSpeechAudio] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -153,6 +159,22 @@ export default function App() {
     }).catch(() => undefined);
     return () => { active = false; };
   }, []);
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem(SPEECH_AUDIO_LIBRARY_STORAGE_KEY).then((raw) => {
+      if (!active) return;
+      try { setSpeechAudioEntries(normalizeSpeechAudioEntries(raw ? JSON.parse(raw) : [])); }
+      catch { setSpeechAudioEntries([]); }
+      setSpeechAudioLibraryLoaded(true);
+    }).catch(() => { if (active) setSpeechAudioLibraryLoaded(true); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!speechAudioLibraryLoaded) return;
+    void AsyncStorage.setItem(SPEECH_AUDIO_LIBRARY_STORAGE_KEY, JSON.stringify(speechAudioEntries));
+  }, [speechAudioEntries, speechAudioLibraryLoaded]);
+
   const [chapterIndex, setChapterIndex] = useState(0);
   const [showCatalog, setShowCatalog] = useState(false);
   const [showReaderSettings, setShowReaderSettings] = useState(false);
@@ -1171,6 +1193,121 @@ export default function App() {
     }
   };
 
+  const getCurrentSpeechAudioEntry = (): SpeechAudioEntry | undefined => {
+    if (!selectedBook) return undefined;
+    const chapterId = onlineReading
+      ? selectedBook.onlineChapterId || String(onlineChapterIndex)
+      : String(chapterIndex);
+    const key = getSpeechAudioEntryKey(selectedBook.id, chapterId, speechModelVoiceId, speechRate);
+    return speechAudioEntries.find((entry) => entry.key === key);
+  };
+
+  const downloadCurrentChapterSpeech = async () => {
+    if (!selectedBook || downloadingSpeechAudio) return;
+    const endpoint = normalizeCloudTtsEndpoint(speechCloudEndpoint);
+    if (!endpoint || !speechDeviceToken || speechDeviceTokenEndpoint !== endpoint) {
+      Alert.alert("需要在线 AI 服务", "先配置并绑定 Kokoro 服务，联网生成本章语音后才能保存到本地。");
+      setShowSpeechSettings(true);
+      return;
+    }
+    const chapterTitle = onlineReading ? onlineChapterTitle : localReading ? localChapters[chapterIndex]?.title || "全文" : SAMPLE_CHAPTERS[chapterIndex].title;
+    const chapterText = onlineReading ? onlineChapterContent : localReading ? localChapters[chapterIndex]?.content || "" : SAMPLE_CHAPTERS[chapterIndex].content;
+    const chapterId = onlineReading ? selectedBook.onlineChapterId || String(onlineChapterIndex) : String(chapterIndex);
+    const key = getSpeechAudioEntryKey(selectedBook.id, chapterId, speechModelVoiceId, speechRate);
+    const existing = speechAudioEntries.find((entry) => entry.key === key);
+    if (existing) {
+      Alert.alert("已经下载", "当前章节、音色和语速的离线语音已经保存在本机。");
+      return;
+    }
+    const chunks = splitSpeechText(selectedBook.title + "。" + chapterTitle + "。" + chapterText, 420);
+    if (chunks.length === 0) return;
+    const root = FileSystem.documentDirectory;
+    if (!root) {
+      Alert.alert("无法保存", "当前设备无法访问本地文档目录。");
+      return;
+    }
+    const directory = root + "speech-audio/";
+    const createdFiles: string[] = [];
+    setDownloadingSpeechAudio(true);
+    try {
+      await FileSystem.makeDirectoryAsync(directory, { intermediates: true }).catch(() => undefined);
+      let totalBytes = 0;
+      for (let index = 0; index < chunks.length; index += 1) {
+        const audioBytes = await requestCloudSpeech(endpoint, {
+          voiceId: speechModelVoiceId,
+          text: chunks[index],
+          speed: speechRate,
+        }, speechDeviceToken);
+        const uri = directory + encodeURIComponent(key) + "-" + index + ".wav";
+        const exactBuffer = audioBytes.buffer.slice(audioBytes.byteOffset, audioBytes.byteOffset + audioBytes.byteLength) as ArrayBuffer;
+        await FileSystem.writeAsStringAsync(uri, encode(exactBuffer), { encoding: FileSystem.EncodingType.Base64 });
+        createdFiles.push(uri);
+        totalBytes += audioBytes.byteLength;
+      }
+      const entry: SpeechAudioEntry = {
+        key,
+        bookId: selectedBook.id,
+        chapterId,
+        bookTitle: selectedBook.title,
+        chapterTitle,
+        author: selectedBook.author,
+        voiceId: speechModelVoiceId,
+        speed: speechRate,
+        files: createdFiles,
+        createdAt: Date.now(),
+        totalBytes,
+      };
+      setSpeechAudioEntries((current) => [...current.filter((item) => item.key !== key), entry]);
+      Alert.alert("下载完成", "本章 AI 语音已保存到本机，可在没有网络时离线播放。");
+    } catch (error) {
+      await Promise.all(createdFiles.map((uri) => FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined)));
+      Alert.alert("下载失败", error instanceof Error ? error.message : "请检查网络后重试。");
+    } finally {
+      setDownloadingSpeechAudio(false);
+    }
+  };
+
+  const playSavedChapterSpeech = async () => {
+    const entry = getCurrentSpeechAudioEntry();
+    if (!entry) return;
+    if (isSpeaking) stopSpeech();
+    const runId = ++speechRunIdRef.current;
+    setIsSpeaking(true);
+    setSpeechPaused(false);
+    speechPausedRef.current = false;
+    try {
+      for (const uri of entry.files) {
+        if (runId !== speechRunIdRef.current) break;
+        const playback = await playLocalWavFile(uri, { title: entry.bookTitle + " · " + entry.chapterTitle, artist: entry.author });
+        cloudPlaybackRef.current = playback;
+        if (speechPausedRef.current) playback.pause();
+        await playback.finished;
+        if (cloudPlaybackRef.current === playback) cloudPlaybackRef.current = null;
+      }
+    } catch (error) {
+      if (runId === speechRunIdRef.current) Alert.alert("离线播放失败", error instanceof Error ? error.message : "本地语音文件无法播放。");
+    } finally {
+      if (runId === speechRunIdRef.current) {
+        cloudPlaybackRef.current = null;
+        setIsSpeaking(false);
+        setSpeechPaused(false);
+        speechPausedRef.current = false;
+      }
+    }
+  };
+
+  const deleteCurrentChapterSpeech = () => {
+    const entry = getCurrentSpeechAudioEntry();
+    if (!entry) return;
+    Alert.alert("删除离线语音", "删除本章已保存的 AI 语音？不会影响小说正文和阅读进度。", [
+      { text: "取消", style: "cancel" },
+      { text: "删除", style: "destructive", onPress: () => {
+        void Promise.all(entry.files.map((uri) => FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined)));
+        setSpeechAudioEntries((current) => current.filter((item) => item.key !== entry.key));
+      } },
+    ]);
+  };
+
   const saveReadingPosition = (bookId: string, nextChapterIndex: number) => {
     const chapters = localReading ? localChapters : SAMPLE_CHAPTERS;
     const chapterCount = Math.max(1, chapters.length);
@@ -1491,8 +1628,17 @@ export default function App() {
                   </Pressable>
                 </>
               )}
-              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>在线 AI 试听和朗读使用当前选中的 Kokoro 音色。离线模型下载与本地原生推理仍在接入中。</Text>
-              <Text style={[styles.voiceSelected, { marginTop: 6 }]}>{speechDeviceToken && speechDeviceTokenEndpoint === normalizeCloudTtsEndpoint(speechCloudEndpoint) ? "当前状态：设备已绑定，可使用在线 AI 朗读（需服务器模型正常运行）" : "当前状态：在线服务尚未绑定；离线模型尚未下载"}</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>在线 AI 负责生成语音；你可以按章节手动保存生成后的音频。不会自动下载，也不需要下载整个语音模型。</Text>
+              <Pressable onPress={() => void downloadCurrentChapterSpeech()} disabled={downloadingSpeechAudio || !selectedBook} style={[styles.catalogLoadButton, (downloadingSpeechAudio || !selectedBook) && styles.importButtonDisabled]}>
+                {downloadingSpeechAudio ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>下载本章语音到本地</Text>}
+              </Pressable>
+              {getCurrentSpeechAudioEntry() ? (
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                  <Pressable onPress={() => void playSavedChapterSpeech()} style={[styles.fontButton, { flex: 1, alignItems: "center" }]}><Text style={styles.fontButtonText}>离线播放本章</Text></Pressable>
+                  <Pressable onPress={deleteCurrentChapterSpeech} style={[styles.fontButton, { alignItems: "center" }]}><Text style={styles.fontButtonText}>删除下载</Text></Pressable>
+                </View>
+              ) : <Text style={[styles.note, readerTheme === "night" && styles.nightMuted]}>当前章节尚未下载离线语音。</Text>}
+              <Text style={[styles.voiceSelected, { marginTop: 6 }]}>{speechDeviceToken && speechDeviceTokenEndpoint === normalizeCloudTtsEndpoint(speechCloudEndpoint) ? "当前状态：在线 AI 服务已绑定" : "当前状态：在线服务尚未绑定"}</Text>
             </View>
             <View style={{ marginBottom: 12 }}>
               <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>选择 Kokoro 音色 · 103 种</Text>
