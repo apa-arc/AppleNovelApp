@@ -1751,13 +1751,17 @@ export default function App() {
               <Text style={{ color: "#8D897F", fontSize: 11 }}>免费离线</Text>
             </View>
             <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 38 }}>
-              <View style={{ backgroundColor: "#343B32", borderRadius: 24, padding: 22, marginTop: 12 }}>
+              <View style={{ backgroundColor: "#873B2A", borderRadius: 24, padding: 22, marginTop: 12 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
-                  <View style={{ width: 88, height: 112, borderRadius: 13, backgroundColor: "#DDE4D6", alignItems: "center", justifyContent: "center", padding: 8 }}>
-                    <Text numberOfLines={3} style={{ color: "#394336", fontSize: 15, fontWeight: "800", textAlign: "center" }}>{selectedBook?.title || "正在听书"}</Text>
-                    <View style={{ width: "75%", height: 1, backgroundColor: "#87927F", marginTop: 10 }} />
-                    <Text style={{ color: "#68765F", fontSize: 9, marginTop: 7 }}>私人小说</Text>
-                  </View>
+                  {selectedBook?.onlineSummary?.coverUrl && !failedCoverUrls[selectedBook.onlineSummary.coverUrl] ? (
+                    <Image source={{ uri: selectedBook.onlineSummary.coverUrl }} style={{ width: 88, height: 112, borderRadius: 13, backgroundColor: "#F4E4DE" }} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [selectedBook.onlineSummary?.coverUrl as string]: true }))} />
+                  ) : (
+                    <View style={{ width: 88, height: 112, borderRadius: 13, backgroundColor: "#F6DED7", alignItems: "center", justifyContent: "center", padding: 8 }}>
+                      <Text numberOfLines={3} style={{ color: "#873B2A", fontSize: 15, fontWeight: "800", textAlign: "center" }}>{selectedBook?.title || "正在听书"}</Text>
+                      <View style={{ width: "75%", height: 1, backgroundColor: "#D58C79", marginTop: 10 }} />
+                      <Text style={{ color: "#A84D38", fontSize: 9, marginTop: 7 }}>番茄式听书</Text>
+                    </View>
+                  )}
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: "#D0D4C9", fontSize: 11, letterSpacing: 1 }}>NOW PLAYING</Text>
                     <Text numberOfLines={2} style={{ color: "#FFFFFF", fontSize: 19, lineHeight: 26, fontWeight: "800", marginTop: 8 }}>{selectedBook?.title || "未选择小说"}</Text>
@@ -1772,8 +1776,8 @@ export default function App() {
                     <Text style={{ color: "#E4E7DF", fontSize: 11 }}>{isSpeaking ? speechPaused ? "已暂停" : "正在朗读" : "准备就绪"}</Text>
                     <Text style={{ color: "#C7CDBE", fontSize: 10 }}>{speechChunkCount > 0 ? "片段 " + speechChunkProgress + " / " + speechChunkCount : "连续章节播放"}</Text>
                   </View>
-                  <View style={{ height: 5, backgroundColor: "#596354", borderRadius: 5, marginTop: 10, overflow: "hidden" }}>
-                    <View style={{ height: 5, width: speechChunkCount > 0 ? (speechChunkProgress / speechChunkCount * 100) + "%" as any : "0%", backgroundColor: "#DDE5D6", borderRadius: 5 }} />
+                  <View style={{ height: 5, backgroundColor: "#B76B59", borderRadius: 5, marginTop: 10, overflow: "hidden" }}>
+                    <View style={{ height: 5, width: speechChunkCount > 0 ? (speechChunkProgress / speechChunkCount * 100) + "%" as any : "0%", backgroundColor: "#FFE0D6", borderRadius: 5 }} />
                   </View>
                 </View>
                 <View style={{ flexDirection: "row", justifyContent: "space-around", alignItems: "center", marginTop: 25 }}>
@@ -1781,8 +1785,8 @@ export default function App() {
                     <Text style={{ color: "#FFFFFF", fontSize: 23 }}>|‹</Text>
                     <Text style={{ color: "#D0D4C9", fontSize: 10, marginTop: 4 }}>上一章</Text>
                   </Pressable>
-                  <Pressable onPress={isSpeaking ? speechPaused ? resumeSpeech : pauseSpeech : speakCurrentBook} style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: "#E7ECE2", alignItems: "center", justifyContent: "center" }}>
-                    <Text style={{ color: "#343B32", fontSize: 27, fontWeight: "800" }}>{isSpeaking && !speechPaused ? "Ⅱ" : "▶"}</Text>
+                  <Pressable onPress={isSpeaking ? speechPaused ? resumeSpeech : pauseSpeech : speakCurrentBook} style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: "#FFE0D6", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ color: "#873B2A", fontSize: 27, fontWeight: "800" }}>{isSpeaking && !speechPaused ? "Ⅱ" : "▶"}</Text>
                   </Pressable>
                   <Pressable disabled={(onlineReading ? onlineChapterIndex : chapterIndex) >= activeChapterCount - 1} onPress={() => changeChapter(1)} style={{ alignItems: "center", padding: 8 }}>
                     <Text style={{ color: "#FFFFFF", fontSize: 23 }}>›|</Text>
