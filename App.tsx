@@ -552,6 +552,29 @@ export default function App() {
     { text: "删除", style: "destructive", onPress: () => { setSources((current) => current.filter((source) => !selectedSourceIds.includes(source.id))); setSelectedSourceIds([]); } },
   ]);
 
+
+  const filteredSearchLogs = searchLogs.filter((entry) => entry.ok === (searchLogFilter === "成功"));
+  const toggleAllVisibleSearchLogs = () => {
+    const ids = filteredSearchLogs.map((entry) => entry.id);
+    setSelectedSearchLogIds((current) => ids.length > 0 && ids.every((id) => current.includes(id))
+      ? current.filter((id) => !ids.includes(id))
+      : [...new Set([...current, ...ids])]);
+  };
+  const exportSelectedSearchLogs = async () => {
+    const selected = filteredSearchLogs.filter((entry) => selectedSearchLogIds.includes(entry.id));
+    if (!selected.length) { Alert.alert("请先选择日志", "勾选要导出的搜索记录。"); return; }
+    const cell = (value: string) => '"' + value.replace(/"/g, '""') + '"';
+    const rows = [["搜索关键词", "书源名称", "搜索状态", "结果数量", "失败原因", "搜索时间"],
+      ...selected.map((entry) => [entry.keyword, entry.sourceName, entry.ok ? "成功" : "失败", String(entry.resultCount), entry.error || "", new Date(entry.searchedAt).toLocaleString()])];
+    const csv = "\uFEFF" + rows.map((row) => row.map(cell).join(",")).join("\r\n");
+    try {
+      if (!FileSystem.documentDirectory) throw new Error("无法访问本地文档目录。");
+      const uri = FileSystem.documentDirectory + "搜索日志-" + new Date().toISOString().slice(0, 10) + ".csv";
+      await FileSystem.writeAsStringAsync(uri, csv, { encoding: FileSystem.EncodingType.UTF8 });
+      await Share.share({ title: "搜索日志.csv", message: "所选书源搜索记录", url: uri });
+    } catch (error) { Alert.alert("导出失败", error instanceof Error ? error.message : "无法生成搜索日志文件。"); }
+  };
+
   const importSubscriptionFromUrl = async (action: "add" | "update" = "add") => {
     if (subscriptionLoading) return;
     const address = subscriptionUrl.trim();
@@ -1305,6 +1328,40 @@ export default function App() {
     return (
       <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
         <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
+      <Modal visible={showSearchLogs} animationType="slide" onRequestClose={() => setShowSearchLogs(false)}>
+        <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
+          <View style={[styles.topBar, appIsDark && styles.darkTopBar]}>
+            <Pressable onPress={() => setShowSearchLogs(false)}><Text style={[styles.backText, appIsDark && styles.darkPrimaryText]}>返回</Text></Pressable>
+            <Text style={[styles.pageTitle, appIsDark && styles.darkPrimaryText]}>搜索日志</Text>
+            <Pressable onPress={exportSelectedSearchLogs}><Text style={styles.sourceActionText}>导出</Text></Pressable>
+          </View>
+          <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: 18, paddingVertical: 12 }}>
+            {(["成功", "失败"] as const).map((filter) => (
+              <Pressable key={filter} onPress={() => { setSearchLogFilter(filter); setSelectedSearchLogIds([]); }} style={[styles.sourceFilterButton, { flex: 1, alignItems: "center" }, searchLogFilter === filter && styles.sourceFilterActive]}>
+                <Text style={[styles.sourceFilterText, searchLogFilter === filter && styles.sourceFilterTextActive]}>{filter === "成功" ? "搜索成功" : "搜索失败"}（{searchLogs.filter((entry) => entry.ok === (filter === "成功")).length}）</Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 10 }}>
+            <Pressable onPress={toggleAllVisibleSearchLogs}><Text style={styles.sourceActionText}>{filteredSearchLogs.length > 0 && filteredSearchLogs.every((entry) => selectedSearchLogIds.includes(entry.id)) ? "取消全选" : "全选"}</Text></Pressable>
+            <Text style={[styles.note, appIsDark && styles.darkMutedText]}>已选 {selectedSearchLogIds.length} 条</Text>
+          </View>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 30 }}>
+            {filteredSearchLogs.length === 0 ? <Text style={[styles.emptyText, { marginTop: 24 }]}>暂无{searchLogFilter === "成功" ? "成功" : "失败"}搜索记录。</Text> : filteredSearchLogs.map((entry) => (
+              <Pressable key={entry.id} onPress={() => setSelectedSearchLogIds((current) => current.includes(entry.id) ? current.filter((id) => id !== entry.id) : [...current, entry.id])} style={[styles.sourceItem, appIsDark && styles.darkCard]}>
+                <Text style={[styles.sourceSelectText, { marginRight: 10 }]}>{selectedSearchLogIds.includes(entry.id) ? "☑" : "□"}</Text>
+                <View style={styles.sourceItemInfo}>
+                  <Text style={[styles.sourceItemTitle, appIsDark && styles.darkPrimaryText]}>{entry.sourceName}</Text>
+                  <Text style={[styles.sourceItemUrl, appIsDark && styles.darkMutedText]}>关键词：{entry.keyword} · 结果：{entry.resultCount} 本</Text>
+                  {!!entry.error && <Text style={[styles.sourceItemStatus, { color: "#A66D62" }]}>{entry.error}</Text>}
+                  <Text style={[styles.sourceItemUrl, appIsDark && styles.darkMutedText]}>{new Date(entry.searchedAt).toLocaleString()}</Text>
+                </View>
+                <Text style={{ color: entry.ok ? "#65745D" : "#A66D62", fontWeight: "700" }}>{entry.ok ? "成功" : "失败"}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
         <View style={[styles.detailHeader, appIsDark && styles.darkTopBar]}>
           <Pressable onPress={() => setShowReadingHistory(false)}><Text style={[styles.backText, appIsDark && styles.darkSecondaryText]}>‹ 返回我的</Text></Pressable>
           <Text style={[styles.readerHeaderTitle, appIsDark && styles.darkSecondaryText]}>最近阅读</Text>
@@ -1622,9 +1679,14 @@ export default function App() {
           <Text style={[styles.pageTitle, appIsDark && styles.darkPrimaryText]}>{tab}</Text>
         </View>
         {tab === "搜索" ? (
-          <Pressable onPress={() => setTab("源")} style={[{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "#E9E5DA" }, appIsDark && styles.darkCard]}>
-            <Text style={[{ color: "#514F45", fontSize: 13, fontWeight: "700" }, appIsDark && styles.darkPrimaryText]}>源</Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Pressable onPress={() => setShowSearchLogs(true)} style={[{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "#E9E5DA" }, appIsDark && styles.darkCard]}>
+              <Text style={[{ color: "#514F45", fontSize: 13, fontWeight: "700" }, appIsDark && styles.darkPrimaryText]}>搜索日志</Text>
+            </Pressable>
+            <Pressable onPress={() => setTab("源")} style={[{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "#E9E5DA" }, appIsDark && styles.darkCard]}>
+              <Text style={[{ color: "#514F45", fontSize: 13, fontWeight: "700" }, appIsDark && styles.darkPrimaryText]}>源</Text>
+            </Pressable>
+          </View>
         ) : tab === "源" ? null : <View style={[styles.avatar, appIsDark && styles.darkCard]}><Text style={[styles.avatarText, appIsDark && styles.darkPrimaryText]}>阅</Text></View>}
       </View>
 
@@ -1746,19 +1808,19 @@ export default function App() {
                 <Pressable onPress={toggleAllVisibleSources}><Text style={styles.sourceActionText}>{filteredSources.length > 0 && filteredSources.every((item) => selectedSourceIds.includes(item.id)) ? "取消全选" : "全选"}</Text></Pressable>
               </View>
             </View>
-            {!sourcesCollapsed && <>
+            
             <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
               {(["全部", "成功源", "失败源"] as const).map((filter) => <Pressable key={filter} onPress={() => setSourceFilter(filter)} style={[styles.sourceFilterButton, sourceFilter === filter && styles.sourceFilterActive]}><Text style={[styles.sourceFilterText, sourceFilter === filter && styles.sourceFilterTextActive]}>{filter}</Text></Pressable>)}
             </View>
             {selectedSourceIds.length > 0 && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
               <Text style={[styles.sourceMessage, { alignSelf: "center" }]}>已选 {selectedSourceIds.length} 个</Text>
-              <Pressable style={styles.sourceAction} onPress={() => void testSelectedSources()}><Text style={styles.sourceActionText}>批量测试</Text></Pressable>
-              <Pressable style={styles.sourceAction} onPress={() => bulkSetSourceEnabled(true)}><Text style={styles.sourceActionText}>批量启用</Text></Pressable>
-              <Pressable style={styles.sourceAction} onPress={() => bulkSetSourceEnabled(false)}><Text style={styles.sourceActionText}>批量停用</Text></Pressable>
-              <Pressable style={styles.sourceAction} onPress={bulkDeleteSources}><Text style={styles.sourceDeleteText}>批量删除</Text></Pressable>
+              <Pressable style={styles.sourceAction} onPress={() => void testSelectedSources()}><Text style={styles.sourceActionText}>测试</Text></Pressable>
+              <Pressable style={styles.sourceAction} onPress={() => bulkSetSourceEnabled(true)}><Text style={styles.sourceActionText}>启用</Text></Pressable>
+              <Pressable style={styles.sourceAction} onPress={() => bulkSetSourceEnabled(false)}><Text style={styles.sourceActionText}>停用</Text></Pressable>
+              <Pressable style={styles.sourceAction} onPress={bulkDeleteSources}><Text style={styles.sourceDeleteText}>删除</Text></Pressable>
             </View>}
             {!!sourceTestMessage && <Text style={styles.sourceMessage}>{sourceTestMessage}</Text>}
-            {filteredSources.length === 0 ? <Text style={[styles.note, appIsDark && styles.darkMutedText, { marginTop: 14 }]}>{sources.length ? "当前分类没有书源。" : "还没有书源，请先添加订阅。"}</Text> : filteredSources.map((source) => (
+            {!sourcesCollapsed && (filteredSources.length === 0 ? <Text style={[styles.note, appIsDark && styles.darkMutedText, { marginTop: 14 }]}>{sources.length ? "当前分类没有书源。" : "还没有书源，请先添加订阅。"}</Text> : filteredSources.map((source) => (
               <View key={source.id} style={[styles.sourceItem, appIsDark && styles.darkCard, { marginTop: 10 }]}>
                 <Pressable onPress={() => toggleSelectedSource(source.id)} style={styles.sourceSelect}><Text style={styles.sourceSelectText}>{selectedSourceIds.includes(source.id) ? "☑" : "□"}</Text></Pressable>
                 <View style={styles.sourceItemInfo}>
@@ -1773,8 +1835,7 @@ export default function App() {
                   <Pressable onPress={() => Alert.alert("删除书源", "确定删除「" + source.name + "」？", [{ text: "取消", style: "cancel" }, { text: "删除", style: "destructive", onPress: () => { setSources((current) => current.filter((item) => item.id !== source.id)); setSelectedSourceIds((current) => current.filter((id) => id !== source.id)); } }])}><Text style={styles.sourceDeleteText}>删除</Text></Pressable>
                 </View>
               </View>
-            ))}
-            </>}
+            )))}
           </View>
         </ScrollView>
       )}
