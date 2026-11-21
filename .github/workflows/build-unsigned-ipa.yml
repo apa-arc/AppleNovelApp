@@ -79,7 +79,8 @@ jobs:
               console.error("Unexpected fingerprint output:", JSON.stringify(data).slice(0, 1000));
               process.exit(1);
             }
-            fs.appendFileSync(process.env.GITHUB_ENV, "IOS_RUNTIME_FINGERPRINT=" + hash + "\n");
+            fs.appendFileSync(process.env.GITHUB_ENV, "IOS_RUNTIME_FINGERPRINT=" + hash + "\\n");
+            fs.appendFileSync(process.env.GITHUB_ENV, "EXPO_UPDATES_FINGERPRINT_OVERRIDE=" + hash + "\\n");
             console.log("Resolved iOS runtime fingerprint:", hash);
           '
 
@@ -87,7 +88,6 @@ jobs:
         env:
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
           APP_UPDATE_CHANNEL: production
-          EXPO_UPDATES_FINGERPRINT_OVERRIDE: ${{ env.IOS_RUNTIME_FINGERPRINT }}
         run: |
           test -n "$EXPO_UPDATES_FINGERPRINT_OVERRIDE"
           npx expo prebuild --platform ios --clean
