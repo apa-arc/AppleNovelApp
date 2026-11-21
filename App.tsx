@@ -1601,7 +1601,7 @@ export default function App() {
         {readerChromeVisible && <View style={styles.readerHeader}>
           <Pressable onPress={closeReader}><Text style={styles.backText}>‹ 返回</Text></Pressable>
           <Text style={[styles.readerHeaderTitle, readerTheme === "night" && styles.nightMuted]}>正在阅读</Text>
-          {onlineReading && !books.some((book) => book.id === currentBook.id) && <Pressable onPress={addCurrentBookToShelf}><Text style={styles.headerAction}>加入书架</Text></Pressable>}
+          {!books.some((book) => book.id === currentBook.id) && <Pressable onPress={addCurrentBookToShelf}><Text style={styles.headerAction}>加入书架</Text></Pressable>}
           {onlineReading && (
             <Pressable disabled={checkingSubscription} onPress={() => { if (currentBook) void checkOnlineSubscription(currentBook, true); }}>
               <Text style={[styles.headerAction, checkingSubscription && styles.disabledText]}>{checkingSubscription ? "检查中…" : "检查更新"}</Text>
