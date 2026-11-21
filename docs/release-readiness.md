@@ -44,7 +44,7 @@ Windows 用户的详细云构建和设备注册步骤见 [Windows iPhone 真机�
 - 当前采用在线 Kokoro 生成、章节音频手动下载到本机的方案；下载后的 WAV 分段文件可离线播放，并可在「我的」页面统一查看、删除。不会自动下载，也不要求用户下载整套 Kokoro 模型。离线模型原生推理不属于当前方案，不作为真机验收前置条件。
 - OTA 更新通过 Expo Updates/EAS Update 下发：普通界面、业务逻辑和 JS 资源改动无需重新下载 IPA、自签或安装。App 在启动及回到前台时检查（最多每 6 小时一次），发现更新后自动后台下载，用户选择重启时应用更新。
 - GitHub 主分支中 `App.tsx` 或 `src/**` 发生变化时，自动执行类型检查、App 测试并发布 production OTA；也保留手动发布入口。构建 IPA 的工作流仅在 `app.json`、`app.config.js`、`package.json` 或 `eas.json` 等原生配置/依赖变更时触发，普通代码改动不会要求重新安装。
-- 首次自签 IPA 必须嵌入同一个 EAS projectId、production channel 和 fingerprint runtime。GitHub 需一次性配置 `EAS_PROJECT_ID` repository variable 与 `EXPO_TOKEN` secret；未配置时自动发布会失败，现有 App 不会因此损坏。
+- 首次自签 IPA 必须嵌入同一个 EAS projectId、production channel 和 fingerprint runtime。GitHub 需配置有效的 `EXPO_TOKEN` secret；`EAS_PROJECT_ID` 可使用 repository variable，或在确认仓库默认 ID 与 EAS 项目一致时使用默认值。缺少有效令牌或项目 ID 不匹配时，发布会失败，现有 App 不会因此损坏。
 - OTA 不能替换原生二进制：新增/升级原生模块、权限、Info.plist、Bundle Identifier、原生配置或依赖变更时，仍需重新生成 IPA 并自签安装。Expo Updates 只会向 runtime 兼容的客户端提供更新。
 
 ## 建议真机验收顺序
