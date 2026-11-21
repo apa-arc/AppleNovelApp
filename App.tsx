@@ -1357,7 +1357,7 @@ export default function App() {
                   setLoadedNovelDetail(null);
                   setLoadedChapters([]);
                   setCatalogMessage("");
-                }} style={[styles.sourceChoice, appIsDark && styles.darkCard, isSelected && styles.sourceChoiceSelected]}>
+                }} style={[styles.sourceChoice, appIsDark && styles.darkCard, isSelected && (appIsDark ? styles.darkSourceChoiceSelected : styles.sourceChoiceSelected)]}>
                   <View style={styles.sourceChoiceInfo}>
                     <Text style={[styles.sourceChoiceName, appIsDark && styles.darkPrimaryText]}>{option.summary.sourceName}</Text>
                     <Text style={[styles.sourceChoiceLatency, appIsDark && styles.darkMutedText]}>{option.chapterCount === null || option.chapterCount === undefined ? `${option.latencyMs} ms · ${option.chapterError ? "目录读取失败" : "尚未检测目录"}` : `${option.chapterCount} 章 · ${option.latencyMs} ms`}</Text>
@@ -1939,6 +1939,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F8F7F3" },
   appDarkBackground: { backgroundColor: "#171916" },
   darkAccentButton: { backgroundColor: "#586B50" },
+  darkSourceChoiceSelected: { backgroundColor: "#343B32", borderColor: "#829078" },
   darkTopBar: { backgroundColor: "#171916" },
   darkPrimaryText: { color: "#E8E8E0" },
   darkEyebrow: { color: "#9AA394" },
