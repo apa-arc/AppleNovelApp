@@ -1980,16 +1980,21 @@ export default function App() {
       {tab === "搜索" && (
         <ScrollView contentContainerStyle={styles.pageContent} keyboardShouldPersistTaps="handled">
           <View style={[styles.onlineSearchCard, appIsDark && styles.darkCard]}>
-            <TextInput
-              value={onlineQuery}
-              onChangeText={(value) => { setOnlineQuery(value); setSearchMessage(""); }}
-              placeholder="输入小说名称或关键词"
-              placeholderTextColor="#9A9A9A"
-              style={[styles.searchInput, appIsDark && styles.darkInput]}
-              returnKeyType="search"
-              onSubmitEditing={searchOnlineNovels}
-              editable={!searching}
-            />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <TextInput
+                value={onlineQuery}
+                onChangeText={(value) => { setOnlineQuery(value); setSearchMessage(""); }}
+                placeholder="输入小说名称或关键词"
+                placeholderTextColor="#9A9A9A"
+                style={[styles.searchInput, appIsDark && styles.darkInput, { flex: 1, marginBottom: 0 }]}
+                returnKeyType="search"
+                onSubmitEditing={searchOnlineNovels}
+                editable={!searching}
+              />
+              {!!onlineQuery && <Pressable onPress={() => { setOnlineQuery(""); setOnlineResults([]); setSearchSummary(""); setSearchMessage(""); }} disabled={searching} style={{ paddingVertical: 10, paddingHorizontal: 3 }}>
+                <Text style={[{ color: "#65745D", fontSize: 13, fontWeight: "700" }, appIsDark && styles.darkPrimaryText]}>取消</Text>
+              </Pressable>}
+            </View>
             <Pressable style={[styles.onlineSearchButton, searching && styles.importButtonDisabled]} onPress={searchOnlineNovels} disabled={searching}>
               {searching ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>搜索小说</Text>}
             </Pressable>
