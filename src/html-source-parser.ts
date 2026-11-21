@@ -18,11 +18,14 @@ export function parseHtmlDocument(html:string):Node {
 }
 function all(n:Node):Node[]{const out:Node[]=[];for(const c of n.children)if(typeof c!=="string")out.push(c,...all(c));return out;}
 function simple(n:Node,s:string):boolean{
- const tag=s.match(/^([\w-]+|\*)/);if(tag&&tag[1]!=="*"&&n.tag!==tag[1].toLowerCase())return false;
- for(const m of s.matchAll(/#([\w-]+)/g))if(n.attrs.id!==m[1])return false;
- const classes=(n.attrs.class||"").split(/\s+/);for(const m of s.matchAll(/\.([\w-]+)/g))if(!classes.includes(m[1]))return false;
+ // Attribute values may contain dots or hashes (for example href$=".html").
+ // Only interpret class/id syntax outside attribute selectors.
+ const structural=s.replace(/\[[^\]]*\]/g,"");
+ const tag=structural.match(/^([\w-]+|\*)/);if(tag&&tag[1]!=="*"&&n.tag!==tag[1].toLowerCase())return false;
+ for(const m of structural.matchAll(/#([\w-]+)/g))if(n.attrs.id!==m[1])return false;
+ const classes=(n.attrs.class||"").split(/\s+/);for(const m of structural.matchAll(/\.([\w-]+)/g))if(!classes.includes(m[1]))return false;
  for(const m of s.matchAll(/\[([\w:-]+)(?:\s*(\$=|\^=|\*=|~=|\|=|=)\s*["']?([^\]"']+)["']?)?\]/g)){const actual=n.attrs[m[1].toLowerCase()];if(actual===undefined)return false;const expected=m[3];if(expected!==undefined){const op=m[2];if(op==="="&&actual!==expected)return false;if(op==="$="&&!actual.endsWith(expected))return false;if(op==="^="&&!actual.startsWith(expected))return false;if(op==="*="&&!actual.includes(expected))return false;if(op==="~="&&!actual.split(/\s+/).includes(expected))return false;if(op==="|="&&actual!==expected&&!actual.startsWith(expected+"-"))return false;}}
- const siblings=n.parent?.children.filter(x=>typeof x!=="string")||[],nth=s.match(/:nth-child\((\d+)\)/);if(nth&&siblings.indexOf(n)!==Number(nth[1])-1)return false;if(/:first-child/.test(s)&&siblings[0]!==n)return false;if(/:last-child/.test(s)&&siblings[siblings.length-1]!==n)return false;return true;
+ const siblings=n.parent?.children.filter(x=>typeof x!=="string")||[],nth=structural.match(/:nth-child\((\d+)\)/);if(nth&&siblings.indexOf(n)!==Number(nth[1])-1)return false;if(/:first-child/.test(structural)&&siblings[0]!==n)return false;if(/:last-child/.test(structural)&&siblings[siblings.length-1]!==n)return false;return true;
 }
 function matches(n:Node,s:string):boolean{
  const parts=s.trim().replace(/\s*>\s*/g," > ").split(/\s+/).filter(Boolean);
@@ -42,9 +45,11 @@ function assertSupportedSelector(selector:string):void{
   const tokens=group.trim().replace(/\s*>\s*/g," ").split(/\s+/).filter(Boolean);
   if(!tokens.length)throw new Error("CSS 选择器格式无效。");
   for(let token of tokens){
+   // Strip attribute selectors first so dots/hashes inside quoted values are not
+   // mistaken for class or id selectors during syntax validation.
+   token=token.replace(/\[[^\]]*\]/g,"");
    token=token.replace(/^(?:[a-zA-Z][\w-]*|\*)/,"");
    token=token.replace(/#[\w-]+/g,"").replace(/\.[\w-]+/g,"");
-   token=token.replace(/\[[\w:-]+(?:\s*(?:\$=|\^=|\*=|~=|\|=|=)\s*(?:"[^"]*"|'[^']*'|[\w.-]+))?\]/g,"");
    token=token.replace(/:first-child|:last-child|:nth-child\(\d+\)/g,"");
    if(token)throw new Error("暂不支持此 CSS 选择器语法："+token);
   }
