@@ -88,4 +88,28 @@ jobs:
             echo "::error::Missing EXPO_TOKEN repository secret."
             exit 1
           fi
-          npx eas-cli update --channel "$UPDATE_CHANNEL" --message "$UPDATE_MESSAGE" --platform ios --non-interactive
+          set -euo pipefail
+          npx eas-cli update --channel "$UPDATE_CHANNEL" --message "$UPDATE_MESSAGE" --platform ios --non-interactive 2>&1 | tee "$RUNNER_TEMP/eas-update.log"
+          UPDATE_ID="$(sed -nE 's/^iOS update ID[[:space:]]+([[:xdigit:]-]+).*$/\\1/p' "$RUNNER_TEMP/eas-update.log" | tail -n 1)"
+          if [ -z "$UPDATE_ID" ]; then
+            echo "::error::Could not read the published iOS update ID."
+            exit 1
+          fi
+          echo "PUBLISHED_UPDATE_ID=$UPDATE_ID" >> "$GITHUB_ENV"
+
+      - name: Verify published OTA fingerprint
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx eas-cli fingerprint:compare --update-id "$PUBLISHED_UPDATE_ID" --json --non-interactive > "$RUNNER_TEMP/fingerprint-compare.json"
+          node -e '
+            const fs = require("fs");
+            const result = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/fingerprint-compare.json", "utf8"));
+            const published = result.fingerprint1?.hash;
+            const local = result.fingerprint2?.hash;
+            if (!published || !local || published !== local) {
+              console.error("OTA fingerprint mismatch:", JSON.stringify({ published, local }));
+              process.exit(1);
+            }
+            console.log("Verified OTA runtime fingerprint:", published);
+          '
