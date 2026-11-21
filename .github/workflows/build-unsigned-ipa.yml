@@ -193,6 +193,7 @@ jobs:
         run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
 
       - name: Publish IPA to GitHub Releases
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.app-version.outputs.version }}-build.${{ github.run_number }}
@@ -211,6 +212,7 @@ jobs:
           generate_release_notes: true
 
       - name: Verify Release asset matches the built IPA
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APP_VERSION: ${{ steps.app-version.outputs.version }}
