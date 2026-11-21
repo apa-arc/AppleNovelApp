@@ -20,12 +20,20 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       - name: TypeScript check
         run: npm run typecheck
       - name: App feature tests
         run: npm run test:app
       - name: Expo project diagnostics
         run: npx expo-doctor
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate Kokoro server and run unit tests
+        run: |
+          python -m compileall -q server
+          python -m unittest server.tests.test_tts_core server.tests.test_auth
