@@ -1324,44 +1324,53 @@ export default function App() {
     );
   }
 
+  if (showSearchLogs && !selectedBook && !selectedSearchNovel) {
+    return (
+      <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
+        <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
+              <Modal visible={showSearchLogs} animationType="slide" onRequestClose={() => setShowSearchLogs(false)}>
+                <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
+                  <View style={[styles.topBar, appIsDark && styles.darkTopBar]}>
+                    <Pressable onPress={() => setShowSearchLogs(false)}><Text style={[styles.backText, appIsDark && styles.darkPrimaryText]}>返回</Text></Pressable>
+                    <Text style={[styles.pageTitle, appIsDark && styles.darkPrimaryText]}>搜索日志</Text>
+                    <Pressable onPress={exportSelectedSearchLogs}><Text style={styles.sourceActionText}>导出</Text></Pressable>
+                  </View>
+                  <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: 18, paddingVertical: 12 }}>
+                    {(["成功", "失败"] as const).map((filter) => (
+                      <Pressable key={filter} onPress={() => { setSearchLogFilter(filter); setSelectedSearchLogIds([]); }} style={[styles.sourceFilterButton, { flex: 1, alignItems: "center" }, searchLogFilter === filter && styles.sourceFilterActive]}>
+                        <Text style={[styles.sourceFilterText, searchLogFilter === filter && styles.sourceFilterTextActive]}>{filter === "成功" ? "搜索成功" : "搜索失败"}（{searchLogs.filter((entry) => entry.ok === (filter === "成功")).length}）</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 10 }}>
+                    <Pressable onPress={toggleAllVisibleSearchLogs}><Text style={styles.sourceActionText}>{filteredSearchLogs.length > 0 && filteredSearchLogs.every((entry) => selectedSearchLogIds.includes(entry.id)) ? "取消全选" : "全选"}</Text></Pressable>
+                    <Text style={[styles.note, appIsDark && styles.darkMutedText]}>已选 {selectedSearchLogIds.length} 条</Text>
+                  </View>
+                  <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 30 }}>
+                    {filteredSearchLogs.length === 0 ? <Text style={[styles.emptyText, { marginTop: 24 }]}>暂无{searchLogFilter === "成功" ? "成功" : "失败"}搜索记录。</Text> : filteredSearchLogs.map((entry) => (
+                      <Pressable key={entry.id} onPress={() => setSelectedSearchLogIds((current) => current.includes(entry.id) ? current.filter((id) => id !== entry.id) : [...current, entry.id])} style={[styles.sourceItem, appIsDark && styles.darkCard]}>
+                        <Text style={[styles.sourceSelectText, { marginRight: 10 }]}>{selectedSearchLogIds.includes(entry.id) ? "☑" : "□"}</Text>
+                        <View style={styles.sourceItemInfo}>
+                          <Text style={[styles.sourceItemTitle, appIsDark && styles.darkPrimaryText]}>{entry.sourceName}</Text>
+                          <Text style={[styles.sourceItemUrl, appIsDark && styles.darkMutedText]}>关键词：{entry.keyword} · 结果：{entry.resultCount} 本</Text>
+                          {!!entry.error && <Text style={[styles.sourceItemStatus, { color: "#A66D62" }]}>{entry.error}</Text>}
+                          <Text style={[styles.sourceItemUrl, appIsDark && styles.darkMutedText]}>{new Date(entry.searchedAt).toLocaleString()}</Text>
+                        </View>
+                        <Text style={{ color: entry.ok ? "#65745D" : "#A66D62", fontWeight: "700" }}>{entry.ok ? "成功" : "失败"}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </SafeAreaView>
+              </Modal>
+      </SafeAreaView>
+    );
+  }
+
   if (showReadingHistory && !selectedBook && !selectedSearchNovel) {
     return (
       <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
         <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
-      <Modal visible={showSearchLogs} animationType="slide" onRequestClose={() => setShowSearchLogs(false)}>
-        <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
-          <View style={[styles.topBar, appIsDark && styles.darkTopBar]}>
-            <Pressable onPress={() => setShowSearchLogs(false)}><Text style={[styles.backText, appIsDark && styles.darkPrimaryText]}>返回</Text></Pressable>
-            <Text style={[styles.pageTitle, appIsDark && styles.darkPrimaryText]}>搜索日志</Text>
-            <Pressable onPress={exportSelectedSearchLogs}><Text style={styles.sourceActionText}>导出</Text></Pressable>
-          </View>
-          <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: 18, paddingVertical: 12 }}>
-            {(["成功", "失败"] as const).map((filter) => (
-              <Pressable key={filter} onPress={() => { setSearchLogFilter(filter); setSelectedSearchLogIds([]); }} style={[styles.sourceFilterButton, { flex: 1, alignItems: "center" }, searchLogFilter === filter && styles.sourceFilterActive]}>
-                <Text style={[styles.sourceFilterText, searchLogFilter === filter && styles.sourceFilterTextActive]}>{filter === "成功" ? "搜索成功" : "搜索失败"}（{searchLogs.filter((entry) => entry.ok === (filter === "成功")).length}）</Text>
-              </Pressable>
-            ))}
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 10 }}>
-            <Pressable onPress={toggleAllVisibleSearchLogs}><Text style={styles.sourceActionText}>{filteredSearchLogs.length > 0 && filteredSearchLogs.every((entry) => selectedSearchLogIds.includes(entry.id)) ? "取消全选" : "全选"}</Text></Pressable>
-            <Text style={[styles.note, appIsDark && styles.darkMutedText]}>已选 {selectedSearchLogIds.length} 条</Text>
-          </View>
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 30 }}>
-            {filteredSearchLogs.length === 0 ? <Text style={[styles.emptyText, { marginTop: 24 }]}>暂无{searchLogFilter === "成功" ? "成功" : "失败"}搜索记录。</Text> : filteredSearchLogs.map((entry) => (
-              <Pressable key={entry.id} onPress={() => setSelectedSearchLogIds((current) => current.includes(entry.id) ? current.filter((id) => id !== entry.id) : [...current, entry.id])} style={[styles.sourceItem, appIsDark && styles.darkCard]}>
-                <Text style={[styles.sourceSelectText, { marginRight: 10 }]}>{selectedSearchLogIds.includes(entry.id) ? "☑" : "□"}</Text>
-                <View style={styles.sourceItemInfo}>
-                  <Text style={[styles.sourceItemTitle, appIsDark && styles.darkPrimaryText]}>{entry.sourceName}</Text>
-                  <Text style={[styles.sourceItemUrl, appIsDark && styles.darkMutedText]}>关键词：{entry.keyword} · 结果：{entry.resultCount} 本</Text>
-                  {!!entry.error && <Text style={[styles.sourceItemStatus, { color: "#A66D62" }]}>{entry.error}</Text>}
-                  <Text style={[styles.sourceItemUrl, appIsDark && styles.darkMutedText]}>{new Date(entry.searchedAt).toLocaleString()}</Text>
-                </View>
-                <Text style={{ color: entry.ok ? "#65745D" : "#A66D62", fontWeight: "700" }}>{entry.ok ? "成功" : "失败"}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+
         <View style={[styles.detailHeader, appIsDark && styles.darkTopBar]}>
           <Pressable onPress={() => setShowReadingHistory(false)}><Text style={[styles.backText, appIsDark && styles.darkSecondaryText]}>‹ 返回我的</Text></Pressable>
           <Text style={[styles.readerHeaderTitle, appIsDark && styles.darkSecondaryText]}>最近阅读</Text>
