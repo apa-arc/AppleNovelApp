@@ -317,7 +317,8 @@ export default function App() {
         setAppUpdateStatus("当前已是最新版本");
       }
     } catch {
-      setAppUpdateStatus("更新检查或后台下载失败，当前版本仍可继续使用。请检查网络后重试。");
+      lastAutomaticUpdateCheckRef.current = 0;
+      setAppUpdateStatus("更新检查或后台下载失败，当前版本仍可继续使用。回到前台后会再次尝试。");
     } finally {
       appUpdateOperationRef.current = false;
       setAppUpdateBusy(false);
@@ -2020,7 +2021,7 @@ export default function App() {
                 <Text style={styles.updateSecondaryText}>{appUpdateBusy ? "正在检查…" : "检查更新"}</Text>
               </Pressable>
             )}
-            <Text style={styles.updateFootnote}>普通界面、功能逻辑和资源可在线热更新；涉及 iOS 原生组件、权限或底层依赖的改动仍需重新构建安装。</Text>
+            <Text style={styles.updateFootnote}>普通界面、功能逻辑和资源会自动检查并后台下载更新；确认重启即可应用，无需重新签名安装。涉及 iOS 原生组件、权限或底层依赖的改动仍需重新构建安装。</Text>
           </View>
           <View style={styles.settingRow}>
             <Text style={styles.settingText}>本地书架数据</Text>
