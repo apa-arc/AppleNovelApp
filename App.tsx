@@ -239,6 +239,7 @@ export default function App() {
   const [appUpdateBusy, setAppUpdateBusy] = useState(false);
   const [appUpdateStatus, setAppUpdateStatus] = useState("尚未检查");
   const [appUpdateCheckedAt, setAppUpdateCheckedAt] = useState<number | null>(null);
+  const [appUpdateDismissed, setAppUpdateDismissed] = useState(false);
 
   const checkForAppUpdate = async (silent = false) => {
     if (__DEV__) {
@@ -258,7 +259,8 @@ export default function App() {
       if (result.isAvailable) {
         setAppUpdateAvailable(true);
         setAppUpdateDownloaded(false);
-        setAppUpdateStatus("检测到新版本。此版本为必需更新，请完成更新后继续使用。");
+        setAppUpdateDismissed(false);
+        setAppUpdateStatus("发现可用更新。你可以现在更新，也可以稍后在「我的」页面继续更新。");
       } else {
         setAppUpdateAvailable(false);
         setAppUpdateDownloaded(false);
@@ -286,7 +288,7 @@ export default function App() {
         setAppUpdateStatus("没有需要下载的新内容");
       }
     } catch {
-      setAppUpdateStatus("更新下载失败。为保证版本兼容，暂时无法继续使用旧版本，请检查网络后重试。");
+      setAppUpdateStatus("更新下载失败，当前版本仍可继续使用。请检查网络后重试。");
     } finally {
       setAppUpdateBusy(false);
     }
@@ -1950,11 +1952,13 @@ export default function App() {
       </View>
 
       <Modal
-        visible={appUpdateAvailable || appUpdateDownloaded}
+        visible={(appUpdateAvailable && !appUpdateDismissed) || appUpdateDownloaded}
         animationType="fade"
         transparent
         statusBarTranslucent
-        onRequestClose={() => undefined}
+        onRequestClose={() => {
+          if (!appUpdateDownloaded && !appUpdateBusy) setAppUpdateDismissed(true);
+        }}
       >
         <View style={styles.forceUpdateOverlay}>
           <View style={styles.forceUpdateCard}>
@@ -1962,20 +1966,20 @@ export default function App() {
               <Text style={styles.forceUpdateIconText}>↑</Text>
             </View>
             <Text style={styles.forceUpdateTitle}>发现新版本</Text>
-            <Text style={styles.forceUpdateSubtitle}>私人小说需要更新后才能继续使用</Text>
+            <Text style={styles.forceUpdateSubtitle}>私人小说发现了一个可用更新</Text>
             <View style={styles.forceUpdateNotice}>
               <Text style={styles.forceUpdateNoticeText}>
                 {appUpdateDownloaded
                   ? "更新包已下载完成。重启应用后将自动切换到新版本。"
                   : appUpdateBusy
-                    ? "正在安全下载更新内容，请保持网络连接并稍候…"
+                    ? "正在下载更新资源，请保持网络连接。下载过程中暂不显示虚假百分比。"
                     : appUpdateStatus}
               </Text>
             </View>
             {appUpdateBusy ? (
               <View style={styles.forceUpdateProgress}>
                 <ActivityIndicator size="small" color="#FFFFFF" />
-                <Text style={styles.forceUpdateProgressText}>正在更新，请勿关闭应用</Text>
+                <Text style={styles.forceUpdateProgressText}>正在下载更新资源…</Text>
               </View>
             ) : appUpdateDownloaded ? (
               <Pressable style={styles.forceUpdateButton} onPress={applyAppUpdate}>
@@ -1991,7 +1995,12 @@ export default function App() {
                 <Text style={styles.forceUpdateRetryText}>重新检查更新</Text>
               </Pressable>
             ) : null}
-            <Text style={styles.forceUpdateFootnote}>这是必需更新，暂不支持跳过。更新失败时可检查网络后重试。</Text>
+            {!appUpdateBusy && !appUpdateDownloaded ? (
+              <Pressable style={styles.forceUpdateRetry} onPress={() => setAppUpdateDismissed(true)}>
+                <Text style={styles.forceUpdateRetryText}>稍后更新</Text>
+              </Pressable>
+            ) : null}
+            <Text style={styles.forceUpdateFootnote}>更新失败不会删除当前版本；你可以稍后重试。原生组件、权限或底层依赖变更仍需重新安装新版本。</Text>
           </View>
         </View>
       </Modal>
