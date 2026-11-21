@@ -9,6 +9,7 @@ on:
       - "app.config.js"
       - "package.json"
       - "package-lock.json"
+      - ".gitignore"
       - "App.tsx"
       - "src/**"
       - "assets/**"
