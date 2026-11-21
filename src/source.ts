@@ -19,7 +19,7 @@ export type NovelSource = {
 
 export type HtmlSourceRules = {
   search?: { itemSelector:string; titleSelector:string; urlSelector:string; authorSelector?:string; descriptionSelector?:string; urlAttribute?:string; coverSelector?:string; coverAttribute?:string };
-  detail?: { titleSelector?:string; authorSelector?:string; descriptionSelector?:string };
+  detail?: { titleSelector?:string; authorSelector?:string; descriptionSelector?:string; titleAttribute?:string; authorAttribute?:string; descriptionAttribute?:string };
   chapters?: { itemSelector:string; titleSelector:string; urlSelector:string; urlAttribute?:string };
   content?: { contentSelector:string; titleSelector?:string };
 };
@@ -48,7 +48,7 @@ function validateHtmlRules(value: unknown): HtmlSourceRules {
     for(const field of required)if(!out[field])throw new Error("htmlRules."+key+" 缺少 "+field+"。");return out;
   };
   const search=read("search",["itemSelector","titleSelector","urlSelector"],["itemSelector","titleSelector","urlSelector","authorSelector","descriptionSelector","urlAttribute","coverSelector","coverAttribute"]);
-  const detail=read("detail",[],["titleSelector","authorSelector","descriptionSelector"]);
+  const detail=read("detail",[],["titleSelector","authorSelector","descriptionSelector","titleAttribute","authorAttribute","descriptionAttribute"]);
   const chapters=read("chapters",["itemSelector","titleSelector","urlSelector"],["itemSelector","titleSelector","urlSelector","urlAttribute"]);
   const content=read("content",["contentSelector"],["contentSelector","titleSelector"]);
   return {...(search?{search:search as NonNullable<HtmlSourceRules["search"]>}:{}),...(detail?{detail:detail as NonNullable<HtmlSourceRules["detail"]>}:{}),...(chapters?{chapters:chapters as NonNullable<HtmlSourceRules["chapters"]>}:{}),...(content?{content:content as NonNullable<HtmlSourceRules["content"]>}:{})};
