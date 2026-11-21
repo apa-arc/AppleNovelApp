@@ -15,7 +15,9 @@
 - [x] 自托管 Kokoro TTS 服务端核心逻辑单元测试
 - [x] 本地 TXT 解析、云端 TTS 请求校验自动化测试
 - [ ] 在 GitHub Actions 配置 `EXPO_TOKEN` secret 与 `EAS_PROJECT_ID` repository variable
-- [ ] CI 通过后生成 iOS 安装包
+- [ ] 使用 production 通道完成首次 EAS iOS 云构建并安装到 iPhone
+- [ ] 使用相同通道发布一条 OTA 更新，验证启动检查、手动检查、下载、稍后更新、重启应用和失败重试
+- [ ] 再发布第二条 OTA 更新，验证后续版本可重复覆盖更新
 - [ ] TestFlight 上传和邀请测试
 
 ## 真机测试前必须具备
