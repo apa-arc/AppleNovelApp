@@ -23,6 +23,7 @@ import { getSpeechAudioEntryKey, normalizeSpeechAudioEntries, type SpeechAudioEn
 import { encode } from "base64-arraybuffer";
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
 import {
+  AppState,
   SafeAreaView,
   View,
   Text,
@@ -274,6 +275,8 @@ export default function App() {
   const [appUpdateStatus, setAppUpdateStatus] = useState("尚未检查");
   const [appUpdateCheckedAt, setAppUpdateCheckedAt] = useState<number | null>(null);
   const [appUpdateDismissed, setAppUpdateDismissed] = useState(false);
+  const appUpdateOperationRef = useRef(false);
+  const lastAutomaticUpdateCheckRef = useRef(0);
 
   const checkForAppUpdate = async (silent = false) => {
     if (__DEV__) {
@@ -284,7 +287,8 @@ export default function App() {
       setAppUpdateStatus("更新服务尚未完成云端配置；完成首次正式构建后即可启用");
       return;
     }
-    if (appUpdateBusy) return;
+    if (appUpdateOperationRef.current) return;
+    appUpdateOperationRef.current = true;
     setAppUpdateBusy(true);
     if (!silent) setAppUpdateStatus("正在连接更新服务器…");
     try {
@@ -292,23 +296,37 @@ export default function App() {
       setAppUpdateCheckedAt(Date.now());
       if (result.isAvailable) {
         setAppUpdateAvailable(true);
-        setAppUpdateDownloaded(false);
         setAppUpdateDismissed(false);
-        setAppUpdateStatus("发现可用更新。你可以现在更新，也可以稍后在「我的」页面继续更新。");
+        if (silent) {
+          setAppUpdateStatus("发现新版本，正在后台下载…");
+          const downloaded = await Updates.fetchUpdateAsync();
+          if (downloaded.isNew) {
+            setAppUpdateDownloaded(true);
+            setAppUpdateAvailable(false);
+            setAppUpdateStatus("更新已在后台下载完成。你可以立即重启应用，或稍后再应用。");
+          } else {
+            setAppUpdateStatus("发现更新，但暂时没有可下载的新内容。");
+          }
+        } else {
+          setAppUpdateDownloaded(false);
+          setAppUpdateStatus("发现可用更新。你可以现在下载，也可以稍后更新。");
+        }
       } else {
         setAppUpdateAvailable(false);
         setAppUpdateDownloaded(false);
         setAppUpdateStatus("当前已是最新版本");
       }
     } catch {
-      setAppUpdateStatus("检查失败，请检查网络后重试");
+      setAppUpdateStatus("更新检查或后台下载失败，当前版本仍可继续使用。请检查网络后重试。");
     } finally {
+      appUpdateOperationRef.current = false;
       setAppUpdateBusy(false);
     }
   };
 
   const downloadAppUpdate = async () => {
-    if (!Updates.isEnabled || appUpdateBusy) return;
+    if (!Updates.isEnabled || appUpdateOperationRef.current) return;
+    appUpdateOperationRef.current = true;
     setAppUpdateBusy(true);
     setAppUpdateStatus("正在下载更新包，请保持网络连接…");
     try {
@@ -324,6 +342,7 @@ export default function App() {
     } catch {
       setAppUpdateStatus("更新下载失败，当前版本仍可继续使用。请检查网络后重试。");
     } finally {
+      appUpdateOperationRef.current = false;
       setAppUpdateBusy(false);
     }
   };
@@ -338,7 +357,18 @@ export default function App() {
 
   useEffect(() => {
     if (!isLoaded || __DEV__ || !Updates.isEnabled) return;
-    void checkForAppUpdate(true);
+    const checkIfDue = () => {
+      // Check on launch and when returning to the foreground, at most once
+      // every six hours. This avoids repeated requests while the app is active.
+      if (Date.now() - lastAutomaticUpdateCheckRef.current < 6 * 60 * 60 * 1000) return;
+      lastAutomaticUpdateCheckRef.current = Date.now();
+      void checkForAppUpdate(true);
+    };
+    checkIfDue();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") checkIfDue();
+    });
+    return () => subscription.remove();
   }, [isLoaded]);
 
   useEffect(() => {
