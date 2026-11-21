@@ -39,7 +39,26 @@ jobs:
           npm run typecheck
           npm run test:app
 
+      - name: Validate OTA build settings
+        env:
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+        run: |
+          if [ -z "$EAS_PROJECT_ID" ]; then
+            echo "::error::Set the EAS_PROJECT_ID repository variable once to enable OTA updates in this IPA."
+            exit 1
+          fi
+          EAS_PROJECT_ID="$EAS_PROJECT_ID" APP_UPDATE_CHANNEL=production npx expo config --type public --json > expo-config.json
+          node -e '
+            const config = require("./expo-config.json");
+            if (config.updates?.url !== "https://u.expo.dev/" + process.env.EAS_PROJECT_ID) throw new Error("Expo Updates URL is not configured.");
+            if (config.updates?.requestHeaders?.["expo-channel-name"] !== "production") throw new Error("Production OTA channel is not embedded.");
+            if (!config.runtimeVersion) throw new Error("runtimeVersion is required.");
+            console.log("Unsigned IPA will use the production OTA channel.");
+          '
       - name: Generate iOS native project
+        env:
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          APP_UPDATE_CHANNEL: production
         run: npx expo prebuild --platform ios --clean
 
       - name: Install iOS pods
