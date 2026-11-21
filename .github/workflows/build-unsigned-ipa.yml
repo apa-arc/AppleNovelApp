@@ -63,11 +63,40 @@ jobs:
             if (!config.runtimeVersion) throw new Error("runtimeVersion is required.");
             console.log("Unsigned IPA will use the production OTA channel.");
           '
+      - name: Generate iOS runtime fingerprint
+        env:
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
+          APP_UPDATE_CHANNEL: production
+        run: |
+          npx eas-cli@latest fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/ios-fingerprint.json"
+          node -e '
+            const fs = require("fs");
+            const data = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/ios-fingerprint.json", "utf8"));
+            const hash = data.hash || data.fingerprint?.hash || data.fingerprintHash;
+            if (!/^[a-f0-9]{40}$/i.test(hash || "")) {
+              console.error("Unexpected fingerprint output:", JSON.stringify(data).slice(0, 1000));
+              process.exit(1);
+            }
+            fs.appendFileSync(process.env.GITHUB_ENV, "IOS_RUNTIME_FINGERPRINT=" + hash + "\\n");
+            console.log("Resolved iOS runtime fingerprint:", hash);
+          '
+
       - name: Generate iOS native project
         env:
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
           APP_UPDATE_CHANNEL: production
-        run: npx expo prebuild --platform ios --clean
+          EXPO_UPDATES_FINGERPRINT_OVERRIDE: ${{ env.IOS_RUNTIME_FINGERPRINT }}
+        run: |
+          test -n "$EXPO_UPDATES_FINGERPRINT_OVERRIDE"
+          npx expo prebuild --platform ios --clean
+          EXPO_PLIST="$(find ios -name Expo.plist -print -quit)"
+          test -n "$EXPO_PLIST"
+          EMBEDDED_RUNTIME="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRuntimeVersion' "$EXPO_PLIST")"
+          EMBEDDED_CHANNEL="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRequestHeaders:expo-channel-name' "$EXPO_PLIST")"
+          echo "Embedded runtime: $EMBEDDED_RUNTIME"
+          echo "Embedded channel: $EMBEDDED_CHANNEL"
+          test "$EMBEDDED_RUNTIME" = "$IOS_RUNTIME_FINGERPRINT"
+          test "$EMBEDDED_CHANNEL" = "production"
 
       - name: Install iOS pods
         run: npx pod-install
