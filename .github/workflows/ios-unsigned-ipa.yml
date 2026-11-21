@@ -38,17 +38,16 @@ jobs:
       - name: Build unsigned iOS app
         run: |
           set -euo pipefail
-          PROJECT="ios/xiaoshuo.xcodeproj"
-          if [ ! -d "$PROJECT" ]; then
-            PROJECT="$(find ios -maxdepth 1 -name '*.xcodeproj' -print -quit)"
-          fi
-          if [ -z "$PROJECT" ]; then
-            echo "No Xcode project generated" >&2
+          WORKSPACE="$(find ios -maxdepth 2 -name '*.xcworkspace' -print -quit)"
+          if [ -z "$WORKSPACE" ]; then
+            echo "CocoaPods workspace not found" >&2
             exit 1
           fi
-          SCHEME="$(/usr/bin/xcodebuild -list -json -project "$PROJECT" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["project"]["schemes"][0])')"
+          SCHEME="$(/usr/bin/xcodebuild -list -json -workspace "$WORKSPACE" | /usr/bin/python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["workspace"]["schemes"][0])')"
+          echo "Building workspace: $WORKSPACE"
+          echo "Using scheme: $SCHEME"
           xcodebuild \
-            -project "$PROJECT" \
+            -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
             -configuration Release \
             -sdk iphoneos \
