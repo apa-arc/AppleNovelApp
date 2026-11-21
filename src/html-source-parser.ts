@@ -21,7 +21,7 @@ function simple(n:Node,s:string):boolean{
  const tag=s.match(/^([\w-]+|\*)/);if(tag&&tag[1]!=="*"&&n.tag!==tag[1].toLowerCase())return false;
  for(const m of s.matchAll(/#([\w-]+)/g))if(n.attrs.id!==m[1])return false;
  const classes=(n.attrs.class||"").split(/\s+/);for(const m of s.matchAll(/\.([\w-]+)/g))if(!classes.includes(m[1]))return false;
- for(const m of s.matchAll(/\[([\w:-]+)(?:\s*=\s*["']?([^\]"']+)["']?)?\]/g))if(!(m[1].toLowerCase() in n.attrs)||(m[2]!==undefined&&n.attrs[m[1].toLowerCase()]!==m[2]))return false;
+ for(const m of s.matchAll(/\[([\w:-]+)(?:\s*(\$=|\^=|\*=|~=|\|=|=)\s*["']?([^\]"']+)["']?)?\]/g)){const actual=n.attrs[m[1].toLowerCase()];if(actual===undefined)return false;const expected=m[3];if(expected!==undefined){const op=m[2];if(op==="="&&actual!==expected)return false;if(op==="$="&&!actual.endsWith(expected))return false;if(op==="^="&&!actual.startsWith(expected))return false;if(op==="*="&&!actual.includes(expected))return false;if(op==="~="&&!actual.split(/\s+/).includes(expected))return false;if(op==="|="&&actual!==expected&&!actual.startsWith(expected+"-"))return false;}}
  const siblings=n.parent?.children.filter(x=>typeof x!=="string")||[],nth=s.match(/:nth-child\((\d+)\)/);if(nth&&siblings.indexOf(n)!==Number(nth[1])-1)return false;if(/:first-child/.test(s)&&siblings[0]!==n)return false;if(/:last-child/.test(s)&&siblings[siblings.length-1]!==n)return false;return true;
 }
 function matches(n:Node,s:string):boolean{
@@ -44,7 +44,7 @@ function assertSupportedSelector(selector:string):void{
   for(let token of tokens){
    token=token.replace(/^(?:[a-zA-Z][\w-]*|\*)/,"");
    token=token.replace(/#[\w-]+/g,"").replace(/\.[\w-]+/g,"");
-   token=token.replace(/\[[\w:-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[\w.-]+))?\]/g,"");
+   token=token.replace(/\[[\w:-]+(?:\s*(?:\$=|\^=|\*=|~=|\|=|=)\s*(?:"[^"]*"|'[^']*'|[\w.-]+))?\]/g,"");
    token=token.replace(/:first-child|:last-child|:nth-child\(\d+\)/g,"");
    if(token)throw new Error("暂不支持此 CSS 选择器语法："+token);
   }
