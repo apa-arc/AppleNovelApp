@@ -8,7 +8,7 @@ const TITLE_KEYS = ["title", "name", "bookName", "book_name", "novelName", "nove
 const AUTHOR_KEYS = ["author", "authorName", "author_name", "writer"];
 const DESCRIPTION_KEYS = ["description", "desc", "intro", "summary", "content"];
 const URL_KEYS = ["url", "bookUrl", "book_url", "link", "detailUrl", "detail_url"];
-const COVER_KEYS = ["cover", "coverUrl", "cover_url", "pic", "image", "img"];
+const COVER_KEYS = ["cover", "coverUrl", "cover_url", "coverImage", "cover_image", "bookCover", "book_cover", "pic", "picUrl", "pic_url", "image", "img", "imgUrl", "img_url", "thumbnail", "thumb"];
 const LIST_KEYS = ["data", "list", "books", "results", "items", "records"];
 
 function firstString(record: JsonRecord, keys: string[]): string {
@@ -56,6 +56,19 @@ function resolvePublicResultUrl(value: string, responseUrl: string): string {
   }
 }
 
+/** Covers may live on a separate CDN or use protocol-relative / legacy HTTP URLs. */
+export function resolveCoverImageUrl(value: string, responseUrl: string): string | undefined {
+  if (!value.trim()) return undefined;
+  try {
+    const resolved = new URL(value.trim(), responseUrl);
+    if ((resolved.protocol !== "https:" && resolved.protocol !== "http:") || resolved.username || resolved.password) return undefined;
+    if (resolved.protocol === "http:") resolved.protocol = "https:";
+    return resolved.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export function parseJsonSearchResults(body: string, source: NovelSource, keyword: string, responseUrl: string): NovelSearchPage {
   let payload: unknown;
   try { payload = JSON.parse(body); }
@@ -75,7 +88,7 @@ export function parseJsonSearchResults(body: string, source: NovelSource, keywor
     items.push({
       id: source.id + ":" + index + ":" + bookUrl, sourceId: source.id, sourceName: source.name,
       title, author, description: firstString(record, DESCRIPTION_KEYS), bookUrl,
-      ...(cover ? { coverUrl: resolvePublicResultUrl(cover, responseUrl) || undefined } : {}),
+      ...(cover ? { coverUrl: resolveCoverImageUrl(cover, responseUrl) } : {}),
     });
   });
   return { keyword, sourceId: source.id, items, hasMore: false };
