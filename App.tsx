@@ -495,7 +495,7 @@ export default function App() {
     }
   };
 
-  const filteredSources = sources.filter((source) => sourceFilter === "全部" || (sourceFilter === "成功源" ? source.healthLevel === "完全可用" : source.healthLevel !== "完全可用"));
+  const filteredSources = sources.filter((source) => sourceFilter === "全部" || (sourceFilter === "成功源" ? source.healthLevel === "完全可用" : source.healthLevel !== "完全可用")).sort((a, b) => Number(b.healthLevel === "完全可用") - Number(a.healthLevel === "完全可用"));
   const testSelectedSources = async () => {
     const targets = sources.filter((source) => selectedSourceIds.includes(source.id));
     if (!targets.length) { Alert.alert("请先选择书源", "勾选书源后再批量测试。"); return; }
