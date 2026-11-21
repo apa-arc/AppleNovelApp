@@ -25,7 +25,10 @@
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0,
-      "url": "https://u.expo.dev/b4d937a0-68db-426d-8114-c4b41cc1d9d4"
+      "url": "https://u.expo.dev/b4d937a0-68db-426d-8114-c4b41cc1d9d4",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
     },
     "plugins": [
       [
