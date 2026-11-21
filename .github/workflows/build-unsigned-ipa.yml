@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - main
+      - feature/tomato-style-audiobook-1.0.7
     paths:
       - "app.json"
       - "assets/icon.png.base64"
