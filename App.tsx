@@ -1335,19 +1335,16 @@ export default function App() {
             </View>
           )}
           {!!loadedChapters.length && (
-            <>
-              <Pressable style={styles.catalogLoadButton} onPress={saveOnlineBookToShelf}>
-                <Text style={styles.importButtonText}>{books.some((book) => book.id === getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author)) ? "更新书架信息" : "加入本地书架"}</Text>
+            <View style={{ gap: 10 }}>
+              <Pressable style={styles.catalogLoadButton} onPress={() => void openOnlineChapter(loadedChapters[0])} disabled={loadingOnlineChapter}>
+                <Text style={styles.importButtonText}>{loadingOnlineChapter ? "正在打开…" : "开始阅读"}</Text>
               </Pressable>
-              {loadedChapters.map((chapter) => (
-                <Pressable key={chapter.id} onPress={() => openOnlineChapter(chapter)} disabled={loadingOnlineChapter} style={[styles.chapterRow, appIsDark && styles.darkCard]}>
-                  <Text style={[styles.chapterRowTitle, appIsDark && styles.darkPrimaryText]}>{chapter.title}</Text>
-                  <Text style={styles.chapterRowMeta}>第 {chapter.index + 1} 章 · 阅读</Text>
-                </Pressable>
-              ))}
-              {loadingOnlineChapter && <ActivityIndicator color="#65745D" style={{ marginVertical: 12 }} />}
-            </>
+              <Pressable style={[styles.catalogLoadButton, appIsDark && styles.darkCard]} onPress={saveOnlineBookToShelf}>
+                <Text style={[styles.importButtonText, appIsDark && styles.darkPrimaryText]}>{books.some((book) => book.id === getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author)) ? "更新书架信息" : "加入本地书架"}</Text>
+              </Pressable>
+            </View>
           )}
+          {loadingOnlineChapter && <ActivityIndicator color="#65745D" style={{ marginVertical: 12 }} />}
         </ScrollView>
       </SafeAreaView>
     );
@@ -1749,7 +1746,7 @@ export default function App() {
                 </View>
                 <View style={styles.sourceItemActions}>
                   <Pressable style={styles.sourceAction} disabled={testingSourceIds.includes(source.id)} onPress={() => void testOneSource(source)}><Text style={styles.sourceActionText}>{testingSourceIds.includes(source.id) ? "检测中" : "测试"}</Text></Pressable>
-                  <Pressable style={styles.sourceAction} onPress={() => setSources((current) => current.map((item) => item.id === source.id ? { ...item, enabled: !item.enabled } : item))}><Text style={styles.sourceActionText}>{source.enabled ? "选中不使用" : "选中使用"}</Text></Pressable>
+                  <Pressable style={styles.sourceAction} onPress={() => setSources((current) => current.map((item) => item.id === source.id ? { ...item, enabled: !item.enabled } : item))}><Text style={styles.sourceActionText}>{source.enabled ? "☑ 选中使用" : "□ 选中不使用"}</Text></Pressable>
                   <Pressable onPress={() => Alert.alert("删除书源", "确定删除「" + source.name + "」？", [{ text: "取消", style: "cancel" }, { text: "删除", style: "destructive", onPress: () => { setSources((current) => current.filter((item) => item.id !== source.id)); setSelectedSourceIds((current) => current.filter((id) => id !== source.id)); } }])}><Text style={styles.sourceDeleteText}>删除</Text></Pressable>
                 </View>
               </View>
