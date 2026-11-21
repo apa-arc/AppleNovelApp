@@ -27,7 +27,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ota-publish-${{ inputs.channel }}
+  group: ota-publish-${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'production' }}
   cancel-in-progress: false
 
 jobs:
