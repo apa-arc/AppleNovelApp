@@ -22,6 +22,8 @@
 
 ## 真机测试前必须具备
 
+Windows 用户的详细云构建和设备注册步骤见 [Windows iPhone 真机测试包指南](ios-device-testing.md)。
+
 1. EAS 项目已创建并绑定，GitHub Actions repository variable `EAS_PROJECT_ID` 已配置。
 2. GitHub Actions secret `EXPO_TOKEN` 已配置，可用于云构建和 OTA 发布。
 3. iOS Bundle Identifier 与 Apple Developer 账号团队配置一致。
