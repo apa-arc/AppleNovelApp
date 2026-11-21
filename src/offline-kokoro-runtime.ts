@@ -166,11 +166,27 @@ export async function createOfflineKokoroEngine(
   modelDirectory: string
 ): Promise<OfflineKokoroEngine> {
   const ruleFsts = await findKokoroRuleFsts(modelDirectory);
-  const engine = await loadTtsApi().createTTS({
-    modelPath: { type: "file", path: modelDirectory },
+  const api = loadTtsApi();
+  const modelPath = { type: "file" as const, path: modelDirectory };
+  const detection = await api.detectTtsModel(modelPath, { modelType: "kokoro" });
+  if (!detection.success) {
+    throw new Error(
+      "Kokoro 离线模型结构校验失败：" +
+        (detection.error || "Sherpa-ONNX 未识别到有效模型文件。")
+    );
+  }
+  const lexiconLanguages = detection.lexiconLanguageCandidates || [];
+  if (!lexiconLanguages.includes("zh")) {
+    throw new Error(
+      "Kokoro 模型没有检测到中文词典（lexicon-zh.txt），请删除旧模型后重新下载完整模型。"
+    );
+  }
+  const engine = await api.createTTS({
+    modelPath,
     modelType: "kokoro",
     provider: "cpu",
     numThreads: 2,
+    debug: __DEV__,
     ruleFsts,
     maxNumSentences: 1,
   });
