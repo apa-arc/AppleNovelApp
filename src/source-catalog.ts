@@ -91,10 +91,21 @@ function replaceTemplate(template: string, values: Record<string, string>): stri
   let replaced = false;
   for (const [key, value] of Object.entries(values)) {
     const token = "{" + key + "}";
-    if (output.includes(token)) {
-      output = output.split(token).join(encodeURIComponent(value));
-      replaced = true;
+    if (!output.includes(token)) continue;
+    // Search results already contain absolute HTTPS URLs. Do not percent-encode
+    // an entire URL into a path; pass it through so the bounded HTTP client can
+    // validate its origin against the source's configured endpoints.
+    const replacement = /^https:\/\//i.test(value)
+      ? value
+      : key === "bookPath"
+        ? value.split("/").map(encodeURIComponent).join("/")
+        : encodeURIComponent(value);
+    output = output.split(token).join(replacement);
+    if (/^https:\/\//i.test(value)) {
+      // A URL token represents the complete target, not a path/query fragment.
+      output = replacement;
     }
+    replaced = true;
   }
   return replaced ? output : null;
 }
@@ -155,8 +166,14 @@ export async function fetchNovelChapterList(
   summary: NovelSummary,
   client: SourceHttpClient = createSourceHttpClient(source)
 ): Promise<NovelChapter[]> {
-  const bookPathId = new URL(summary.bookUrl).pathname.split("/").filter(Boolean).pop() || summary.id;
-  const templated = replaceTemplate(source.chapterListUrl, { bookUrl: summary.bookUrl, book: summary.bookUrl, bookId: bookPathId });
+  const bookPathSegments = new URL(summary.bookUrl).pathname.split("/").filter(Boolean);
+  const bookPathId = bookPathSegments[bookPathSegments.length - 1] || summary.id;
+  // Some mobile novel sites encode their catalogue path as /7_7116/ while
+  // exposing the TOC at /html/7/7116/index.html.
+  const bookPath = bookPathId.includes("_") ? bookPathId.split("_").join("/") : bookPathSegments.join("/");
+  const templated = replaceTemplate(source.chapterListUrl, {
+    bookUrl: summary.bookUrl, book: summary.bookUrl, bookId: bookPathId, bookPath
+  });
   const response = await client.get("chapterListUrl", templated || source.chapterListUrl);
   if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
     if (!source.htmlRules?.chapters) throw new Error("该书源目录返回 HTML，但未配置 CSS 章节规则。");
