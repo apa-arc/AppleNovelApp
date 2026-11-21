@@ -91,11 +91,8 @@ jobs:
           npx expo prebuild --platform ios --clean
           EXPO_PLIST="$(find ios -name Expo.plist -print -quit)"
           test -n "$EXPO_PLIST"
-          EMBEDDED_RUNTIME="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRuntimeVersion' "$EXPO_PLIST")"
           EMBEDDED_CHANNEL="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRequestHeaders:expo-channel-name' "$EXPO_PLIST")"
-          echo "Embedded runtime: $EMBEDDED_RUNTIME"
-          echo "Embedded channel: $EMBEDDED_CHANNEL"
-          test "$EMBEDDED_RUNTIME" = "$IOS_RUNTIME_FINGERPRINT"
+          echo "Prebuild channel: $EMBEDDED_CHANNEL"
           test "$EMBEDDED_CHANNEL" = "production"
 
       - name: Install iOS pods
@@ -103,6 +100,8 @@ jobs:
 
       - name: Build unsigned iOS app
         shell: bash
+        env:
+          EXPO_UPDATES_FINGERPRINT_OVERRIDE: ${{ env.IOS_RUNTIME_FINGERPRINT }}
         run: |
           set -euo pipefail
           WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
@@ -131,6 +130,13 @@ jobs:
             echo "::error::Xcode build completed without an .app bundle."
             exit 1
           fi
+          APP_EXPO_PLIST="$APP_PATH/Expo.plist"
+          APP_RUNTIME="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRuntimeVersion' "$APP_EXPO_PLIST")"
+          APP_CHANNEL="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRequestHeaders:expo-channel-name' "$APP_EXPO_PLIST")"
+          echo "Built app runtime: $APP_RUNTIME"
+          echo "Built app channel: $APP_CHANNEL"
+          test "$APP_RUNTIME" = "$IOS_RUNTIME_FINGERPRINT"
+          test "$APP_CHANNEL" = "production"
           mkdir -p "$RUNNER_TEMP/ipa/Payload"
           cp -R "$APP_PATH" "$RUNNER_TEMP/ipa/Payload/"
           (cd "$RUNNER_TEMP/ipa" && /usr/bin/zip -qry "$GITHUB_WORKSPACE/AppleNovelApp-unsigned.ipa" Payload)
