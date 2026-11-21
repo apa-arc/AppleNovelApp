@@ -4,6 +4,12 @@
 
 ## 构建步骤
 
+首次构建前，先在 GitHub 仓库 **Settings → Secrets and variables → Actions** 配置：
+- Repository variable：`EAS_PROJECT_ID`（Expo 项目的 ID）
+- Repository secret：`EXPO_TOKEN`（Expo 访问令牌；只在 GitHub 设置中填写，不要发到聊天或提交到仓库）
+
+这两个值用于把 IPA 绑定到 OTA 更新项目。没有配置时，构建会主动失败，避免生成无法接收在线更新的包。
+
 1. 打开仓库 GitHub → **Actions**。
 2. 选择 **Build unsigned iOS IPA**。
 3. 点击 **Run workflow**，使用默认分支启动。
@@ -18,3 +24,11 @@
 - 该构建会先执行 TypeScript 检查和 App 功能测试，再运行 Expo iOS prebuild、CocoaPods 和 Xcode Release 编译。
 - 这是一个新的 macOS 云端构建流程，不会更改原有 EAS 正式构建与 OTA 发布流程。
 - 每次运行的 IPA 作为 GitHub Actions Artifact 保存 14 天。构建失败时请打开失败步骤查看具体 Xcode/CocoaPods 错误；不能把“工作流已创建”当作“IPA 已构建成功”。
+
+
+## 后续代码更新
+
+- 修改 `App.tsx` 或 `src/` 中的普通业务代码并推送到 main 后，GitHub 会自动运行 OTA 检查与测试，通过后发布到 production 通道。
+- 已安装 App 在启动/回到前台时自动检查并后台下载更新；用户只需确认重启应用，不需要重新下载 IPA、自签或安装。
+- 修改 `app.json`、`app.config.js`、`package.json` 或 `eas.json` 时会触发新的 IPA 构建，因为这些改动可能影响原生运行时。
+- OTA 不支持更换原生模块或原生权限；这类改动仍需安装新的 IPA。
