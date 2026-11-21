@@ -7,6 +7,8 @@ on:
     paths:
       - "app.json"
       - "app.config.js"
+      - "package.json"
+      - "package-lock.json"
       - "App.tsx"
       - "src/**"
       - "assets/**"
@@ -44,9 +46,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       - name: Validate app before publishing
         run: |
           npm run typecheck
