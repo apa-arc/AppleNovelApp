@@ -161,8 +161,67 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ipa/Payload"
           cp -R "$APP_PATH" "$RUNNER_TEMP/ipa/Payload/"
           (cd "$RUNNER_TEMP/ipa" && /usr/bin/zip -qry "$GITHUB_WORKSPACE/AppleNovelApp-unsigned.ipa" Payload)
-          test -s "$GITHUB_WORKSPACE/AppleNovelApp-unsigned.ipa"
-          echo "Unsigned IPA created."
+          IPA_PATH="$GITHUB_WORKSPACE/AppleNovelApp-unsigned.ipa"
+          test -s "$IPA_PATH"
+          /usr/bin/unzip -tq "$IPA_PATH"
+          IPA_ENTRIES="$(/usr/bin/unzip -Z1 "$IPA_PATH")"
+          echo "$IPA_ENTRIES" | grep -Eq '^Payload/[^/]+\.app/Info\.plist
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: AppleNovelApp-unsigned-IPA
+          path: AppleNovelApp-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Read app version
+        id: app-version
+        run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Publish IPA to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.app-version.outputs.version }}-build.${{ github.run_number }}
+          name: AppleNovelApp v${{ steps.app-version.outputs.version }}
+          body: |
+            本版本由 GitHub Actions 自动构建。
+
+            - 文件：未签名 iOS IPA（需自行签名后安装）
+            - OTA 更新通道：production
+            - 提交：${{ github.sha }}
+          prerelease: true
+          draft: false
+          files: AppleNovelApp-unsigned.ipa
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          overwrite_files: true
+
+      - name: Verify published Release asset matches tested IPA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_VERSION: ${{ steps.app-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v${APP_VERSION}-build.${GITHUB_RUN_NUMBER}"
+          LOCAL_SHA="sha256:$(/usr/bin/shasum -a 256 AppleNovelApp-unsigned.ipa | awk '{print $1}')"
+          REMOTE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq '.assets[] | select(.name == "AppleNovelApp-unsigned.ipa") | .digest')"
+          if [ -z "$REMOTE_SHA" ] || [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
+            echo "::error::Release IPA asset is missing or its SHA256 does not match the verified build."
+            echo "Local: $LOCAL_SHA"
+            echo "Release: $REMOTE_SHA"
+            exit 1
+          fi
+          echo "Verified Release asset checksum: $REMOTE_SHA"
+
+          IPA_EXPO_PLIST="$RUNNER_TEMP/ipa/Payload/$(basename "$APP_PATH")/Expo.plist"
+          test -s "$IPA_EXPO_PLIST"
+          FINAL_CHANNEL="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRequestHeaders:expo-channel-name' "$IPA_EXPO_PLIST")"
+          test "$FINAL_CHANNEL" = "production"
+          IPA_SHA256="$(/usr/bin/shasum -a 256 "$IPA_PATH" | awk '{print $1}')"
+          IPA_SIZE="$(/usr/bin/stat -f%z "$IPA_PATH")"
+          echo "Verified IPA: $IPA_SIZE bytes; SHA256=$IPA_SHA256; OTA channel=$FINAL_CHANNEL"
+          echo "Unsigned IPA created and ZIP integrity verified."
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
