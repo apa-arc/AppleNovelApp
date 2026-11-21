@@ -45,12 +45,14 @@ App 内置的《星海来信》模拟源只用于本地联调，不访问网络�
 
 ## 在线更新
 
-项目接入 Expo Updates。正式启用 OTA 需要先绑定 EAS 项目、完成首次原生构建并配置发布凭据。此后兼容的 JavaScript、界面和静态资源更新可通过 EAS Update 发布；原生模块、权限或底层依赖变更仍需重新构建安装。
+项目接入 Expo Updates 客户端与 EAS Update 发布工作流。正式启用 OTA 仍需先绑定 EAS 项目、配置发布凭据并完成首次 iOS 原生构建；这些账号侧步骤尚不能由代码提交代替。
 
-- 更新检查：正式构建中启动后自动检查，也可在「我的」页面手动检查。
-- 更新应用：下载完成后重启进入新版本。
-- 兼容保护：使用 fingerprint runtime version。
-- GitHub Actions 提供手动 OTA 发布与 iOS 云构建入口，均需要仓库 Secret `EXPO_TOKEN`。
+- 更新检查：正式安装包启动并完成本地数据加载后自动检查，也可在「我的」页面手动检查。开发预览模式不执行 OTA 检查。
+- 更新策略：新版本默认可稍后更新，不会因下载失败锁死当前版本；下载完成后用户确认重启应用。
+- 下载状态：显示真实的下载中/完成/失败状态。Expo Updates 当前客户端接口不提供可用的百分比回调，因此不会伪造下载百分比。
+- 兼容保护：使用 fingerprint runtime version；只有 runtime 兼容的 JS、界面和静态资源更新才通过 OTA 下发。
+- 原生边界：原生模块、权限、Bundle Identifier 或底层依赖变更必须重新构建并安装新 iOS 包。
+- 发布入口：GitHub Actions → Publish OTA update，选择 preview/production 通道并填写更新说明。需要仓库 Secret `EXPO_TOKEN` 和变量 `EAS_PROJECT_ID`。
 
 ## 听书现状
 
