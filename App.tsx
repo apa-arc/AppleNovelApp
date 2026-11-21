@@ -144,6 +144,10 @@ export default function App() {
   const readerScrollRef = useRef<ScrollView | null>(null);
   const restoreReaderPositionRef = useRef(false);
   const [sources, setSources] = useState<NovelSource[]>([]);
+  const [sourceFilter, setSourceFilter] = useState<"全部" | "成功源" | "失败源">("全部");
+  const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
+  const [testingSourceIds, setTestingSourceIds] = useState<string[]>([]);
+  const [sourceTestMessage, setSourceTestMessage] = useState("");
   const [subscriptionUrl, setSubscriptionUrl] = useState("");
   const [subscriptionUrlMessage, setSubscriptionUrlMessage] = useState("");
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
@@ -419,6 +423,95 @@ export default function App() {
     readerScrollRef.current?.scrollTo({ y: getReadingScrollOffset(readerParagraphIndex, count, maxOffset), animated: false });
     restoreReaderPositionRef.current = false;
   }, [readerContentHeight, readerViewportHeight, readerParagraphIndex, onlineReading, onlineChapterContent, chapterIndex, selectedBook?.id]);
+
+  const updateSourceHealth = (sourceId: string, stages: NonNullable<NovelSource["healthStages"]>, level: "完全可用" | "部分可用" | "不可用") => {
+    setSources((current) => current.map((item) => item.id === sourceId ? { ...item, healthStatus: level === "完全可用" ? "success" : "failed", healthLevel: level, healthCheckedAt: Date.now(), healthStages: stages, healthMessage: Object.entries(stages).map(([key, value]) => key + "：" + (value.ok ? "通过" : value.message)).join("；") } : item));
+  };
+
+  const testOneSource = async (source: NovelSource) => {
+    setTestingSourceIds((current) => current.includes(source.id) ? current : [...current, source.id]);
+    setSourceTestMessage("正在检测 " + source.name + "…");
+    const stages: NonNullable<NovelSource["healthStages"]> = {
+      connection: { ok: false, message: "尚未检测" }, search: { ok: false, message: "尚未检测" },
+      detail: { ok: false, message: "尚未检测" }, chapters: { ok: false, message: "尚未检测" },
+      content: { ok: false, message: "尚未检测" },
+    };
+    try {
+      const runnable = source.enabled ? source : { ...source, enabled: true };
+      const { createSourceHttpClient } = await import("./src/source-runtime");
+      const client = createSourceHttpClient(runnable);
+      try {
+        const response = await client.get("searchUrl", runnable.baseUrl);
+        stages.connection = { ok: true, message: "HTTP " + response.status };
+      } catch (error) {
+        stages.connection = { ok: false, message: error instanceof Error ? error.message : "连接失败" };
+      }
+      if (stages.connection.ok) {
+        let summary: NovelSummary | null = null;
+        for (const keyword of ["斗罗大陆", "斗破苍穹"]) {
+          try {
+            const page = await searchNovelSource(runnable, keyword, client);
+            if (page.items.length > 0) {
+              stages.search = { ok: true, message: "搜索到 " + page.items.length + " 本（" + keyword + "）" };
+              summary = page.items[0];
+              break;
+            }
+            stages.search = { ok: false, message: "请求成功但返回 0 本（" + keyword + "）" };
+          } catch (error) {
+            stages.search = { ok: false, message: error instanceof Error ? error.message : "搜索解析失败" };
+          }
+        }
+        if (summary) {
+          try { await fetchNovelDetail(runnable, summary, client); stages.detail = { ok: true, message: "小说详情获取成功" }; }
+          catch (error) { stages.detail = { ok: false, message: error instanceof Error ? error.message : "详情获取失败" }; }
+          let chapters: NovelChapter[] = [];
+          try { chapters = await fetchNovelChapterList(runnable, summary, client); stages.chapters = { ok: true, message: "获取 " + chapters.length + " 章" }; }
+          catch (error) { stages.chapters = { ok: false, message: error instanceof Error ? error.message : "目录获取失败" }; }
+          if (chapters.length) {
+            try {
+              const content = await fetchNovelChapterContent(runnable, chapters[0], client);
+              if (!content.content.trim()) throw new Error("正文内容为空");
+              stages.content = { ok: true, message: "首章正文获取成功（" + content.content.length + " 字符）" };
+            } catch (error) { stages.content = { ok: false, message: error instanceof Error ? error.message : "正文获取失败" }; }
+          } else stages.content = { ok: false, message: "目录不可用，跳过正文检测" };
+        } else {
+          stages.detail = { ok: false, message: "无搜索结果，无法检测详情" };
+          stages.chapters = { ok: false, message: "无搜索结果，无法检测目录" };
+          stages.content = { ok: false, message: "无搜索结果，无法检测正文" };
+        }
+      } else {
+        stages.search = stages.detail = stages.chapters = stages.content = { ok: false, message: "连接失败，未继续检测" };
+      }
+      const passed = Object.values(stages).filter((stage) => stage.ok).length;
+      const level = passed === 5 ? "完全可用" : passed > 0 ? "部分可用" : "不可用";
+      updateSourceHealth(source.id, stages, level);
+      setSourceTestMessage(source.name + "： " + level + "（" + passed + "/5 项通过）");
+    } catch (error) {
+      stages.connection = { ok: false, message: error instanceof Error ? error.message : "检测异常" };
+      updateSourceHealth(source.id, stages, "不可用");
+      setSourceTestMessage(source.name + "：检测异常");
+    } finally {
+      setTestingSourceIds((current) => current.filter((id) => id !== source.id));
+    }
+  };
+
+  const filteredSources = sources.filter((source) => sourceFilter === "全部" || (sourceFilter === "成功源" ? source.healthLevel === "完全可用" : source.healthLevel !== "完全可用"));
+  const testSelectedSources = async () => {
+    const targets = sources.filter((source) => selectedSourceIds.includes(source.id));
+    if (!targets.length) { Alert.alert("请先选择书源", "勾选书源后再批量测试。"); return; }
+    for (const source of targets) await testOneSource(source);
+    setSourceTestMessage("批量测试完成，共检测 " + targets.length + " 个书源。");
+  };
+  const toggleSelectedSource = (id: string) => setSelectedSourceIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  const toggleAllVisibleSources = () => {
+    const ids = filteredSources.map((source) => source.id);
+    setSelectedSourceIds((current) => ids.every((id) => current.includes(id)) ? current.filter((id) => !ids.includes(id)) : [...new Set([...current, ...ids])]);
+  };
+  const bulkSetSourceEnabled = (enabled: boolean) => setSources((current) => current.map((source) => selectedSourceIds.includes(source.id) ? { ...source, enabled } : source));
+  const bulkDeleteSources = () => Alert.alert("删除所选书源", "确定删除选中的 " + selectedSourceIds.length + " 个书源？", [
+    { text: "取消", style: "cancel" },
+    { text: "删除", style: "destructive", onPress: () => { setSources((current) => current.filter((source) => !selectedSourceIds.includes(source.id))); setSelectedSourceIds([]); } },
+  ]);
 
   const importSubscriptionFromUrl = async (action: "add" | "update" = "add") => {
     if (subscriptionLoading) return;
@@ -1645,23 +1738,51 @@ export default function App() {
               keyboardType="url"
               style={[styles.searchInput, { marginTop: 8 }]}
             />
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-              <Pressable
-                style={[styles.importButton, { flex: 1, marginTop: 0 }, (!subscriptionUrl.trim() || subscriptionLoading) && styles.importButtonDisabled]}
-                disabled={!subscriptionUrl.trim() || subscriptionLoading}
-                onPress={() => void importSubscriptionFromUrl("add")}
-              >
+            <View style={{ flexDirection: "row", gap: 7, marginTop: 12 }}>
+              <Pressable style={[styles.importButton, { flex: 1, marginTop: 0 }, (!subscriptionUrl.trim() || subscriptionLoading) && styles.importButtonDisabled]} disabled={!subscriptionUrl.trim() || subscriptionLoading} onPress={() => void importSubscriptionFromUrl("add")}>
                 {subscriptionLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>添加订阅</Text>}
               </Pressable>
-              <Pressable
-                style={[styles.importButton, styles.updateSubscriptionButton, { flex: 1, marginTop: 0 }, (!subscriptionUrl.trim() || subscriptionLoading) && styles.importButtonDisabled]}
-                disabled={!subscriptionUrl.trim() || subscriptionLoading}
-                onPress={() => void importSubscriptionFromUrl("update")}
-              >
-                {subscriptionLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.updateSubscriptionButtonText}>更新订阅</Text>}
+              <Pressable style={[styles.importButton, styles.updateSubscriptionButton, { flex: 1, marginTop: 0 }, (!subscriptionUrl.trim() || subscriptionLoading) && styles.importButtonDisabled]} disabled={!subscriptionUrl.trim() || subscriptionLoading} onPress={() => void importSubscriptionFromUrl("update")}>
+                {subscriptionLoading ? <ActivityIndicator color="#65745D" /> : <Text style={styles.updateSubscriptionButtonText}>更新订阅</Text>}
+              </Pressable>
+              <Pressable style={[styles.importButton, { flex: 1, marginTop: 0 }, (!sources.length || testingSourceIds.length > 0) && styles.importButtonDisabled]} disabled={!sources.length || testingSourceIds.length > 0} onPress={() => { if (selectedSourceIds.length) void testSelectedSources(); else void (async () => { for (const source of sources) await testOneSource(source); })(); }}>
+                <Text style={styles.importButtonText}>测试源</Text>
               </Pressable>
             </View>
             {!!subscriptionUrlMessage && <Text style={styles.sourceMessage}>{subscriptionUrlMessage}</Text>}
+          </View>
+          <View style={[styles.sourceCard, appIsDark && styles.darkCard, { marginTop: 14 }]}>
+            <View style={styles.sourceListHeading}>
+              <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText]}>书源列表（{sources.length}）</Text>
+              <Pressable onPress={toggleAllVisibleSources}><Text style={styles.sourceActionText}>{filteredSources.length > 0 && filteredSources.every((item) => selectedSourceIds.includes(item.id)) ? "取消全选" : "全选"}</Text></Pressable>
+            </View>
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+              {(["全部", "成功源", "失败源"] as const).map((filter) => <Pressable key={filter} onPress={() => setSourceFilter(filter)} style={[styles.sourceFilterButton, sourceFilter === filter && styles.sourceFilterActive]}><Text style={[styles.sourceFilterText, sourceFilter === filter && styles.sourceFilterTextActive]}>{filter}</Text></Pressable>)}
+            </View>
+            {selectedSourceIds.length > 0 && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+              <Text style={[styles.sourceMessage, { alignSelf: "center" }]}>已选 {selectedSourceIds.length} 个</Text>
+              <Pressable style={styles.sourceAction} onPress={() => void testSelectedSources()}><Text style={styles.sourceActionText}>批量测试</Text></Pressable>
+              <Pressable style={styles.sourceAction} onPress={() => bulkSetSourceEnabled(true)}><Text style={styles.sourceActionText}>批量启用</Text></Pressable>
+              <Pressable style={styles.sourceAction} onPress={() => bulkSetSourceEnabled(false)}><Text style={styles.sourceActionText}>批量停用</Text></Pressable>
+              <Pressable style={styles.sourceAction} onPress={bulkDeleteSources}><Text style={styles.sourceDeleteText}>批量删除</Text></Pressable>
+            </View>}
+            {!!sourceTestMessage && <Text style={styles.sourceMessage}>{sourceTestMessage}</Text>}
+            {filteredSources.length === 0 ? <Text style={[styles.note, appIsDark && styles.darkMutedText, { marginTop: 14 }]}>{sources.length ? "当前分类没有书源。" : "还没有书源，请先添加订阅。"}</Text> : filteredSources.map((source) => (
+              <View key={source.id} style={[styles.sourceItem, appIsDark && styles.darkCard, { marginTop: 10 }]}>
+                <Pressable onPress={() => toggleSelectedSource(source.id)} style={styles.sourceSelect}><Text style={styles.sourceSelectText}>{selectedSourceIds.includes(source.id) ? "☑" : "□"}</Text></Pressable>
+                <View style={styles.sourceItemInfo}>
+                  <Text style={[styles.sourceItemTitle, appIsDark && styles.darkPrimaryText]} numberOfLines={1}>{source.name}</Text>
+                  <Text style={[styles.sourceItemUrl, appIsDark && styles.darkMutedText]} numberOfLines={1}>{source.baseUrl}</Text>
+                  <Text style={[styles.sourceItemStatus, appIsDark && styles.darkSecondaryText]}>{source.healthLevel || "待检测"} · {source.enabled ? "已启用" : "已停用"}</Text>
+                  {source.healthStages ? <Text style={[styles.sourceItemUrl, appIsDark && styles.darkMutedText]} numberOfLines={3}>{Object.entries(source.healthStages).map(([key, value]) => key + " " + (value.ok ? "✓" : "×") + " " + value.message).join("；")}</Text> : null}
+                </View>
+                <View style={styles.sourceItemActions}>
+                  <Pressable style={styles.sourceAction} disabled={testingSourceIds.includes(source.id)} onPress={() => void testOneSource(source)}><Text style={styles.sourceActionText}>{testingSourceIds.includes(source.id) ? "检测中" : "测试"}</Text></Pressable>
+                  <Pressable style={styles.sourceAction} onPress={() => setSources((current) => current.map((item) => item.id === source.id ? { ...item, enabled: !item.enabled } : item))}><Text style={styles.sourceActionText}>{source.enabled ? "停用" : "启用"}</Text></Pressable>
+                  <Pressable onPress={() => Alert.alert("删除书源", "确定删除「" + source.name + "」？", [{ text: "取消", style: "cancel" }, { text: "删除", style: "destructive", onPress: () => { setSources((current) => current.filter((item) => item.id !== source.id)); setSelectedSourceIds((current) => current.filter((id) => id !== source.id)); } }])}><Text style={styles.sourceDeleteText}>删除</Text></Pressable>
+                </View>
+              </View>
+            ))}
           </View>
         </ScrollView>
       )}
@@ -1895,6 +2016,12 @@ const styles = StyleSheet.create({
   importButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
   sourceMessage: { color: "#65745D", fontSize: 12, lineHeight: 18, marginTop: 10 },
   sourceListHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 24 },
+  sourceFilterButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, backgroundColor: "#F1F0EA" },
+  sourceFilterActive: { backgroundColor: "#65745D" },
+  sourceFilterText: { color: "#777368", fontSize: 11, fontWeight: "700" },
+  sourceFilterTextActive: { color: "#FFFFFF" },
+  sourceSelect: { paddingRight: 10, paddingVertical: 10 },
+  sourceSelectText: { color: "#65745D", fontSize: 19 },
   sourceItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 15, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: "#EEECE5" },
   sourceItemInfo: { flex: 1, paddingRight: 8 },
   sourceItemTitle: { color: "#33352D", fontSize: 14, fontWeight: "800" },
