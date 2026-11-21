@@ -2,17 +2,17 @@ import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
 import { encode } from "base64-arraybuffer";
 
-export type CloudAudioPlayback = {
+export type WavAudioPlayback = {
   finished: Promise<void>;
   pause: () => void;
   resume: () => void;
   stop: () => void;
 };
 
-export async function playCloudWav(
+export async function playWavAudio(
   bytes: Uint8Array,
   metadata: { title: string; artist: string }
-): Promise<CloudAudioPlayback> {
+): Promise<WavAudioPlayback> {
   const cacheDirectory = FileSystem.cacheDirectory;
   if (!cacheDirectory) throw new Error("当前设备无法创建语音缓存文件。");
   const uri = cacheDirectory + "kokoro-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + ".wav";

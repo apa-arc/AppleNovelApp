@@ -1,10 +1,6 @@
-import { normalizeCloudTtsEndpoint } from "./speech-engine";
-
 export type ReaderTheme = "paper" | "green" | "gray" | "night";
 
 export type ReaderSettings = {
-  speechCloudEndpoint: string;
-  speechEngineMode: "hybrid" | "offline" | "cloud";
   fontSize: number;
   theme: ReaderTheme;
   readingMode: "scroll" | "tap";
@@ -16,8 +12,6 @@ export type ReaderSettings = {
 };
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
-  speechCloudEndpoint: "",
-  speechEngineMode: "hybrid",
   fontSize: 18,
   theme: "paper",
   readingMode: "scroll",
@@ -28,7 +22,7 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   speechRate: 0.95,
 };
 
-/** Normalize persisted settings so old or corrupted storage cannot break the reader. */
+/** Normalize persisted settings; legacy cloud TTS fields are intentionally ignored. */
 export function normalizeReaderSettings(value: unknown): ReaderSettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { ...DEFAULT_READER_SETTINGS };
@@ -44,12 +38,7 @@ export function normalizeReaderSettings(value: unknown): ReaderSettings {
   const theme: ReaderTheme = candidate.theme === "night" || candidate.theme === "green" || candidate.theme === "gray"
     ? candidate.theme
     : "paper";
-  const rawSpeechEndpoint = typeof candidate.speechCloudEndpoint === "string" ? candidate.speechCloudEndpoint : "";
-  const speechCloudEndpoint = normalizeCloudTtsEndpoint(rawSpeechEndpoint) || "";
-  const speechEngineMode = candidate.speechEngineMode === "offline" || candidate.speechEngineMode === "cloud" ? candidate.speechEngineMode : "hybrid";
   return {
-    speechCloudEndpoint,
-    speechEngineMode,
     fontSize: bounded("fontSize", DEFAULT_READER_SETTINGS.fontSize, 14, 28),
     theme,
     readingMode: candidate.readingMode === "tap" ? "tap" : "scroll",

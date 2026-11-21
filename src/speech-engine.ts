@@ -1,47 +1,4 @@
-export type SpeechEngineMode = "hybrid" | "offline" | "cloud";
-export type SpeechEngineKind = "offline" | "cloud";
-
-export type SpeechEngineAvailability = {
-  offlineReady: boolean;
-  cloudReady: boolean;
-  online: boolean;
-};
-
-export type SpeechEngineSelection =
-  | { engine: SpeechEngineKind; reason: "cloud-preferred" | "offline-fallback" | "offline-only" | "cloud-only" }
-  | { engine: null; reason: "offline-not-ready" | "cloud-not-ready" | "no-engine-ready" };
-
-/**
- * Hybrid mode prefers cloud synthesis when it is configured and reachable,
- * then falls back to the downloaded on-device model. No device accessibility
- * or OS screen-reader setting is involved in this routing decision.
- */
-export function selectSpeechEngine(
-  mode: SpeechEngineMode,
-  availability: SpeechEngineAvailability
-): SpeechEngineSelection {
-  if (mode === "offline") {
-    return availability.offlineReady
-      ? { engine: "offline", reason: "offline-only" }
-      : { engine: null, reason: "offline-not-ready" };
-  }
-
-  if (mode === "cloud") {
-    return availability.online && availability.cloudReady
-      ? { engine: "cloud", reason: "cloud-only" }
-      : { engine: null, reason: "cloud-not-ready" };
-  }
-
-  if (availability.online && availability.cloudReady) {
-    return { engine: "cloud", reason: "cloud-preferred" };
-  }
-  if (availability.offlineReady) {
-    return { engine: "offline", reason: "offline-fallback" };
-  }
-  return { engine: null, reason: "no-engine-ready" };
-}
-
-/** Split long chapters at natural boundaries to avoid oversized TTS requests. */
+/** Split long chapters at natural boundaries for local Kokoro synthesis. */
 export function splitSpeechText(value: string, maxLength = 420): string[] {
   const text = value.replace(/\r\n?/g, "\n").trim();
   if (!text) return [];
@@ -72,17 +29,4 @@ export function splitSpeechText(value: string, maxLength = 420): string[] {
   }
   push();
   return chunks;
-}
-
-/** Only HTTPS endpoints without embedded credentials are accepted for cloud TTS. */
-export function normalizeCloudTtsEndpoint(value: unknown): string | null {
-  if (typeof value !== "string" || !value.trim()) return null;
-  try {
-    const url = new URL(value.trim());
-    if (url.protocol !== "https:" || !url.hostname || url.username || url.password) return null;
-    if (url.hash || url.search) return null;
-    return url.toString().replace(/\/$/, "");
-  } catch {
-    return null;
-  }
 }

@@ -8,7 +8,7 @@ The app-side integration now includes:
 - one shared Kokoro int8 multilingual model asset with 103 speaker IDs
 - explicit user confirmation before downloading
 - checksum verification, progress, pause/resume, extraction, and deletion
-- online-first, offline-only, and cloud-only playback modes
+- local-only playback; no cloud TTS endpoint, API key, device enrollment, or online fallback
 - offline synthesis through the same speaker IDs and WAV playback queue as online synthesis
 - a startup native-module health check
 
@@ -19,4 +19,4 @@ This branch must remain unmerged until CI completes all of the following:
 4. `testSherpaInit()` succeeds at runtime and the app logs `KOKORO_NATIVE_READY`
 5. model download, extraction, 103-speaker discovery, and real offline synthesis are validated before enabling this in a production release
 
-If the native module check fails, the app must keep offline controls unavailable, continue to support cloud Kokoro, and never silently fall back to iPhone system speech. No model is downloaded automatically.
+If the native module check fails, the app must keep offline controls unavailable and show a clear native-engine error. It must never fall back to iPhone system speech or any cloud TTS provider. No model is downloaded automatically.
