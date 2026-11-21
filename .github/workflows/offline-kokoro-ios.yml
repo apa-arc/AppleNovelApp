@@ -1,0 +1,81 @@
+name: Offline Kokoro iOS native smoke test
+
+concurrency:
+  group: offline-kokoro-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "app.json"
+      - "App.tsx"
+      - "src/reader-settings.ts"
+      - "src/speech-engine.ts"
+      - "src/speech-voice-catalog.ts"
+      - "src/offline-kokoro-runtime.ts"
+      - "src/wav-audio-playback.ts"
+      - "src/wav-encoder.ts"
+      - "scripts/**"
+      - "plugins/**"
+      - ".github/workflows/offline-kokoro-ios.yml"
+  workflow_dispatch:
+
+jobs:
+  ios-simulator-build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install JavaScript dependencies and apply native patch
+        run: npm install
+      - name: TypeScript and app feature tests
+        run: |
+          npm run typecheck
+          npm run test:app
+      - name: Generate native iOS project
+        run: npx expo prebuild --platform ios --no-install --clean
+      - name: Verify native downloader and SherpaOnnx autolinking
+        run: |
+          grep -R "RNBackgroundDownloader.setCompletionHandlerWithIdentifier" ios
+          grep -R "RNBackgroundDownloader.h" ios
+          grep -R "SWIFT_OBJC_BRIDGING_HEADER" ios/*.xcodeproj/project.pbxproj
+          node --no-warnings --eval "require('expo/bin/autolinking')" expo-modules-autolinking react-native-config --json --platform ios > /tmp/react-native-config.json
+          node -e "const c=require('/tmp/react-native-config.json'); for (const name of ['react-native-sherpa-onnx','@kesha-antonov/react-native-background-downloader']) { const p=c.dependencies?.[name]?.platforms?.ios?.podspecPath; if (!p) throw new Error(name + ' is not autolinked for iOS'); console.log(name + ': ' + p); }"
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install
+      - name: Build iOS Simulator app without signing
+        run: |
+          xcodebuild \
+            -workspace ios/app.xcworkspace \
+            -scheme app \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Launch simulator and verify SherpaOnnx TurboModule registration
+        run: |
+          APP_PATH="$(find build/ios/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' -print -quit)"
+          DEVICE_ID="$(xcrun simctl list devices available | awk -F'[()]' '/iPhone/ && !seen++ {print $2; exit}')"
+          if [ -z "$APP_PATH" ] || [ -z "$DEVICE_ID" ]; then
+            echo "::error::Unable to locate the built iOS app or an available iPhone simulator."
+            exit 1
+          fi
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          xcrun simctl install "$DEVICE_ID" "$APP_PATH"
+          xcrun simctl launch "$DEVICE_ID" com.apaarc.applenovelapp
+          sleep 15
+          LOG="$(xcrun simctl spawn "$DEVICE_ID" log show --style compact --last 2m --predicate 'eventMessage CONTAINS "KOKORO_NATIVE_READY" OR eventMessage CONTAINS "KOKORO_NATIVE_UNAVAILABLE"')"
+          echo "$LOG"
+          if ! echo "$LOG" | grep -q "KOKORO_NATIVE_READY"; then
+            echo "::error::SherpaOnnx TurboModule did not report a successful native registration check."
+            exit 1
+          fi

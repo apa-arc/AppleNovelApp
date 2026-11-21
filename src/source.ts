@@ -13,6 +13,8 @@ export type NovelSource = {
   subscriptionId?: string;
   remoteSourceId?: string;
   remoteVersion?: string;
+  healthStatus?: "success" | "failed";
+  healthMessage?: string;
   /** Built-in offline fixture; never imported from untrusted source JSON. */
   isBuiltinMock?: boolean;
 };

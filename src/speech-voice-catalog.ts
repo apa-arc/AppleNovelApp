@@ -6,13 +6,11 @@ export type SpeechVoice = {
   category: "美式女声" | "英式女声" | "中文女声" | "中文男声";
   language: "zh-en";
   localModelId: string;
-  cloudModelId: string;
   speakerId: number;
 };
 
 /**
- * Voice identity is model-scoped. The cloud and offline adapters must use
- * the same model family + speaker ID to preserve the closest possible timbre.
+ * Voice identity and speaker IDs come from the bundled Kokoro model metadata.
  * Labels are intentionally neutral until the official model's speaker map is
  * verified and localized; we do not invent gender/personality descriptions.
  */
@@ -22,7 +20,6 @@ export const SPEECH_MODEL = {
   downloadAssetId: "kokoro-int8-multi-lang-v1_1",
   displayName: "Kokoro 中文多音色",
   localRuntime: "sherpa-onnx",
-  cloudRuntime: "sherpa-onnx",
   language: "zh-en",
   offlineArchive:
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_1.tar.bz2",
@@ -56,7 +53,6 @@ export const SPEECH_VOICES: SpeechVoice[] = SPEECH_SPEAKER_NAMES.map((speakerNam
     category,
     language: "zh-en",
     localModelId: SPEECH_MODEL.downloadAssetId,
-    cloudModelId: SPEECH_MODEL.id,
     speakerId,
   };
 });
@@ -68,24 +64,4 @@ export function findSpeechVoice(id: string): SpeechVoice | null {
 export function canReuseVoiceOffline(voiceId: string, localModelIds: string[]): boolean {
   const voice = findSpeechVoice(voiceId);
   return !!voice && localModelIds.includes(voice.localModelId);
-}
-
-/**
- * Cloud and local synthesis share a stable model/speaker identity.
- * The cloud adapter must map this payload to the same model checkpoint.
- */
-export function buildSpeechSynthesisRequest(
-  voiceId: string,
-  text: string,
-  speed = 1
-): { model: string; speakerId: number; text: string; speed: number } | null {
-  const voice = findSpeechVoice(voiceId);
-  const normalizedText = text.trim();
-  if (!voice || !normalizedText) return null;
-  return {
-    model: voice.cloudModelId,
-    speakerId: voice.speakerId,
-    text: normalizedText,
-    speed: Math.min(2, Math.max(0.5, Number.isFinite(speed) ? speed : 1)),
-  };
 }
