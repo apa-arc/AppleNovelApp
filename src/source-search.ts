@@ -16,6 +16,13 @@ function firstString(record: JsonRecord, keys: string[]): string {
     const value = record[key];
     if (typeof value === "string" && value.trim()) return value.trim();
     if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const nested = value as JsonRecord;
+      for (const nestedKey of ["url", "src", "original", "large", "path"]) {
+        const candidate = nested[nestedKey];
+        if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+      }
+    }
   }
   return "";
 }
