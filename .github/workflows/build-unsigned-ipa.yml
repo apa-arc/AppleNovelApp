@@ -47,6 +47,13 @@ jobs:
       - name: Install JavaScript dependencies
         run: npm ci
 
+      - name: Restore app icon asset
+        run: |
+          mkdir -p assets
+          base64 -D -i assets/icon.png.base64 -o assets/icon.png
+          test -s assets/icon.png
+          file assets/icon.png
+
       - name: Run app checks
         run: |
           npm run typecheck
@@ -67,7 +74,8 @@ jobs:
             if (config.updates?.url !== "https://u.expo.dev/" + process.env.EAS_PROJECT_ID) throw new Error("Expo Updates URL is not configured.");
             if (config.updates?.requestHeaders?.["expo-channel-name"] !== "production") throw new Error("Production OTA channel is not embedded.");
             if (!config.runtimeVersion) throw new Error("runtimeVersion is required.");
-            console.log("Unsigned IPA will use the production OTA channel.");
+            if (config.icon !== "./assets/icon.png") throw new Error("App icon is not configured.");
+            console.log("Unsigned IPA will use the production OTA channel and custom app icon.");
           '
       - name: Generate iOS runtime fingerprint
         env:
