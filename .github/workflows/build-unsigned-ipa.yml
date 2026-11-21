@@ -1,9 +1,16 @@
 name: Build unsigned iOS IPA
 
 on:
+  # Rebuild the IPA only when native configuration or dependencies change.
+  # App.tsx/src changes are delivered through OTA instead.
   push:
     branches:
       - main
+    paths:
+      - "app.json"
+      - "app.config.js"
+      - "package.json"
+      - "eas.json"
   workflow_dispatch:
 
 permissions:
