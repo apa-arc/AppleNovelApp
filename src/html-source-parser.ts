@@ -25,7 +25,11 @@ function simple(n:Node,s:string):boolean{
  for(const m of structural.matchAll(/#([\w-]+)/g))if(n.attrs.id!==m[1])return false;
  const classes=(n.attrs.class||"").split(/\s+/);for(const m of structural.matchAll(/\.([\w-]+)/g))if(!classes.includes(m[1]))return false;
  for(const m of s.matchAll(/\[([\w:-]+)(?:\s*(\$=|\^=|\*=|~=|\|=|=)\s*["']?([^\]"']+)["']?)?\]/g)){const actual=n.attrs[m[1].toLowerCase()];if(actual===undefined)return false;const expected=m[3];if(expected!==undefined){const op=m[2];if(op==="="&&actual!==expected)return false;if(op==="$="&&!actual.endsWith(expected))return false;if(op==="^="&&!actual.startsWith(expected))return false;if(op==="*="&&!actual.includes(expected))return false;if(op==="~="&&!actual.split(/\s+/).includes(expected))return false;if(op==="|="&&actual!==expected&&!actual.startsWith(expected+"-"))return false;}}
- const siblings=n.parent?.children.filter(x=>typeof x!=="string")||[],nth=structural.match(/:nth-child\((\d+)\)/);if(nth&&siblings.indexOf(n)!==Number(nth[1])-1)return false;if(/:first-child/.test(structural)&&siblings[0]!==n)return false;if(/:last-child/.test(structural)&&siblings[siblings.length-1]!==n)return false;return true;
+ const siblings=n.parent?.children.filter(x=>typeof x!=="string")||[];
+ const matchesNth=(position:number,expression:string)=>{const e=expression.replace(/\s+/g,"").toLowerCase();if(e==="odd")return position%2===1;if(e==="even")return position%2===0;if(/^[+-]?\d+$/.test(e))return position===Number(e);const m=e.match(/^([+-]?\d*)n([+-]\d+)?$/);if(!m)return false;const a=m[1]===""||m[1]==="+"?1:m[1]==="-"?-1:Number(m[1]),b=Number(m[2]||0),d=position-b;return a===0?d===0:d/a>=0&&Number.isInteger(d/a);};
+ const nthChild=structural.match(/:nth-child\(([^)]*)\)/);if(nthChild&&!matchesNth(siblings.indexOf(n)+1,nthChild[1]))return false;
+ const sameType=siblings.filter(x=>x.tag===n.tag),nthType=structural.match(/:nth-of-type\(([^)]*)\)/);if(nthType&&!matchesNth(sameType.indexOf(n)+1,nthType[1]))return false;
+ if(/:first-child/.test(structural)&&siblings[0]!==n)return false;if(/:last-child/.test(structural)&&siblings[siblings.length-1]!==n)return false;return true;
 }
 function matches(n:Node,s:string):boolean{
  const parts=s.trim().replace(/\s*>\s*/g," > ").split(/\s+/).filter(Boolean);
@@ -50,7 +54,7 @@ function assertSupportedSelector(selector:string):void{
    token=token.replace(/\[[^\]]*\]/g,"");
    token=token.replace(/^(?:[a-zA-Z][\w-]*|\*)/,"");
    token=token.replace(/#[\w-]+/g,"").replace(/\.[\w-]+/g,"");
-   token=token.replace(/:first-child|:last-child|:nth-child\(\d+\)/g,"");
+   token=token.replace(/:first-child|:last-child|:nth-child\([^)]*\)|:nth-of-type\([^)]*\)/g,"");
    if(token)throw new Error("暂不支持此 CSS 选择器语法："+token);
   }
  }
@@ -58,16 +62,16 @@ function assertSupportedSelector(selector:string):void{
 export function selectHtmlNodes(root:Node,selector:string):Node[]{assertSupportedSelector(selector);return all(root).filter(n=>selector.split(",").some(s=>matches(n,s.trim())));}
 export function htmlNodeText(n:Node):string{const walk=(x:Node):string=>x.children.map(c=>typeof c==="string"?c:(["script","style","noscript"].includes(c.tag)?"":(["br","hr"].includes(c.tag)?"\n":(BLOCK.has(c.tag)?"\n":"")+walk(c)+(BLOCK.has(c.tag)?"\n":"")))).join("");return walk(n).replace(/[\t\f\v ]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").trim();}
 function attr(n:Node,name:string):string{return n.attrs[name.toLowerCase()]||"";}
-function textAt(n:Node,selector?:string):string{const x=selector?selectHtmlNodes(n,selector)[0]:undefined;return x?htmlNodeText(x):"";}
+function textAt(n:Node,selector?:string,attribute?:string):string{const x=selector?selectHtmlNodes(n,selector)[0]:undefined;return x?(attribute?attr(x,attribute):htmlNodeText(x)):"";}
 function safeUrl(v:string,base:string):string{try{const origin=new URL(base).origin,u=new URL(v,base);return u.protocol==="https:"&&!u.username&&!u.password&&u.origin===origin?u.toString():"";}catch{return"";}}
 
 export type HtmlSearchRules={itemSelector:string;titleSelector:string;urlSelector:string;authorSelector?:string;descriptionSelector?:string;urlAttribute?:string;coverSelector?:string;coverAttribute?:string};
-export type HtmlDetailRules={titleSelector?:string;authorSelector?:string;descriptionSelector?:string};
+export type HtmlDetailRules={titleSelector?:string;authorSelector?:string;descriptionSelector?:string;titleAttribute?:string;authorAttribute?:string;descriptionAttribute?:string};
 export type HtmlChapterRules={itemSelector:string;titleSelector:string;urlSelector:string;urlAttribute?:string};
 export type HtmlContentRules={contentSelector:string;titleSelector?:string};
 export function parseHtmlSearchResults(body:string,sourceId:string,sourceName:string,keyword:string,responseUrl:string,r:HtmlSearchRules):{keyword:string;sourceId:string;items:NovelSummary[];hasMore:boolean}{
  const root=parseHtmlDocument(body),items=selectHtmlNodes(root,r.itemSelector).flatMap((n,i)=>{const tn=r.titleSelector===":self"?n:selectHtmlNodes(n,r.titleSelector)[0],ln=r.urlSelector===":self"?n:selectHtmlNodes(n,r.urlSelector)[0],title=tn?htmlNodeText(tn):"",bookUrl=ln?safeUrl(attr(ln,r.urlAttribute||"href"),responseUrl):"";if(!title||!bookUrl)return[];const cv=r.coverSelector?selectHtmlNodes(n,r.coverSelector)[0]:undefined,coverUrl=cv?safeUrl(attr(cv,r.coverAttribute||"src"),responseUrl):"";return[{id:sourceId+":"+i+":"+bookUrl,sourceId,sourceName,title,author:textAt(n,r.authorSelector)||"未知作者",description:textAt(n,r.descriptionSelector),bookUrl,...(coverUrl?{coverUrl}:{})}];});return{keyword,sourceId,items,hasMore:false};
 }
-export function parseHtmlNovelDetail(body:string,summary:NovelSummary,r:HtmlDetailRules):NovelDetail{const root=parseHtmlDocument(body);return{...summary,title:textAt(root,r.titleSelector)||summary.title,author:textAt(root,r.authorSelector)||summary.author,description:textAt(root,r.descriptionSelector)||summary.description,chapters:[]};}
+export function parseHtmlNovelDetail(body:string,summary:NovelSummary,r:HtmlDetailRules):NovelDetail{const root=parseHtmlDocument(body);return{...summary,title:textAt(root,r.titleSelector,r.titleAttribute)||summary.title,author:textAt(root,r.authorSelector,r.authorAttribute)||summary.author,description:textAt(root,r.descriptionSelector,r.descriptionAttribute)||summary.description,chapters:[]};}
 export function parseHtmlChapterList(body:string,novelId:string,responseUrl:string,r:HtmlChapterRules):NovelChapter[]{const root=parseHtmlDocument(body),out:NovelChapter[]=[];selectHtmlNodes(root,r.itemSelector).forEach((n,i)=>{const tn=r.titleSelector===":self"?n:selectHtmlNodes(n,r.titleSelector)[0],ln=r.urlSelector===":self"?n:selectHtmlNodes(n,r.urlSelector)[0],title=tn?htmlNodeText(tn):"",href=ln?safeUrl(attr(ln,r.urlAttribute||"href"),responseUrl):"";if(title&&href)out.push({id:novelId+":"+i+":"+href,novelId,title,url:href,index:out.length});});if(!out.length)throw new Error("HTML 章节规则没有匹配到有效章节。");return out;}
 export function parseHtmlChapterContent(body:string,fallbackTitle:string,r:HtmlContentRules):NovelContent{const root=parseHtmlDocument(body),node=selectHtmlNodes(root,r.contentSelector)[0];if(!node)throw new Error("HTML 正文选择器未匹配到内容："+r.contentSelector);const content=htmlNodeText(node);if(!content)throw new Error("HTML 正文为空。");return{chapterId:"",title:textAt(root,r.titleSelector)||fallbackTitle,content};}
