@@ -1238,7 +1238,7 @@ export default function App() {
           text: chunks[index],
           speed: speechRate,
         }, speechDeviceToken);
-        const uri = directory + encodeURIComponent(key) + "-" + index + ".wav";
+        const uri = directory + "chapter-" + Date.now() + "-" + index + ".wav";
         const exactBuffer = audioBytes.buffer.slice(audioBytes.byteOffset, audioBytes.byteOffset + audioBytes.byteLength) as ArrayBuffer;
         await FileSystem.writeAsStringAsync(uri, encode(exactBuffer), { encoding: FileSystem.EncodingType.Base64 });
         createdFiles.push(uri);
