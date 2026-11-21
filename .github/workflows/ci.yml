@@ -29,6 +29,8 @@ jobs:
         run: npm run test:app
       - name: Expo project diagnostics
         run: npx expo-doctor
+      - name: Dependency security audit
+        run: npm audit --audit-level=moderate
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
