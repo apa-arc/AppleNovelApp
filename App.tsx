@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Updates from "expo-updates";
+import Constants from "expo-constants";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as SecureStore from "expo-secure-store";
@@ -1904,7 +1905,7 @@ export default function App() {
               <View style={styles.updateIcon}><Text style={styles.updateIconText}>↻</Text></View>
               <View style={styles.updateHeaderInfo}>
                 <Text style={styles.updateTitle}>应用在线更新</Text>
-                <Text style={styles.updateVersion}>运行环境：{Updates.runtimeVersion || "开发预览版"}</Text>
+                <Text style={styles.updateVersion}>当前版本：{Constants.expoConfig?.version || "1.0.0"} · {Updates.isEnabled ? "在线更新已启用" : "等待云端配置"}</Text>
               </View>
               {appUpdateBusy ? <ActivityIndicator color="#65745D" /> : null}
             </View>
