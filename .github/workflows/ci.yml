@@ -35,6 +35,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Python dependency security audit
+        run: |
+          python -m pip install --upgrade pip-audit
+          pip-audit -r server/requirements.txt
       - name: Validate Kokoro server and run unit tests
         run: |
           python -m compileall -q server
