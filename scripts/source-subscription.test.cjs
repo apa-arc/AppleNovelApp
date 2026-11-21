@@ -1,3 +1,5 @@
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { parseSourceSubscription } = require("../.test-build/source-subscription.js");
@@ -86,3 +88,5 @@ test("imports the two native novel sources with path URL templates and multiple 
   assert.equal(result.compatible[0].chapterListUrl, sources[0].appConfig.chapterListUrl);
   assert.equal(result.compatible[1].chapterListUrl, sources[1].appConfig.chapterListUrl);
 });
+
+test("imports the complete AppleNovelApp-compatible 26-source subscription",()=>{const raw=fs.readFileSync(path.join(__dirname,"fixtures","novel-source-subscription.json"),"utf8");const result=parseSourceSubscription(raw);assert.equal(result.name,"小说源");assert.equal(result.compatible.length,26);assert.equal(result.unsupported.length,0);assert.equal(new Set(result.compatible.map(x=>x.remoteId)).size,26);for(const source of result.compatible){assert.ok(source.htmlRules?.search,source.remoteId+" missing search rules");assert.ok(source.htmlRules?.detail,source.remoteId+" missing detail rules");assert.ok(source.htmlRules?.chapters,source.remoteId+" missing chapter rules");assert.ok(source.htmlRules?.content,source.remoteId+" missing content rules");}});
