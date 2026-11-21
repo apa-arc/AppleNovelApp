@@ -23,8 +23,9 @@
     },
     "updates": {
       "enabled": true,
-      "checkAutomatically": "NEVER",
-      "fallbackToCacheTimeout": 0
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/b4d937a0-68db-426d-8114-c4b41cc1d9d4"
     },
     "plugins": [
       [
@@ -35,6 +36,11 @@
           "enableBackgroundPlayback": true
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b4d937a0-68db-426d-8114-c4b41cc1d9d4"
+      }
+    }
   }
 }
