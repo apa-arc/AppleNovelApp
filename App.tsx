@@ -36,7 +36,7 @@ import {
   Alert,
   Dimensions,
   Modal,
-  useColorScheme,
+  Share,
 } from "react-native";
 
 type Tab = "书架" | "搜索" | "源" | "我的";
@@ -100,9 +100,8 @@ function BookCover({ book, grid = false }: { book: Book; grid?: boolean }) {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("书架");
-  const systemColorScheme = useColorScheme();
-  const [appearanceMode, setAppearanceMode] = useState<"system" | "light" | "dark">("system");
-  const appIsDark = appearanceMode === "dark" || (appearanceMode === "system" && systemColorScheme === "dark");
+  const [appearanceMode, setAppearanceMode] = useState<"light" | "dark">("light");
+  const appIsDark = appearanceMode === "dark";
   const [shelfView, setShelfView] = useState<"list" | "grid">("list");
   const [query, setQuery] = useState("");
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
@@ -120,7 +119,7 @@ export default function App() {
   const speechPausedRef = useRef(false);
   const speechRunIdRef = useRef(0);
   const speechPlaybackRef = useRef<WavAudioPlayback | null>(null);
-  const [speechVoiceCategoryFilter, setSpeechVoiceCategoryFilter] = useState<"全部" | "中文女声" | "中文男声" | "英语女声">("全部");
+  const [speechVoiceCategoryFilter, setSpeechVoiceCategoryFilter] = useState<"中文女声" | "中文男声">("中文女声");
   const [offlineModelStatus, setOfflineModelStatus] = useState<"checking" | "not-downloaded" | "downloading" | "paused" | "installed" | "failed" | "unavailable">("checking");
   const [offlineModelProgress, setOfflineModelProgress] = useState(0);
   const [offlineModelPhase, setOfflineModelPhase] = useState<OfflineKokoroProgress["phase"] | null>(null);
@@ -128,6 +127,7 @@ export default function App() {
   const [offlineModelError, setOfflineModelError] = useState<string | null>(null);
   const offlineModelPhaseRef = useRef<OfflineKokoroProgress["phase"]>("downloading");
   const offlineModelBusyRef = useRef(false);
+  const offlineModelAutoStartRef = useRef(false);
   const offlineEngineRef = useRef<OfflineKokoroEngine | null>(null);
   const [speechRate, setSpeechRate] = useState(DEFAULT_READER_SETTINGS.speechRate);
   const [readerFontSize, setReaderFontSize] = useState(DEFAULT_READER_SETTINGS.fontSize);
@@ -145,6 +145,7 @@ export default function App() {
   const restoreReaderPositionRef = useRef(false);
   const [sources, setSources] = useState<NovelSource[]>([]);
   const [sourceFilter, setSourceFilter] = useState<"全部" | "成功源" | "失败源">("全部");
+  const [sourcesCollapsed, setSourcesCollapsed] = useState(false);
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
   const [testingSourceIds, setTestingSourceIds] = useState<string[]>([]);
   const [sourceTestMessage, setSourceTestMessage] = useState("");
@@ -307,7 +308,7 @@ export default function App() {
         const savedShelfView = await AsyncStorage.getItem(SHELF_VIEW_STORAGE_KEY);
         if (savedShelfView === "grid" || savedShelfView === "list") setShelfView(savedShelfView);
         const savedAppearance = await AsyncStorage.getItem(APPEARANCE_STORAGE_KEY);
-        if (savedAppearance === "system" || savedAppearance === "light" || savedAppearance === "dark") setAppearanceMode(savedAppearance);
+        setAppearanceMode(savedAppearance === "dark" ? "dark" : "light");
         const savedHistory = await AsyncStorage.getItem(READING_HISTORY_STORAGE_KEY);
         if (savedHistory && active) setReadingHistory(normalizeReadingHistory(JSON.parse(savedHistory)));
         const savedReaderSettings = await AsyncStorage.getItem(READER_SETTINGS_STORAGE_KEY);
@@ -394,8 +395,10 @@ export default function App() {
         offlineModelPhaseRef.current = model.pendingPhase;
         setOfflineModelPhase(model.pendingPhase);
         setOfflineModelStatus("paused");
+        if (!offlineModelAutoStartRef.current) { offlineModelAutoStartRef.current = true; void runOfflineModelTransfer(true); }
       } else {
         setOfflineModelStatus("not-downloaded");
+        if (!offlineModelAutoStartRef.current) { offlineModelAutoStartRef.current = true; void runOfflineModelTransfer(false); }
       }
     }).catch((error) => {
       if (!active) return;
@@ -496,6 +499,21 @@ export default function App() {
   };
 
   const filteredSources = sources.filter((source) => sourceFilter === "全部" || (sourceFilter === "成功源" ? source.healthLevel === "完全可用" : source.healthLevel !== "完全可用")).sort((a, b) => Number(b.healthLevel === "完全可用") - Number(a.healthLevel === "完全可用"));
+  const exportSourceFailures = async () => {
+    const cell = (value: string) => '"' + value.replace(/"/g, '""') + '"';
+    const rows = [["书源名称", "失败原因"], ...sources.map((source) => {
+      const failures = source.healthStages ? Object.entries(source.healthStages).filter(([, stage]) => !stage.ok).map(([key, stage]) => key + "：" + stage.message) : [];
+      const reason = source.healthLevel === "完全可用" ? "无" : failures.join("；") || source.healthMessage || "尚未检测";
+      return [source.name, reason];
+    })];
+    const csv = "\\uFEFF" + rows.map((row) => row.map(cell).join(",")).join("\\r\\n");
+    try {
+      if (!FileSystem.documentDirectory) throw new Error("无法访问本地文档目录。");
+      const uri = FileSystem.documentDirectory + "书源检测结果-" + new Date().toISOString().slice(0, 10) + ".csv";
+      await FileSystem.writeAsStringAsync(uri, csv, { encoding: FileSystem.EncodingType.UTF8 });
+      await Share.share({ title: "书源检测结果.csv", message: "书源名称与失败原因", url: uri });
+    } catch (error) { Alert.alert("导出失败", error instanceof Error ? error.message : "无法生成书源检测文件。"); }
+  };
   const testSelectedSources = async () => {
     const targets = sources.filter((source) => selectedSourceIds.includes(source.id));
     if (!targets.length) { Alert.alert("请先选择书源", "勾选书源后再批量测试。"); return; }
@@ -895,7 +913,6 @@ export default function App() {
       setOfflineModelProgress(100);
       setOfflineModelPhase(null);
       setOfflineModelStatus("installed");
-      Alert.alert("离线模型已就绪", "Kokoro 中文多音色模型已下载并通过完整性校验，103 种音色均可离线使用。");
     } catch (error) {
       if (isOfflineKokoroPause(error)) {
         setOfflineModelStatus("paused");
@@ -910,14 +927,7 @@ export default function App() {
     }
   };
 
-  const requestOfflineModelDownload = () => Alert.alert(
-    "下载 Kokoro 离线模型",
-    "将下载约 147 MB 的官方 int8 多语言模型，并解压到 iPhone 本地。解压后还会占用额外存储空间。一个模型包含全部 103 种音色。只有确认后才会开始下载。",
-    [
-      { text: "取消", style: "cancel" },
-      { text: "确认下载", onPress: () => { void runOfflineModelTransfer(false); } },
-    ]
-  );
+  const requestOfflineModelDownload = () => { void runOfflineModelTransfer(false); };
 
   const pauseOfflineModelDownload = async () => {
     if (offlineModelStatus !== "downloading" || !offlineModelPhase) return;
@@ -1311,26 +1321,26 @@ export default function App() {
     const recommended = sortedSources[0];
     const activeSource = selectedSearchNovel.sources.find((item) => item.summary.sourceId === selectedSourceId) || recommended;
     return (
-      <SafeAreaView style={styles.safe}>
-        <StatusBar barStyle="dark-content" />
-        <View style={styles.detailHeader}>
-          <Pressable onPress={closeSearchNovel}><Text style={styles.backText}>‹ 返回搜索</Text></Pressable>
-          <Text style={styles.readerHeaderTitle}>小说详情</Text>
+      <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
+        <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
+        <View style={[styles.detailHeader, appIsDark && styles.darkTopBar]}>
+          <Pressable onPress={closeSearchNovel}><Text style={[styles.backText, appIsDark && styles.darkSecondaryText]}>‹ 返回搜索</Text></Pressable>
+          <Text style={[styles.readerHeaderTitle, appIsDark && styles.darkSecondaryText]}>小说详情</Text>
           <View style={{ width: 64 }} />
         </View>
         <ScrollView contentContainerStyle={styles.pageContent}>
-          <View style={styles.detailHero}>
-            <Text style={styles.detailTitle}>{selectedSearchNovel.title}</Text>
-            <Text style={styles.detailAuthor}>{selectedSearchNovel.author || "未知作者"}</Text>
+          <View style={[styles.detailHero, appIsDark && styles.darkCard]}>
+            <Text style={[styles.detailTitle, appIsDark && styles.darkPrimaryText]}>{selectedSearchNovel.title}</Text>
+            <Text style={[styles.detailAuthor, appIsDark && styles.darkSecondaryText]}>{selectedSearchNovel.author || "未知作者"}</Text>
           </View>
-          <View style={styles.detailSection}>
-            <Text style={styles.sectionTitle}>小说介绍</Text>
-            <Text style={styles.detailDescription}>{loadedNovelDetail?.description || selectedSearchNovel.description || "这个书源没有提供小说简介。"} </Text>
+          <View style={[styles.detailSection, appIsDark && styles.darkCard]}>
+            <Text style={[styles.sectionTitle, appIsDark && styles.darkPrimaryText]}>小说介绍</Text>
+            <Text style={[styles.detailDescription, appIsDark && styles.darkSecondaryText]}>{loadedNovelDetail?.description || selectedSearchNovel.description || "这个书源没有提供小说简介。"} </Text>
           </View>
-          <View style={styles.detailSection}>
-            <Text style={styles.sectionTitle}>选择阅读源</Text>
-            <Text style={styles.note}>综合推荐同时考虑搜索响应速度和目录章节数量。点击下方按钮统计各源目录并生成综合排名。</Text>
-            <Pressable onPress={rankSourcesByChapterCount} disabled={rankingChapterCounts} style={[styles.onlineSearchButton, rankingChapterCounts && styles.importButtonDisabled]}>
+          <View style={[styles.detailSection, appIsDark && styles.darkCard]}>
+            <Text style={[styles.sectionTitle, appIsDark && styles.darkPrimaryText]}>选择阅读源</Text>
+            <Text style={[styles.note, appIsDark && styles.darkMutedText]}>综合推荐同时考虑搜索响应速度和目录章节数量。点击下方按钮统计各源目录并生成综合排名。</Text>
+            <Pressable onPress={rankSourcesByChapterCount} disabled={rankingChapterCounts} style={[styles.onlineSearchButton, appIsDark && styles.darkAccentButton, rankingChapterCounts && styles.importButtonDisabled]}>
               {rankingChapterCounts ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>生成综合推荐排序</Text>}
             </Pressable>
             {sortedSources.map((option, index) => {
@@ -1342,11 +1352,11 @@ export default function App() {
                   setLoadedNovelDetail(null);
                   setLoadedChapters([]);
                   setCatalogMessage("");
-                }} style={[styles.sourceChoice, isSelected && styles.sourceChoiceSelected]}>
+                }} style={[styles.sourceChoice, appIsDark && styles.darkCard, isSelected && styles.sourceChoiceSelected]}>
                   <View style={styles.sourceChoiceInfo}>
-                    <Text style={styles.sourceChoiceName}>{option.summary.sourceName}</Text>
-                    <Text style={styles.sourceChoiceLatency}>{option.chapterCount === null || option.chapterCount === undefined ? `${option.latencyMs} ms · ${option.chapterError ? "目录读取失败" : "尚未检测目录"}` : `${option.chapterCount} 章 · ${option.latencyMs} ms`}</Text>
-                    {!!option.chapterError && <Text style={styles.sourceChoiceLatency}>{option.chapterError}</Text>}
+                    <Text style={[styles.sourceChoiceName, appIsDark && styles.darkPrimaryText]}>{option.summary.sourceName}</Text>
+                    <Text style={[styles.sourceChoiceLatency, appIsDark && styles.darkMutedText]}>{option.chapterCount === null || option.chapterCount === undefined ? `${option.latencyMs} ms · ${option.chapterError ? "目录读取失败" : "尚未检测目录"}` : `${option.chapterCount} 章 · ${option.latencyMs} ms`}</Text>
+                    {!!option.chapterError && <Text style={[styles.sourceChoiceLatency, appIsDark && styles.darkMutedText]}>{option.chapterError}</Text>}
                   </View>
                   {isRecommended && <Text style={styles.recommendTag}>综合推荐</Text>}
                   {isSelected && <Text style={styles.selectedTag}>已选择</Text>}
@@ -1355,26 +1365,26 @@ export default function App() {
             })}
           </View>
           {!!activeSource && (
-            <View style={styles.detailSection}>
-              <Text style={styles.sectionTitle}>真实小说目录</Text>
-              <Text style={styles.note}>当前选择：{activeSource.summary.sourceName}。点击下方按钮，从所选书源获取详情和目录。</Text>
-              <Pressable style={[styles.onlineSearchButton, loadingCatalog && styles.importButtonDisabled]} onPress={loadSelectedNovelCatalog} disabled={loadingCatalog}>
+            <View style={[styles.detailSection, appIsDark && styles.darkCard]}>
+              <Text style={[styles.sectionTitle, appIsDark && styles.darkPrimaryText]}>真实小说目录</Text>
+              <Text style={[styles.note, appIsDark && styles.darkMutedText]}>当前选择：{activeSource.summary.sourceName}。点击下方按钮，从所选书源获取详情和目录。</Text>
+              <Pressable style={[styles.onlineSearchButton, appIsDark && styles.darkAccentButton, loadingCatalog && styles.importButtonDisabled]} onPress={loadSelectedNovelCatalog} disabled={loadingCatalog}>
                 {loadingCatalog ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>获取小说详情和目录</Text>}
               </Pressable>
-              {!!catalogMessage && <Text style={styles.searchFeedback}>{catalogMessage}</Text>}
+              {!!catalogMessage && <Text style={[styles.searchFeedback, appIsDark && styles.darkMutedText]}>{catalogMessage}</Text>}
               {!!loadedChapters.length && (
                 <Pressable style={styles.catalogLoadButton} onPress={saveOnlineBookToShelf}>
                   <Text style={styles.importButtonText}>{books.some((book) => book.id === getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author)) ? "更新书架信息" : "加入本地书架"}</Text>
                 </Pressable>
               )}
               {loadedChapters.map((chapter) => (
-                <Pressable key={chapter.id} onPress={() => openOnlineChapter(chapter)} disabled={loadingOnlineChapter} style={styles.chapterRow}>
-                  <Text style={styles.chapterRowTitle}>{chapter.title}</Text>
+                <Pressable key={chapter.id} onPress={() => openOnlineChapter(chapter)} disabled={loadingOnlineChapter} style={[styles.chapterRow, appIsDark && styles.darkCard]}>
+                  <Text style={[styles.chapterRowTitle, appIsDark && styles.darkPrimaryText]}>{chapter.title}</Text>
                   <Text style={styles.chapterRowMeta}>第 {chapter.index + 1} 章 · 阅读</Text>
                 </Pressable>
               ))}
               {loadingOnlineChapter && <ActivityIndicator color="#65745D" style={{ marginVertical: 12 }} />}
-              {!!loadedChapters.length && <Text style={styles.note}>点击任意章节即可加载正文。当前内容由所选书源实时获取。</Text>}
+              {!!loadedChapters.length && <Text style={[styles.note, appIsDark && styles.darkMutedText]}>点击任意章节即可加载正文。当前内容由所选书源实时获取。</Text>}
             </View>
           )}
         </ScrollView>
@@ -1536,9 +1546,13 @@ export default function App() {
         )}
         {showSpeechSettings && !showCatalog && (
           <View style={[styles.readerSettings, styles.speechSettings, readerTheme === "night" && styles.nightCard]}>
+            <View style={[styles.readerSettingRow, { justifyContent: "space-between", marginBottom: 10 }]}>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>听书播放</Text>
+              <Pressable style={styles.fontButton} disabled={offlineModelStatus !== "installed" && !isSpeaking} onPress={speakCurrentBook}><Text style={styles.fontButtonText}>{isSpeaking ? "停止听书" : offlineModelStatus === "installed" ? "开始听书" : "模型准备中"}</Text></Pressable>
+            </View>
             <View style={[styles.voiceOption, readerTheme === "night" && styles.nightVoiceOption, { flexDirection: "column", alignItems: "flex-start", marginBottom: 10 }]}>
-              <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>Kokoro 中文离线朗读</Text>
-              <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>103 种音色 · 模型约 147 MB · 中文 / 英文</Text>
+              <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>听书 · 中文离线语音</Text>
+              <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>中文男声 / 中文女声 · 本地离线合成</Text>
               <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 8 }]}>完全本地生成语音，不使用苹果系统朗读，不连接云端 AI 服务。首次下载模型后即可断网朗读。</Text>
               <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText, { marginTop: 14 }]}>离线模型</Text>
               <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 5 }]}>{offlineModelStatus === "checking" ? "正在检查本地模型…" : offlineModelStatus === "installed" ? "模型已安装 · 103 种音色可离线使用" : offlineModelStatus === "downloading" ? "正在" + (offlineModelPhase === "extracting" || offlineModelPhase === "extracting_resume_skipping" ? "解压" : "下载") + " · " + Math.round(offlineModelProgress) + "%" : offlineModelStatus === "paused" ? "下载已暂停，可继续上次任务" : offlineModelStatus === "unavailable" ? "当前构建尚未包含 Kokoro 原生引擎" : offlineModelStatus === "failed" ? "模型准备失败，可重试" : "尚未下载 · 需要时可手动下载约 147 MB 模型"}</Text>
@@ -1553,21 +1567,21 @@ export default function App() {
               <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>音色试听和正文朗读都由本机模型生成，不会请求网络。</Text>
             </View>
             <View style={{ marginBottom: 12 }}>
-              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>选择 Kokoro 音色 · 103 种</Text>
-              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 4, marginBottom: 8 }]}>当前选择：{SPEECH_VOICES.find((voice) => voice.id === speechModelVoiceId)?.label || "声音 01"}。点击「试听」可以试听本机生成效果。</Text>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>选择听书声音</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 4, marginBottom: 8 }]}>当前选择：{SPEECH_VOICES.find((voice) => voice.id === speechModelVoiceId)?.label || "中文女声"}。选择中文男声或中文女声，可先试听。</Text>
               {isSpeaking && <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
                 <Pressable style={styles.fontButton} onPress={speechPaused ? resumeSpeech : pauseSpeech}><Text style={styles.fontButtonText}>{speechPaused ? "继续播放" : "暂停播放"}</Text></Pressable>
                 <Pressable style={styles.fontButton} onPress={stopSpeech}><Text style={styles.fontButtonText}>停止</Text></Pressable>
               </View>}
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-                {(["全部", "中文女声", "中文男声", "英语女声"] as const).map((category) => (
+                {(["中文女声", "中文男声"] as const).map((category) => (
                   <Pressable key={category} style={[styles.themeButton, speechVoiceCategoryFilter === category && styles.modeButtonActive]} onPress={() => setSpeechVoiceCategoryFilter(category)}>
                     <Text style={styles.fontButtonText}>{category}</Text>
                   </Pressable>
                 ))}
               </View>
               <ScrollView style={styles.voiceList} nestedScrollEnabled>
-                {SPEECH_VOICES.filter((voice) => speechVoiceCategoryFilter === "全部" || (speechVoiceCategoryFilter === "英语女声" ? voice.category === "美式女声" || voice.category === "英式女声" : voice.category === speechVoiceCategoryFilter)).map((voice) => {
+                {SPEECH_VOICES.filter((voice) => voice.category === speechVoiceCategoryFilter).map((voice) => {
                   const selected = speechModelVoiceId === voice.id;
                   return (
                     <Pressable key={voice.id} style={[styles.voiceOption, selected && styles.voiceOptionSelected, readerTheme === "night" && styles.nightVoiceOption]} onPress={() => setSpeechModelVoiceId(voice.id)}>
@@ -1587,7 +1601,7 @@ export default function App() {
               </ScrollView>
             </View>
             <View style={styles.readerSettingRow}>
-              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>朗读速度</Text>
+              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>听书语速</Text>
               <Pressable style={styles.fontButton} onPress={() => setSpeechRate((v) => Math.max(0.5, Math.round((v - 0.1) * 10) / 10))}><Text style={styles.fontButtonText}>−</Text></Pressable>
               <Text style={[styles.fontSizeValue, readerTheme === "night" && styles.nightText]}>{speechRate.toFixed(1)}×</Text>
               <Pressable style={styles.fontButton} onPress={() => setSpeechRate((v) => Math.min(2, Math.round((v + 0.1) * 10) / 10))}><Text style={styles.fontButtonText}>＋</Text></Pressable>
@@ -1605,10 +1619,7 @@ export default function App() {
             <Text style={styles.playerAction}>Aa 设置</Text>
           </Pressable>
           <Pressable onPress={openSpeechSettings} style={styles.playerButton}>
-            <Text style={styles.playerAction}>声音</Text>
-          </Pressable>
-          <Pressable onPress={speakCurrentBook} style={styles.playerButton}>
-            <Text style={styles.playerAction}>{isSpeaking ? "停止" : "Kokoro朗读"}</Text>
+            <Text style={styles.playerAction}>听书</Text>
           </Pressable>
           {isSpeaking && <Pressable onPress={speechPaused ? resumeSpeech : pauseSpeech} style={styles.playerButton}>
             <Text style={styles.playerAction}>{speechPaused ? "继续" : "暂停"}</Text>
@@ -1754,8 +1765,13 @@ export default function App() {
           <View style={[styles.sourceCard, appIsDark && styles.darkCard, { marginTop: 14 }]}>
             <View style={styles.sourceListHeading}>
               <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText]}>书源列表（{sources.length}）</Text>
-              <Pressable onPress={toggleAllVisibleSources}><Text style={styles.sourceActionText}>{filteredSources.length > 0 && filteredSources.every((item) => selectedSourceIds.includes(item.id)) ? "取消全选" : "全选"}</Text></Pressable>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <Pressable onPress={() => void exportSourceFailures()}><Text style={styles.sourceActionText}>导出</Text></Pressable>
+                <Pressable onPress={() => setSourcesCollapsed((value) => !value)}><Text style={styles.sourceActionText}>{sourcesCollapsed ? "展开" : "折叠"}</Text></Pressable>
+                <Pressable onPress={toggleAllVisibleSources}><Text style={styles.sourceActionText}>{filteredSources.length > 0 && filteredSources.every((item) => selectedSourceIds.includes(item.id)) ? "取消全选" : "全选"}</Text></Pressable>
+              </View>
             </View>
+            {!sourcesCollapsed && <>
             <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
               {(["全部", "成功源", "失败源"] as const).map((filter) => <Pressable key={filter} onPress={() => setSourceFilter(filter)} style={[styles.sourceFilterButton, sourceFilter === filter && styles.sourceFilterActive]}><Text style={[styles.sourceFilterText, sourceFilter === filter && styles.sourceFilterTextActive]}>{filter}</Text></Pressable>)}
             </View>
@@ -1783,6 +1799,7 @@ export default function App() {
                 </View>
               </View>
             ))}
+            </>}
           </View>
         </ScrollView>
       )}
@@ -1837,7 +1854,7 @@ export default function App() {
           <View style={[styles.appearanceCard, appIsDark && styles.darkCard]}>
             <Text style={[styles.settingText, appIsDark && styles.darkPrimaryText]}>外观主题</Text>
             <View style={styles.appearanceOptions}>
-              {([{ value: "system", label: "跟随系统" }, { value: "light", label: "浅色" }, { value: "dark", label: "深色" }] as const).map((option) => (
+              {([{ value: "light", label: "白色主题" }, { value: "dark", label: "黑色主题" }] as const).map((option) => (
                 <Pressable key={option.value} onPress={() => setAppearanceMode(option.value)} style={[styles.appearanceOption, appearanceMode === option.value && styles.appearanceOptionActive]}>
                   <Text style={[styles.appearanceOptionText, appearanceMode === option.value && styles.appearanceOptionTextActive]}>{option.label}</Text>
                 </Pressable>
@@ -1916,6 +1933,7 @@ export default function App() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F8F7F3" },
   appDarkBackground: { backgroundColor: "#171916" },
+  darkAccentButton: { backgroundColor: "#586B50" },
   darkTopBar: { backgroundColor: "#171916" },
   darkPrimaryText: { color: "#E8E8E0" },
   darkEyebrow: { color: "#9AA394" },
