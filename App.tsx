@@ -38,7 +38,7 @@ import {
   Modal,
 } from "react-native";
 
-type Tab = "书架" | "发现" | "书源" | "我的";
+type Tab = "书架" | "搜索" | "书源" | "我的";
 type Book = {
   id: string;
   title: string;
@@ -1798,7 +1798,11 @@ export default function App() {
           <Text style={styles.eyebrow}>MY LITTLE LIBRARY</Text>
           <Text style={styles.pageTitle}>{tab}</Text>
         </View>
-        <View style={styles.avatar}><Text style={styles.avatarText}>阅</Text></View>
+        {tab === "搜索" ? (
+          <Pressable onPress={() => setTab("书源")} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "#E9E5DA" }}>
+            <Text style={{ color: "#514F45", fontSize: 13, fontWeight: "700" }}>订阅源</Text>
+          </Pressable>
+        ) : <View style={styles.avatar}><Text style={styles.avatarText}>阅</Text></View>}
       </View>
 
       {tab === "书架" && (
@@ -1843,7 +1847,7 @@ export default function App() {
         </ScrollView>
       )}
 
-      {tab === "发现" && (
+      {tab === "搜索" && (
         <ScrollView contentContainerStyle={styles.pageContent} keyboardShouldPersistTaps="handled">
           <View style={styles.welcomeCard}>
             <Text style={styles.welcomeEyebrow}>DISCOVER</Text>
@@ -1886,7 +1890,7 @@ export default function App() {
             </Pressable>
           ))}
           {!searching && onlineResults.length === 0 && !searchMessage && (
-            <Text style={styles.emptyText}>输入书名开始搜索。需要先在「书源」页导入并启用可用书源。</Text>
+            <Text style={styles.emptyText}>输入书名开始搜索。需要先在搜索页右上角「订阅源」中更新并启用可用书源。</Text>
           )}
         </ScrollView>
       )}
@@ -2039,10 +2043,10 @@ export default function App() {
       )}
 
       <View style={styles.tabBar}>
-        {(["书架", "发现", "书源", "我的"] as Tab[]).map((item) => (
+        {(["书架", "搜索", "我的"] as Tab[]).map((item) => (
           <Pressable key={item} onPress={() => { setTab(item); setQuery(""); }} style={styles.tabItem}>
             <Text style={[styles.tabIcon, tab === item && styles.tabIconActive]}>
-              {item === "书架" ? "▤" : item === "发现" ? "⌕" : item === "书源" ? "◈" : "◯"}
+              {item === "书架" ? "▤" : item === "搜索" ? "⌕" : "◯"}
             </Text>
             <Text style={[styles.tabLabel, tab === item && styles.tabLabelActive]}>{item}</Text>
           </Pressable>
