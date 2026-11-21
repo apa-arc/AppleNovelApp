@@ -2050,12 +2050,12 @@ export default function App() {
       </View>
 
       <Modal
-        visible={(appUpdateAvailable && !appUpdateDismissed) || appUpdateDownloaded}
+        visible={(appUpdateAvailable || appUpdateDownloaded) && !appUpdateDismissed}
         animationType="fade"
         transparent
         statusBarTranslucent
         onRequestClose={() => {
-          if (!appUpdateDownloaded && !appUpdateBusy) setAppUpdateDismissed(true);
+          if (!appUpdateBusy) setAppUpdateDismissed(true);
         }}
       >
         <View style={styles.forceUpdateOverlay}>
@@ -2091,7 +2091,7 @@ export default function App() {
                 <Text style={styles.forceUpdateRetryText}>重新检查更新</Text>
               </Pressable>
             ) : null}
-            {!appUpdateBusy && !appUpdateDownloaded ? (
+            {!appUpdateBusy ? (
               <Pressable style={styles.forceUpdateRetry} onPress={() => setAppUpdateDismissed(true)}>
                 <Text style={styles.forceUpdateRetryText}>稍后更新</Text>
               </Pressable>
