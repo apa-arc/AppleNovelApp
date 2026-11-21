@@ -1505,6 +1505,7 @@ export default function App() {
                   <View style={styles.sourceChoiceInfo}>
                     <Text style={styles.sourceChoiceName}>{option.summary.sourceName}</Text>
                     <Text style={styles.sourceChoiceLatency}>{option.chapterCount === null || option.chapterCount === undefined ? `${option.latencyMs} ms · ${option.chapterError ? "目录读取失败" : "尚未检测目录"}` : `${option.chapterCount} 章 · ${option.latencyMs} ms`}</Text>
+                    {!!option.chapterError && <Text style={styles.sourceChoiceLatency}>{option.chapterError}</Text>}
                   </View>
                   {isRecommended && <Text style={styles.recommendTag}>综合推荐</Text>}
                   {isSelected && <Text style={styles.selectedTag}>已选择</Text>}
