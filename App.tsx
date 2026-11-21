@@ -161,6 +161,7 @@ export default function App() {
   const [subscriptionUrl, setSubscriptionUrl] = useState(DEFAULT_SUBSCRIPTION_URL);
   const [subscriptionUrlMessage, setSubscriptionUrlMessage] = useState("");
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const defaultSubscriptionAttemptedRef = useRef(false);
   const [onlineQuery, setOnlineQuery] = useState("");
   const [onlineResults, setOnlineResults] = useState<SearchNovelGroup[]>([]);
   const [selectedSearchNovel, setSelectedSearchNovel] = useState<SearchNovelGroup | null>(null);
@@ -671,6 +672,12 @@ export default function App() {
       setSubscriptionLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!isLoaded || sources.length > 0 || subscriptionUrl !== DEFAULT_SUBSCRIPTION_URL || defaultSubscriptionAttemptedRef.current) return;
+    defaultSubscriptionAttemptedRef.current = true;
+    void importSubscriptionFromUrl("add");
+  }, [isLoaded, sources.length, subscriptionUrl]);
 
   const filteredBooks = useMemo(
     () => books.filter((book) =>
