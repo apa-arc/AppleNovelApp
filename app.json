@@ -2,7 +2,7 @@
   "expo": {
     "name": "私人小说",
     "slug": "xiaoshuo",
-    "version": "1.0.8",
+    "version": "1.0.9",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "scheme": "applenovelapp",
