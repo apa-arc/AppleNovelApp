@@ -42,3 +42,47 @@ test("rejects malformed subscription manifests and duplicate ids", () => {
   assert.equal(result.compatible.length, 1);
   assert.match(result.unsupported[0].reason, /重复 ID/);
 });
+
+test("imports the two native novel sources with path URL templates and multiple hosts", () => {
+  const sources = [
+    {
+      id: "biquluo-la", name: "壁落小说", version: "1.0.1",
+      baseUrl: "https://www.biquluo.la/", domains: ["www.biquluo.la"],
+      appConfig: {
+        searchUrl: "https://www.biquluo.la/search.html?name={keyword}",
+        bookUrl: "https://www.biquluo.la/",
+        chapterListUrl: "https://www.biquluo.la/{bookUrl}",
+        chapterUrl: "https://www.biquluo.la/{chapterUrl}",
+        htmlRules: {
+          search: { itemSelector: ".novelslist2 li", titleSelector: ".s2 a", urlSelector: ".s2 a", authorSelector: ".s4" },
+          detail: { titleSelector: "#info h1", descriptionSelector: "#intro" },
+          chapters: { itemSelector: "#list dd", titleSelector: "a", urlSelector: "a" },
+          content: { contentSelector: "#content", titleSelector: "h1" }
+        }
+      }
+    },
+    {
+      id: "diyibanzhu-111", name: "第一版主111", version: "1.0.1",
+      baseUrl: "https://m.111bz.cc/", domains: ["www.111bz.cc", "m.111bz.cc"],
+      appConfig: {
+        searchUrl: "https://m.111bz.cc/modules/article/search.php?searchkey={keyword}&searchtype=articlename&page=1",
+        bookUrl: "https://m.111bz.cc/",
+        chapterListUrl: "https://m.111bz.cc/html/{bookPath}/index.html",
+        chapterUrl: "https://m.111bz.cc/{chapterUrl}",
+        htmlRules: {
+          search: { itemSelector: "tbody#nr tr", titleSelector: "td.odd a", urlSelector: "td.odd a", authorSelector: "td.even" },
+          detail: { titleSelector: "h1", authorSelector: "#info p", descriptionSelector: "#intro" },
+          chapters: { itemSelector: "a[href$='.html']", titleSelector: ":self", urlSelector: ":self" },
+          content: { contentSelector: "#content", titleSelector: "h1" }
+        }
+      }
+    }
+  ];
+  const result = parseSourceSubscription(JSON.stringify({
+    schemaVersion: 1, subscriptionId: "apa-arc-novel-book-source", name: "小说源", sources
+  }));
+  assert.equal(result.compatible.length, 2);
+  assert.equal(result.unsupported.length, 0);
+  assert.equal(result.compatible[0].chapterListUrl, sources[0].appConfig.chapterListUrl);
+  assert.equal(result.compatible[1].chapterListUrl, sources[1].appConfig.chapterListUrl);
+});
