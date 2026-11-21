@@ -90,7 +90,7 @@ jobs:
           fi
           set -euo pipefail
           npx eas-cli update --channel "$UPDATE_CHANNEL" --message "$UPDATE_MESSAGE" --platform ios --non-interactive 2>&1 | tee "$RUNNER_TEMP/eas-update.log"
-          UPDATE_ID="$(sed -nE 's/^iOS update ID[[:space:]]+([[:xdigit:]-]+).*$/\\1/p' "$RUNNER_TEMP/eas-update.log" | tail -n 1)"
+          UPDATE_ID="$(sed -nE 's/^iOS update ID[[:space:]]+([[:xdigit:]-]+).*$/\1/p' "$RUNNER_TEMP/eas-update.log" | tail -n 1)"
           if [ -z "$UPDATE_ID" ]; then
             echo "::error::Could not read the published iOS update ID."
             exit 1
