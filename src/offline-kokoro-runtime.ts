@@ -48,6 +48,24 @@ async function findModelFile(
   return null;
 }
 
+async function findModelDirectory(
+  directory: string,
+  directoryName: string,
+  depth = 0
+): Promise<string | null> {
+  if (depth > 6) return null;
+  const entries = await loadFileSystemApi().readDir(directory);
+  for (const entry of entries) {
+    if (entry.isDirectory() && entry.name === directoryName) return entry.path;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      const found = await findModelDirectory(entry.path, directoryName, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
 async function findKokoroRuleFsts(modelDirectory: string): Promise<string> {
   const names = ["phone-zh.fst", "date-zh.fst", "number-zh.fst"];
   const paths = await Promise.all(names.map((name) => findModelFile(modelDirectory, name)));
@@ -166,6 +184,16 @@ export async function createOfflineKokoroEngine(
   modelDirectory: string
 ): Promise<OfflineKokoroEngine> {
   const ruleFsts = await findKokoroRuleFsts(modelDirectory);
+  const [int8Model, chineseLexicon, dictionaryDirectory] = await Promise.all([
+    findModelFile(modelDirectory, "model.int8.onnx"),
+    findModelFile(modelDirectory, "lexicon-zh.txt"),
+    findModelDirectory(modelDirectory, "dict"),
+  ]);
+  if (!int8Model || !chineseLexicon || !dictionaryDirectory) {
+    throw new Error(
+      "Kokoro 中文模型文件不完整：必须包含 model.int8.onnx、lexicon-zh.txt 和 dict 词典目录。请删除旧模型后重新下载。"
+    );
+  }
   const api = loadTtsApi();
   const modelPath = { type: "file" as const, path: modelDirectory };
   const detection = await api.detectTtsModel(modelPath, { modelType: "kokoro" });
