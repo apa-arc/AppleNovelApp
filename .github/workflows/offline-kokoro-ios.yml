@@ -12,6 +12,12 @@ on:
       - "app.json"
       - "App.tsx"
       - "src/reader-settings.ts"
+      - "src/speech-engine.ts"
+      - "src/speech-voice-catalog.ts"
+      - "src/wav-audio-playback.ts"
+      - "scripts/reader-settings.test.cjs"
+      - "scripts/speech-engine.test.cjs"
+      - "scripts/speech-voice-catalog.test.cjs"
       - "src/offline-kokoro-runtime.ts"
       - "src/wav-encoder.ts"
       - "scripts/wav-encoder.test.cjs"
@@ -35,6 +41,11 @@ jobs:
       - name: TypeScript and WAV encoder tests
         run: |
           npm run typecheck
+          npm run test:reader-settings
+          npm run test:speech-engine
+          npm run test:speech-voice-catalog
+          npm run test:offline-model-download
+          npm run test:speech-model-download
           npm run test:wav-encoder
       - name: Generate native iOS project
         run: npx expo prebuild --platform ios --no-install --clean
@@ -43,7 +54,8 @@ jobs:
           grep -R "RNBackgroundDownloader.setCompletionHandlerWithIdentifier" ios
           grep -R "RNBackgroundDownloader.h" ios
           grep -R "SWIFT_OBJC_BRIDGING_HEADER" ios/*.xcodeproj/project.pbxproj
-          grep -Ri "sherpa-onnx" ios/Podfile
+          node --no-warnings --eval "require('expo/bin/autolinking')" expo-modules-autolinking react-native-config --json --platform ios > /tmp/react-native-config.json
+          node -e "const c=require('/tmp/react-native-config.json'); for (const name of ['react-native-sherpa-onnx','@kesha-antonov/react-native-background-downloader']) { const p=c.dependencies?.[name]?.platforms?.ios?.podspecPath; if (!p) throw new Error(name + ' is not autolinked for iOS'); console.log(name + ': ' + p); }"
       - name: Install CocoaPods
         run: |
           cd ios
@@ -51,8 +63,8 @@ jobs:
       - name: Build iOS Simulator app without signing
         run: |
           xcodebuild \
-            -workspace ios/AppleNovelApp.xcworkspace \
-            -scheme AppleNovelApp \
+            -workspace ios/app.xcworkspace \
+            -scheme app \
             -sdk iphonesimulator \
             -configuration Debug \
             -derivedDataPath build/ios \
