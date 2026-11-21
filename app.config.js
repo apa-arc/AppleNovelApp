@@ -1,12 +1,15 @@
 module.exports = ({ config }) => {
-  const projectId = process.env.EAS_PROJECT_ID || config.extra?.eas?.projectId;
+  // Keep the existing EAS project linked in every environment, including
+  // non-interactive EAS Build workers where EAS_PROJECT_ID may be unset.
+  const projectId =
+    process.env.EAS_PROJECT_ID ||
+    config.extra?.eas?.projectId ||
+    "b4d937a0-68db-426d-8114-c4b41cc1d9d4";
   const extra = { ...(config.extra || {}) };
   const updates = { ...(config.updates || {}) };
 
-  if (projectId) {
-    extra.eas = { ...(extra.eas || {}), projectId };
-    updates.url = "https://u.expo.dev/" + projectId;
-  }
+  extra.eas = { ...(extra.eas || {}), projectId };
+  updates.url = "https://u.expo.dev/" + projectId;
 
   // The unsigned GitHub IPA build does not run through EAS Build, so
   // explicitly embed its update channel. EAS builds keep using eas.json.
