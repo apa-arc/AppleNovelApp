@@ -34,3 +34,5 @@ test("search uses bounded client and maps result", async () => {
 test("empty keyword is rejected", async () => {
   await assert.rejects(searchNovelSource(source," ",{get:async()=>{throw Error("unexpected");}}),/请输入小说名称/);
 });
+
+test("replaces page placeholder in search templates",()=>{assert.equal(buildSearchRequestUrl("https://books.example/search?keyword={keyword}&page={page}","斗罗大陆"),"https://books.example/search?keyword=%E6%96%97%E7%BD%97%E5%A4%A7%E9%99%86&page=1");});
