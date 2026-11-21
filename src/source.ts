@@ -14,6 +14,15 @@ export type NovelSource = {
   remoteSourceId?: string;
   remoteVersion?: string;
   healthStatus?: "success" | "failed";
+  healthLevel?: "完全可用" | "部分可用" | "不可用";
+  healthCheckedAt?: number;
+  healthStages?: {
+    connection: { ok: boolean; message: string };
+    search: { ok: boolean; message: string };
+    detail: { ok: boolean; message: string };
+    chapters: { ok: boolean; message: string };
+    content: { ok: boolean; message: string };
+  };
   healthMessage?: string;
   /** Built-in offline fixture; never imported from untrusted source JSON. */
   isBuiltinMock?: boolean;
