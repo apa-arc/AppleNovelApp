@@ -409,7 +409,7 @@ export default function App() {
       if (!active) return;
       console.error("[KOKORO_NATIVE_UNAVAILABLE]", error instanceof Error ? error.message : String(error));
       setOfflineModelStatus("unavailable");
-      setOfflineModelError(error instanceof Error ? error.message : "当前构建暂未包含 Kokoro 原生引擎。");
+      setOfflineModelError(error instanceof Error ? error.message : "当前构建暂未包含离线听书引擎。");
     });
     return () => { active = false; };
   }, [isLoaded]);
@@ -976,9 +976,9 @@ export default function App() {
 
   const synthesizeKokoroChunk = async (text: string, voiceId: string): Promise<Uint8Array> => {
     const voice = SPEECH_VOICES.find((item) => item.id === voiceId);
-    if (!voice) throw new Error("所选 Kokoro 音色不存在。");
+    if (!voice) throw new Error("所选中文声音不存在。");
     if (offlineModelStatus !== "installed" || !offlineModelPath) {
-      throw new Error("Kokoro 离线模型尚未安装。请先在声音设置中下载模型；下载完成后无需联网即可朗读。");
+      throw new Error("离线听书模型尚未安装，模型准备完成后即可断网听书。");
     }
     if (!offlineEngineRef.current) {
       offlineEngineRef.current = await createOfflineKokoroEngine(offlineModelPath);
@@ -1204,15 +1204,15 @@ export default function App() {
     speechPausedRef.current = false;
     try {
       const voice = SPEECH_VOICES.find((item) => item.id === voiceId);
-      const bytes = await synthesizeKokoroChunk("你好，欢迎使用私人小说。这是一段 Kokoro 离线音色试听。", voiceId);
+      const bytes = await synthesizeKokoroChunk("你好，欢迎使用私人小说。这是一段中文听书声音试听。", voiceId);
       if (runId !== speechRunIdRef.current) return;
-      const playback = await playWavAudio(bytes, { title: "Kokoro 音色试听", artist: voice?.label || "私人小说" });
+      const playback = await playWavAudio(bytes, { title: "中文声音试听", artist: voice?.label || "私人小说" });
       speechPlaybackRef.current = playback;
       if (speechPausedRef.current) playback.pause();
       await playback.finished;
     } catch (error) {
       if (runId === speechRunIdRef.current) {
-        Alert.alert("音色试听失败", error instanceof Error ? error.message : "请检查 Kokoro 离线模型。");
+        Alert.alert("音色试听失败", error instanceof Error ? error.message : "请检查离线听书模型。");
       }
     } finally {
       if (runId === speechRunIdRef.current) {
@@ -1251,7 +1251,7 @@ export default function App() {
       }
     } catch (error) {
       if (runId === speechRunIdRef.current) {
-        Alert.alert("Kokoro 朗读失败", error instanceof Error ? error.message : "请检查 Kokoro 离线模型是否安装。");
+        Alert.alert("听书播放失败", error instanceof Error ? error.message : "请检查离线听书模型是否安装。");
       }
     } finally {
       if (runId === speechRunIdRef.current) {
@@ -1560,7 +1560,7 @@ export default function App() {
               <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>中文男声 / 中文女声 · 本地离线合成</Text>
               <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 8 }]}>完全本地生成语音，不使用苹果系统朗读，不连接云端 AI 服务。首次下载模型后即可断网朗读。</Text>
               <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText, { marginTop: 14 }]}>离线模型</Text>
-              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 5 }]}>{offlineModelStatus === "checking" ? "正在检查本地模型…" : offlineModelStatus === "installed" ? "模型已安装 · 103 种音色可离线使用" : offlineModelStatus === "downloading" ? "正在" + (offlineModelPhase === "extracting" || offlineModelPhase === "extracting_resume_skipping" ? "解压" : "下载") + " · " + Math.round(offlineModelProgress) + "%" : offlineModelStatus === "paused" ? "下载已暂停，可继续上次任务" : offlineModelStatus === "unavailable" ? "当前构建尚未包含 Kokoro 原生引擎" : offlineModelStatus === "failed" ? "模型准备失败，可重试" : "尚未下载 · 需要时可手动下载约 147 MB 模型"}</Text>
+              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 5 }]}>{offlineModelStatus === "checking" ? "正在检查本地模型…" : offlineModelStatus === "installed" ? "模型已安装 · 103 种音色可离线使用" : offlineModelStatus === "downloading" ? "正在" + (offlineModelPhase === "extracting" || offlineModelPhase === "extracting_resume_skipping" ? "解压" : "下载") + " · " + Math.round(offlineModelProgress) + "%" : offlineModelStatus === "paused" ? "下载已暂停，可继续上次任务" : offlineModelStatus === "unavailable" ? "当前构建尚未包含 Kokoro 原生引擎" : offlineModelStatus === "failed" ? "模型准备失败，可重试" : "模型未安装，正在自动准备约 147 MB 的离线文件"}</Text>
               {(offlineModelStatus === "downloading" || offlineModelStatus === "installed" || offlineModelStatus === "paused") && <View style={{ height: 6, borderRadius: 4, backgroundColor: "#E5E6DF", overflow: "hidden", marginTop: 8 }}><View style={{ height: 6, width: (Math.round(offlineModelProgress) + "%") as any, backgroundColor: "#7D8B70" }} /></View>}
               {!!offlineModelError && <Text style={[styles.note, { color: "#B45B4A", marginTop: 5 }]}>{offlineModelError}</Text>}
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 9 }}>
