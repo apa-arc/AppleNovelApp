@@ -6,7 +6,6 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as SecureStore from "expo-secure-store";
 import { NovelSource, parseNovelSourceJsonBatch } from "./src/source";
-import { BUILTIN_MOCK_SOURCE, createBuiltinMockSourceClient } from "./src/mock-source";
 import { parseSourceSubscription } from "./src/source-subscription";
 import { searchNovelSource } from "./src/source-search";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
@@ -38,7 +37,7 @@ import {
   Modal,
 } from "react-native";
 
-type Tab = "书架" | "搜索" | "书源" | "我的";
+type Tab = "书架" | "搜索" | "源" | "我的";
 type Book = {
   id: string;
   title: string;
@@ -64,8 +63,6 @@ type Book = {
 const STORAGE_KEY = "@private_novel/books_v1";
 const SOURCES_STORAGE_KEY = "@private_novel/sources_v1";
 const SUBSCRIPTION_URLS_STORAGE_KEY = "@private_novel/subscription_urls_v1";
-const DEFAULT_NORMAL_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/app-subscription.json";
-const DEFAULT_ADULT_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/adult-app-subscription.json";
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
 const SPEECH_AUDIO_LIBRARY_STORAGE_KEY = "@private_novel/speech_audio_library_v1";
@@ -118,9 +115,6 @@ const SAMPLE_BOOKS: Book[] = [
   },
 ];
 
-function getSourceClient(source: NovelSource) {
-  return source.isBuiltinMock ? createBuiltinMockSourceClient(source) : undefined;
-}
 
 function getOnlineBookId(title: string, author: string): string {
   return "online:" + normalizeNovelTitle(title) + "::" + normalizeNovelTitle(author);
@@ -243,10 +237,9 @@ export default function App() {
   const [sources, setSources] = useState<NovelSource[]>([]);
   const [sourceDraft, setSourceDraft] = useState("");
   const [sourceMessage, setSourceMessage] = useState("");
-  const [normalSubscriptionUrl, setNormalSubscriptionUrl] = useState(DEFAULT_NORMAL_SUBSCRIPTION_URL);
-  const [adultSubscriptionUrl, setAdultSubscriptionUrl] = useState(DEFAULT_ADULT_SUBSCRIPTION_URL);
+  const [subscriptionUrl, setSubscriptionUrl] = useState("");
   const [subscriptionUrlMessage, setSubscriptionUrlMessage] = useState("");
-  const [subscriptionLoading, setSubscriptionLoading] = useState<"normal" | "adult" | null>(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const [onlineQuery, setOnlineQuery] = useState("");
   const [sourceSearchMode, setSourceSearchMode] = useState<"normal" | "adult">("normal");
   const [onlineResults, setOnlineResults] = useState<SearchNovelGroup[]>([]);
@@ -385,25 +378,20 @@ export default function App() {
         if (savedSources && active) {
           const parsedSources: unknown = JSON.parse(savedSources);
           if (Array.isArray(parsedSources)) {
-            const storedSources = parsedSources as NovelSource[];
-            const storedMock = storedSources.find((item) => item.id === BUILTIN_MOCK_SOURCE.id);
-            setSources([
-              storedMock ? { ...BUILTIN_MOCK_SOURCE, enabled: storedMock.enabled !== false } : BUILTIN_MOCK_SOURCE,
-              ...storedSources.filter((item) => item.id !== BUILTIN_MOCK_SOURCE.id),
-            ]);
+            setSources(parsedSources as NovelSource[]);
           } else {
-            setSources([BUILTIN_MOCK_SOURCE]);
+            setSources([]);
           }
         } else if (active) {
-          setSources([BUILTIN_MOCK_SOURCE]);
+          setSources([]);
         }
         const savedSubscriptionUrls = await AsyncStorage.getItem(SUBSCRIPTION_URLS_STORAGE_KEY);
         if (savedSubscriptionUrls && active) {
           const parsedUrls: unknown = JSON.parse(savedSubscriptionUrls);
           if (parsedUrls && typeof parsedUrls === "object") {
-            const urls = parsedUrls as { normal?: unknown; adult?: unknown };
-            if (typeof urls.normal === "string") setNormalSubscriptionUrl(urls.normal);
-            if (typeof urls.adult === "string") setAdultSubscriptionUrl(urls.adult);
+            const urls = parsedUrls as { url?: unknown; normal?: unknown };
+            if (typeof urls.url === "string") setSubscriptionUrl(urls.url);
+            else if (typeof urls.normal === "string" && urls.normal !== DEFAULT_NORMAL_SUBSCRIPTION_URL) setSubscriptionUrl(urls.normal);
           }
         }
         const savedHistory = await AsyncStorage.getItem(READING_HISTORY_STORAGE_KEY);
@@ -442,10 +430,10 @@ export default function App() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    AsyncStorage.setItem(SUBSCRIPTION_URLS_STORAGE_KEY, JSON.stringify({ normal: normalSubscriptionUrl, adult: adultSubscriptionUrl })).catch(() => {
+    AsyncStorage.setItem(SUBSCRIPTION_URLS_STORAGE_KEY, JSON.stringify({ url: subscriptionUrl })).catch(() => {
       setSubscriptionUrlMessage("订阅地址保存失败，请稍后重试。");
     });
-  }, [normalSubscriptionUrl, adultSubscriptionUrl, isLoaded]);
+  }, [subscriptionUrl, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -570,10 +558,10 @@ export default function App() {
     }
   };
 
-  const importSubscriptionFromUrl = async (group: "normal" | "adult") => {
+  const importSubscriptionFromUrl = async () => {
     if (subscriptionLoading) return;
-    const address = (group === "adult" ? adultSubscriptionUrl : normalSubscriptionUrl).trim();
-    setSubscriptionLoading(group);
+    const address = subscriptionUrl.trim();
+    setSubscriptionLoading(true);
     setSubscriptionUrlMessage("");
     try {
       const url = new URL(address);
@@ -602,8 +590,6 @@ export default function App() {
       const raw = await response.text();
       if (raw.length > 2 * 1024 * 1024) throw new Error("订阅文件超过 2 MB 限制。");
       const subscription = parseSourceSubscription(raw);
-      const isAdult = subscription.subscriptionId.toLowerCase().includes("adult") || /成人/.test(subscription.name);
-      if (isAdult !== (group === "adult")) throw new Error(group === "adult" ? "此地址不是成人订阅，已阻止导入。" : "此地址是成人订阅，请使用成人订阅入口导入。");
       if (subscription.compatible.length === 0) {
         setSubscriptionUrlMessage(subscription.name + " 已连接，但目前没有可导入的兼容书源。" + (subscription.unsupported.length ? " 已跳过 " + subscription.unsupported.length + " 个不兼容条目。" : ""));
         return;
@@ -623,7 +609,7 @@ export default function App() {
             id: existing.id,
             enabled: existing.enabled,
             importedAt: existing.importedAt,
-            subscriptionGroup: group,
+            subscriptionGroup: "normal",
             subscriptionId: subscription.subscriptionId,
             remoteSourceId: remoteId,
             remoteVersion: version,
@@ -637,7 +623,7 @@ export default function App() {
             id: "sub:" + subscription.subscriptionId + ":" + remoteId,
             enabled: true,
             importedAt,
-            subscriptionGroup: group,
+            subscriptionGroup: "normal",
             subscriptionId: subscription.subscriptionId,
             remoteSourceId: remoteId,
             remoteVersion: version,
@@ -650,7 +636,7 @@ export default function App() {
     } catch (error) {
       setSubscriptionUrlMessage(error instanceof Error ? error.message : "订阅导入失败，请检查地址和网络。");
     } finally {
-      setSubscriptionLoading(null);
+      setSubscriptionLoading(false);
     }
   };
 
@@ -668,16 +654,16 @@ export default function App() {
       setOnlineResults([]);
       return;
     }
-    const enabledSources = sources.filter((source) => source.enabled && (source.subscriptionGroup || "normal") === sourceSearchMode);
+    const enabledSources = sources.filter((source) => source.enabled);
     if (enabledSources.length === 0) {
-      setSearchMessage((sourceSearchMode === "adult" ? "成人" : "普通") + "书源还没有启用项。请先到「书源」页面更新对应订阅并启用书源。");
+      setSearchMessage("还没有启用的书源。请先到「源」页面添加订阅。");
       setOnlineResults([]);
       setSearchSummary("");
       return;
     }
     setSearching(true);
     setSearchMessage("");
-    setSearchSummary("正在向 " + enabledSources.length + " 个" + (sourceSearchMode === "adult" ? "成人" : "普通") + "书源发起搜索…");
+    setSearchSummary("正在向 " + enabledSources.length + " 个书源发起搜索…");
     setOnlineResults([]);
     const settled = await Promise.allSettled(enabledSources.map(async (source) => {
       const startedAt = Date.now();
@@ -1819,8 +1805,8 @@ export default function App() {
           <Text style={styles.pageTitle}>{tab}</Text>
         </View>
         {tab === "搜索" ? (
-          <Pressable onPress={() => setTab("书源")} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "#E9E5DA" }}>
-            <Text style={{ color: "#514F45", fontSize: 13, fontWeight: "700" }}>订阅源</Text>
+          <Pressable onPress={() => setTab("源")} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "#E9E5DA" }}>
+            <Text style={{ color: "#514F45", fontSize: 13, fontWeight: "700" }}>源</Text>
           </Pressable>
         ) : <View style={styles.avatar}><Text style={styles.avatarText}>阅</Text></View>}
       </View>
@@ -1872,17 +1858,9 @@ export default function App() {
           <View style={styles.welcomeCard}>
             <Text style={styles.welcomeEyebrow}>DISCOVER</Text>
             <Text style={styles.welcomeTitle}>搜索你想读的小说。</Text>
-            <Text style={styles.welcomeSub}>普通与成人书源分开搜索，结果会自动去重。</Text>
+            <Text style={styles.welcomeSub}>所有订阅书源统一搜索，结果会自动去重。</Text>
           </View>
           <View style={styles.onlineSearchCard}>
-            <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
-              <Pressable style={[styles.themeButton, sourceSearchMode === "normal" && styles.modeButtonActive]} onPress={() => { setSourceSearchMode("normal"); setOnlineResults([]); setSearchMessage(""); }}>
-                <Text style={styles.fontButtonText}>普通书源</Text>
-              </Pressable>
-              <Pressable style={[styles.themeButton, sourceSearchMode === "adult" && styles.modeButtonActive]} onPress={() => { setSourceSearchMode("adult"); setOnlineResults([]); setSearchMessage(""); }}>
-                <Text style={styles.fontButtonText}>成人书源</Text>
-              </Pressable>
-            </View>
             <TextInput
               value={onlineQuery}
               onChangeText={(value) => { setOnlineQuery(value); setSearchMessage(""); }}
@@ -1910,69 +1888,34 @@ export default function App() {
             </Pressable>
           ))}
           {!searching && onlineResults.length === 0 && !searchMessage && (
-            <Text style={styles.emptyText}>输入书名开始搜索。需要先在搜索页右上角「订阅源」中更新并启用可用书源。</Text>
+            <Text style={styles.emptyText}>输入书名开始搜索。需要先在搜索页右上角「源」中添加书源订阅。</Text>
           )}
         </ScrollView>
       )}
 
-      {tab === "书源" && (
-        <ScrollView contentContainerStyle={styles.pageContent}>
-          <View style={styles.welcomeCard}>
-            <Text style={styles.welcomeEyebrow}>SOURCES</Text>
-            <Text style={styles.welcomeTitle}>管理你的阅读来源。</Text>
-            <Text style={styles.welcomeSub}>管理普通与成人订阅，书源保存在本机。</Text>
-          </View>
+      {tab === "源" && (
+        <ScrollView contentContainerStyle={styles.pageContent} keyboardShouldPersistTaps="handled">
           <View style={styles.sourceCard}>
-            <Text style={styles.sourceTitle}>订阅管理</Text>
-            <Text style={styles.note}>普通和成人订阅完全分开。更新订阅只更新对应来源，保留你手动启用/停用的状态；成人源不会混入普通搜索。</Text>
-            <Text style={styles.settingsLabel}>普通书源订阅</Text>
-            <TextInput value={normalSubscriptionUrl} onChangeText={setNormalSubscriptionUrl} placeholder="普通订阅 HTTPS 地址" placeholderTextColor="#A39F94" autoCapitalize="none" autoCorrect={false} keyboardType="url" style={[styles.searchInput, { marginTop: 6 }]} />
-            <Pressable style={[styles.importButton, subscriptionLoading !== null && styles.importButtonDisabled]} disabled={subscriptionLoading !== null} onPress={() => void importSubscriptionFromUrl("normal")}>
-              {subscriptionLoading === "normal" ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>更新普通订阅</Text>}
-            </Pressable>
-            <Text style={[styles.settingsLabel, { marginTop: 14 }]}>成人书源订阅（独立）</Text>
-            <TextInput value={adultSubscriptionUrl} onChangeText={setAdultSubscriptionUrl} placeholder="成人订阅 HTTPS 地址" placeholderTextColor="#A39F94" autoCapitalize="none" autoCorrect={false} keyboardType="url" style={[styles.searchInput, { marginTop: 6 }]} />
-            <Pressable style={[styles.importButton, subscriptionLoading !== null && styles.importButtonDisabled]} disabled={subscriptionLoading !== null} onPress={() => void importSubscriptionFromUrl("adult")}>
-              {subscriptionLoading === "adult" ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>更新成人订阅</Text>}
+            <Text style={styles.sourceTitle}>添加订阅</Text>
+            <TextInput
+              value={subscriptionUrl}
+              onChangeText={(value) => { setSubscriptionUrl(value); setSubscriptionUrlMessage(""); }}
+              placeholder="请输入书源订阅链接"
+              placeholderTextColor="#A39F94"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              style={[styles.searchInput, { marginTop: 8 }]}
+            />
+            <Pressable
+              style={[styles.importButton, (!subscriptionUrl.trim() || subscriptionLoading) && styles.importButtonDisabled]}
+              disabled={!subscriptionUrl.trim() || subscriptionLoading}
+              onPress={() => void importSubscriptionFromUrl()}
+            >
+              {subscriptionLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>添加订阅</Text>}
             </Pressable>
             {!!subscriptionUrlMessage && <Text style={styles.sourceMessage}>{subscriptionUrlMessage}</Text>}
           </View>
-          <View style={styles.sourceCard}>
-            <Text style={styles.sourceTitle}>导入 JSON 书源</Text>
-            <Text style={styles.note}>支持单个/批量 JSON 配置，也可粘贴仓库订阅清单。订阅中只有提供完整 JSON 接口配置的书源会导入；脚本规则会跳过，不执行任意代码。</Text>
-            <Pressable style={styles.exampleButton} onPress={() => { setSourceDraft(SOURCE_EXAMPLE); setSourceMessage("已填入示例模板，请替换为你有权访问的网站地址。"); }}>
-              <Text style={styles.exampleButtonText}>填入 JSON 示例</Text>
-            </Pressable>
-            <TextInput value={sourceDraft} onChangeText={(value) => { setSourceDraft(value); setSourceMessage(""); }} placeholder="粘贴 JSON 书源配置或订阅清单…" placeholderTextColor="#A39F94" multiline autoCapitalize="none" style={styles.sourceInput} textAlignVertical="top" />
-            <Pressable style={[styles.importButton, !sourceDraft.trim() && styles.importButtonDisabled]} disabled={!sourceDraft.trim()} onPress={importSource}>
-              <Text style={styles.importButtonText}>校验并批量导入</Text>
-            </Pressable>
-            {!!sourceMessage && <Text style={styles.sourceMessage}>{sourceMessage}</Text>}
-          </View>
-          <View style={styles.sourceListHeading}>
-            <Text style={styles.sectionTitle}>已导入书源</Text>
-            <Text style={styles.sectionMeta}>{sources.filter((item) => item.enabled).length} / {sources.length} 个启用</Text>
-          </View>
-          {sources.length === 0 ? (
-            <Text style={styles.emptyText}>还没有书源。你可以先用上方示例了解格式。</Text>
-          ) : sources.map((source) => (
-            <View key={source.id} style={styles.sourceItem}>
-              <View style={styles.sourceItemInfo}>
-                <Text style={styles.sourceItemTitle}>{source.name} · {source.subscriptionGroup === "adult" ? "成人" : "普通"}</Text>
-                <Text style={styles.sourceItemUrl} numberOfLines={1}>{source.isBuiltinMock ? "本地模拟 · 不访问网络" : source.baseUrl}</Text>
-                <Text style={styles.sourceItemStatus}>{source.isBuiltinMock ? "内置测试源 · 搜索“星海来信”可体验完整阅读流程" : source.enabled ? "已启用 · 搜索和目录请求会使用此书源" : "已停用"}</Text>
-              </View>
-              <View style={styles.sourceItemActions}>
-                <Pressable onPress={() => setSources((current) => current.map((item) => item.id === source.id ? { ...item, enabled: !item.enabled } : item))} style={styles.sourceAction}>
-                  <Text style={styles.sourceActionText}>{source.enabled ? "停用" : "启用"}</Text>
-                </Pressable>
-                {!source.isBuiltinMock && <Pressable onPress={() => Alert.alert("删除书源", "确定删除「" + source.name + "」吗？", [{ text: "取消", style: "cancel" }, { text: "删除", style: "destructive", onPress: () => setSources((current) => current.filter((item) => item.id !== source.id)) }])} style={styles.sourceAction}>
-                  <Text style={styles.sourceDeleteText}>删除</Text>
-                </Pressable>}
-              </View>
-            </View>
-          ))}
-          <Text style={styles.note}>安全提示：只导入你有权使用的书源。当前仅接受 HTTPS 公网地址，不支持本机/局域网地址；不会执行书源附带的脚本。</Text>
         </ScrollView>
       )}
 
