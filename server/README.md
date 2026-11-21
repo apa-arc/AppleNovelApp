@@ -19,7 +19,7 @@ docker compose up -d --build
 # openssl rand -hex 24
 ```
 
-The Compose file keeps model weights and enrolled-device token hashes in persistent Docker volumes. By default, the HTTP port is bound to localhost only. Put it behind an HTTPS reverse proxy or access it through your private VPN; do not expose port 8000 directly to the public internet.
+The Compose file keeps model weights and enrolled-device token hashes in persistent Docker volumes. By default, the HTTP port is bound to localhost only. Put it behind an HTTPS reverse proxy on the same host, then expose that proxy only through your private VPN or another access-controlled path; do not expose port 8000 directly to the public internet.
 
 The first start downloads the upstream sherpa-onnx Kokoro int8 archive (about 147 MB), verifies its pinned SHA-256 digest, extracts it into the volume, and checks that all model, dictionary, lexicon, and rule-FST assets exist before starting the service. Later starts reuse the verified model.
 
@@ -38,6 +38,7 @@ Example:
 ```bash
 curl -X POST http://localhost:8000/v1/audio/speech \
   -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $DEVICE_TOKEN" \
   -d '{"model":"kokoro-multi-lang-v1_1","speaker_id":3,"text":"你好，欢迎使用私人小说。","speed":1.0}' \
   --output sample.wav
 ```
