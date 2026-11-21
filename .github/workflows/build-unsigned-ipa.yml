@@ -65,6 +65,7 @@ jobs:
           '
       - name: Generate iOS runtime fingerprint
         env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
           APP_UPDATE_CHANNEL: production
         run: |
@@ -77,7 +78,7 @@ jobs:
               console.error("Unexpected fingerprint output:", JSON.stringify(data).slice(0, 1000));
               process.exit(1);
             }
-            fs.appendFileSync(process.env.GITHUB_ENV, "IOS_RUNTIME_FINGERPRINT=" + hash + "\\n");
+            fs.appendFileSync(process.env.GITHUB_ENV, "IOS_RUNTIME_FINGERPRINT=" + hash + "\n");
             console.log("Resolved iOS runtime fingerprint:", hash);
           '
 
