@@ -163,10 +163,42 @@ export default function App() {
   }, []);
   useEffect(() => {
     let active = true;
-    void AsyncStorage.getItem(SPEECH_AUDIO_LIBRARY_STORAGE_KEY).then((raw) => {
+    void AsyncStorage.getItem(SPEECH_AUDIO_LIBRARY_STORAGE_KEY).then(async (raw) => {
       if (!active) return;
-      try { setSpeechAudioEntries(normalizeSpeechAudioEntries(raw ? JSON.parse(raw) : [])); }
-      catch { setSpeechAudioEntries([]); }
+      let entries: SpeechAudioEntry[] = [];
+      try { entries = normalizeSpeechAudioEntries(raw ? JSON.parse(raw) : []); }
+      catch { entries = []; }
+
+      // Reconcile the metadata index with files actually present on disk.
+      // This also removes orphaned partial WAV files left by an interrupted download.
+      const directory = FileSystem.documentDirectory ? FileSystem.documentDirectory + "speech-audio/" : null;
+      if (directory) {
+        const validEntries: SpeechAudioEntry[] = [];
+        const knownFiles = new Set<string>();
+        for (const entry of entries) {
+          const files = await Promise.all(entry.files.map(async (uri) => {
+            if (!uri.startsWith(directory)) return false;
+            const info = await FileSystem.getInfoAsync(uri).catch(() => null);
+            return !!info?.exists && !info.isDirectory;
+          }));
+          if (files.every(Boolean)) {
+            validEntries.push(entry);
+            entry.files.forEach((uri) => knownFiles.add(uri));
+          } else {
+            await Promise.all(entry.files
+              .filter((uri) => uri.startsWith(directory))
+              .map((uri) => FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined)));
+          }
+        }
+        const storedNames = await FileSystem.readDirectoryAsync(directory).catch(() => []);
+        await Promise.all(storedNames
+          .filter((name) => name.endsWith(".wav") && !knownFiles.has(directory + name))
+          .map((name) => FileSystem.deleteAsync(directory + name, { idempotent: true }).catch(() => undefined)));
+        entries = validEntries;
+      }
+
+      if (!active) return;
+      setSpeechAudioEntries(entries);
       setSpeechAudioLibraryLoaded(true);
     }).catch(() => { if (active) setSpeechAudioLibraryLoaded(true); });
     return () => { active = false; };
