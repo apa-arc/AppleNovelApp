@@ -107,6 +107,7 @@ export default function App() {
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [readingHistory, setReadingHistory] = useState<ReadingHistoryEntry[]>([]);
+  const [showReadingHistory, setShowReadingHistory] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -170,7 +171,6 @@ export default function App() {
   const [onlineChapterContent, setOnlineChapterContent] = useState("");
   const [onlineChapterTitle, setOnlineChapterTitle] = useState("");
   const [loadingOnlineChapter, setLoadingOnlineChapter] = useState(false);
-  const [rankingChapterCounts, setRankingChapterCounts] = useState(false);
   const [openedFromShelf, setOpenedFromShelf] = useState(false);
   const [checkingSubscription, setCheckingSubscription] = useState(false);
   const [appUpdateAvailable, setAppUpdateAvailable] = useState(false);
@@ -683,56 +683,53 @@ export default function App() {
     setOnlineResults(groupedResults);
     setSearching(false);
     setSearchSummary("搜索完成：成功 " + (enabledSources.length - failed) + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。");
-    setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（目前仅支持常见 JSON 列表）。" : "点击小说名称查看介绍并选择阅读源；系统会优先推荐本次响应最快的来源。");
+    setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（目前仅支持常见 JSON 列表）。" : "点击小说名称即可自动获取可用阅读源和章节目录。");
+  };
+
+  const loadNovelCatalogFor = async (novel: SearchNovelGroup) => {
+    setLoadingCatalog(true);
+    setCatalogMessage("");
+    setSelectedSourceId(null);
+    setLoadedNovelDetail(null);
+    setLoadedChapters([]);
+    const candidates = [...novel.sources]
+      .filter((option) => sources.some((source) => source.id === option.summary.sourceId && source.enabled))
+      .sort((a, b) => a.latencyMs - b.latencyMs);
+    let lastError = "没有可用的已启用书源。";
+    try {
+      for (const option of candidates) {
+        const source = sources.find((item) => item.id === option.summary.sourceId && item.enabled);
+        if (!source) continue;
+        try {
+          const chapters = await fetchNovelChapterList(source, option.summary, getSourceClient(source));
+          if (!chapters.length) throw new Error("该书源没有返回章节目录。");
+          let detail: NovelDetail | null = null;
+          try { detail = await fetchNovelDetail(source, option.summary, getSourceClient(source)); } catch {
+            // Description is optional; a valid chapter list is enough to read.
+          }
+          setSelectedSourceId(source.id);
+          setLoadedNovelDetail(detail);
+          setLoadedChapters(chapters);
+          setSelectedSearchNovel((current) => current?.id === novel.id ? {
+            ...current,
+            sources: current.sources.map((item) => item.summary.sourceId === source.id
+              ? { ...item, chapterCount: chapters.length, chapterError: undefined }
+              : item),
+          } : current);
+          return;
+        } catch (error) {
+          lastError = error instanceof Error ? error.message : "书源目录读取失败。";
+        }
+      }
+      setCatalogMessage(candidates.length ? "暂时无法自动获取小说目录，请稍后重试。" : lastError);
+    } finally { setLoadingCatalog(false); }
   };
 
   const openSearchNovel = (novel: SearchNovelGroup) => {
     setSelectedSearchNovel(novel);
-    setSelectedSourceId(novel.sources[0]?.summary.sourceId ?? null);
-  };
-
-  const rankSourcesByChapterCount = async () => {
-    if (!selectedSearchNovel || rankingChapterCounts) return;
-    setRankingChapterCounts(true);
-    setCatalogMessage("正在逐个读取各书源目录，统计章节数量…");
-    try {
-      const ranked = await Promise.all(selectedSearchNovel.sources.map(async (option) => {
-        const source = sources.find((item) => item.id === option.summary.sourceId);
-        if (!source || !source.enabled) return { ...option, chapterCount: null, chapterError: "书源未启用或已不存在。" };
-        try {
-          const chapters = await fetchNovelChapterList(source, option.summary, getSourceClient(source));
-          return { ...option, chapterCount: chapters.length, chapterError: undefined };
-        } catch (error) {
-          return { ...option, chapterCount: null, chapterError: error instanceof Error ? error.message : "目录读取失败。" };
-        }
-      }));
-      const valid = ranked.filter((item) => item.chapterCount !== null && item.chapterCount !== undefined);
-      const speedOrder = [...ranked].sort((a, b) => a.latencyMs - b.latencyMs);
-      const chapterOrder = [...valid].sort((a, b) => (b.chapterCount ?? 0) - (a.chapterCount ?? 0));
-      const speedRanks = new Map(speedOrder.map((item, index) => [item.summary.sourceId, index]));
-      const chapterRanks = new Map(chapterOrder.map((item, index) => [item.summary.sourceId, index]));
-      const sorted = [...ranked].sort((a, b) => {
-        const ar = chapterRanks.get(a.summary.sourceId);
-        const br = chapterRanks.get(b.summary.sourceId);
-        if (ar === undefined) return 1;
-        if (br === undefined) return -1;
-        const as = (speedRanks.get(a.summary.sourceId) ?? ranked.length) + ar;
-        const bs = (speedRanks.get(b.summary.sourceId) ?? ranked.length) + br;
-        return as - bs || a.latencyMs - b.latencyMs;
-      });
-      setSelectedSearchNovel({ ...selectedSearchNovel, sources: sorted });
-      if (valid.length > 0) {
-        setSelectedSourceId(sorted[0].summary.sourceId);
-        setLoadedNovelDetail(null);
-        setLoadedChapters([]);
-      }
-      const failed = ranked.length - valid.length;
-      setCatalogMessage("目录统计完成：成功 " + valid.length + " 个，失败 " + failed + " 个。" + (failed > 0 ? "失败原因已显示在对应书源下方。" : "所有书源目录均已读取。"));
-    } catch (error) {
-      setCatalogMessage(error instanceof Error ? "目录统计异常：" + error.message : "目录统计异常，请稍后重试。");
-    } finally {
-      setRankingChapterCounts(false);
-    }
+    setSelectedSourceId(null);
+    setCatalogMessage("");
+    void loadNovelCatalogFor(novel);
   };
 
   const saveOnlineBookToShelf = () => {
@@ -776,43 +773,7 @@ export default function App() {
   };
 
   const loadSelectedNovelCatalog = async () => {
-    if (!selectedSearchNovel || !selectedSourceId) return;
-    const option = selectedSearchNovel.sources.find((item) => item.summary.sourceId === selectedSourceId);
-    const source = sources.find((item) => item.id === selectedSourceId);
-    if (!option || !source || !source.enabled) {
-      setCatalogMessage("当前书源不可用，请重新选择一个已启用的书源。");
-      return;
-    }
-    setLoadingCatalog(true);
-    setCatalogMessage("正在获取小说详情和章节目录…");
-    setLoadedNovelDetail(null);
-    setLoadedChapters([]);
-    try {
-      const [detail, chapters] = await Promise.all([
-        fetchNovelDetail(source, option.summary, getSourceClient(source)),
-        fetchNovelChapterList(source, option.summary, getSourceClient(source)),
-      ]);
-      setLoadedNovelDetail(detail);
-      setLoadedChapters(chapters);
-      setSelectedSearchNovel((current) => current ? ({
-        ...current,
-        sources: current.sources.map((item) => item.summary.sourceId === selectedSourceId
-          ? { ...item, chapterCount: chapters.length, chapterError: undefined }
-          : item),
-      }) : current);
-      setCatalogMessage("获取成功，共 " + chapters.length + " 章。");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "获取详情或目录失败，请尝试其他书源。";
-      setSelectedSearchNovel((current) => current ? ({
-        ...current,
-        sources: current.sources.map((item) => item.summary.sourceId === selectedSourceId
-          ? { ...item, chapterCount: null, chapterError: message }
-          : item),
-      }) : current);
-      setCatalogMessage(message);
-    } finally {
-      setLoadingCatalog(false);
-    }
+    if (selectedSearchNovel) await loadNovelCatalogFor(selectedSearchNovel);
   };
 
   const openOnlineChapter = async (chapter: NovelChapter) => {
@@ -990,7 +951,7 @@ export default function App() {
     if (!book.onlineSourceId || !book.onlineSummary) return null;
     const source = sources.find((item) => item.id === book.onlineSourceId && item.enabled);
     if (!source) {
-      Alert.alert("书源不可用", "这本小说订阅的书源已停用或删除。请先重新启用书源，或重新选择阅读源。");
+      Alert.alert("书源不可用", "这本小说的阅读源已停用或删除，请到书源列表启用后重试。");
       return null;
     }
     setCheckingSubscription(true);
@@ -1317,14 +1278,40 @@ export default function App() {
     );
   }
 
+  if (showReadingHistory && !selectedBook && !selectedSearchNovel) {
+    return (
+      <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
+        <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
+        <View style={[styles.detailHeader, appIsDark && styles.darkTopBar]}>
+          <Pressable onPress={() => setShowReadingHistory(false)}><Text style={[styles.backText, appIsDark && styles.darkSecondaryText]}>‹ 返回我的</Text></Pressable>
+          <Text style={[styles.readerHeaderTitle, appIsDark && styles.darkSecondaryText]}>最近阅读</Text>
+          <View style={{ width: 64 }} />
+        </View>
+        <ScrollView contentContainerStyle={styles.pageContent}>
+          <View style={styles.sectionHeading}>
+            <Text style={[styles.sectionTitle, appIsDark && styles.darkPrimaryText]}>最近阅读</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Text style={[styles.sectionMeta, appIsDark && styles.darkMutedText]}>{readingHistory.length} 条记录</Text>
+              {readingHistory.length > 0 && <Pressable onPress={() => Alert.alert("清空阅读记录", "只清除阅读历史，不会删除书架中的小说。", [{ text: "取消", style: "cancel" }, { text: "清空", style: "destructive", onPress: () => setReadingHistory([]) }])}><Text style={styles.sourceActionText}>清空</Text></Pressable>}
+            </View>
+          </View>
+          {readingHistory.length === 0 ? <Text style={styles.emptyText}>还没有阅读记录，打开一本小说后会自动记录。</Text> : readingHistory.map((entry) => (
+            <Pressable key={entry.bookId} style={[styles.historyRow, appIsDark && styles.darkCard]} onPress={() => { setShowReadingHistory(false); resumeReadingHistory(entry); }}>
+              <View style={styles.historyInfo}>
+                <Text style={[styles.bookTitle, appIsDark && styles.darkPrimaryText]}>{entry.title}</Text>
+                <Text style={[styles.bookAuthor, appIsDark && styles.darkSecondaryText]}>{entry.author} · {entry.chapterTitle}</Text>
+                <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${entry.progress}%` as `${number}%` }]} /></View>
+                <Text style={[styles.progressText, appIsDark && styles.darkMutedText]}>已读 {entry.progress}% · {new Date(entry.updatedAt).toLocaleString()}</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   if (selectedSearchNovel && !selectedBook) {
-    const sortedSources = [...selectedSearchNovel.sources].sort((a, b) => {
-      if (a.chapterCount === null || a.chapterCount === undefined) return 1;
-      if (b.chapterCount === null || b.chapterCount === undefined) return -1;
-      return a.latencyMs - b.latencyMs;
-    });
-    const recommended = sortedSources[0];
-    const activeSource = selectedSearchNovel.sources.find((item) => item.summary.sourceId === selectedSourceId) || recommended;
     return (
       <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
         <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
@@ -1338,50 +1325,20 @@ export default function App() {
             <Text style={[styles.detailTitle, appIsDark && styles.darkPrimaryText]}>{selectedSearchNovel.title}</Text>
             <Text style={[styles.detailAuthor, appIsDark && styles.darkSecondaryText]}>{selectedSearchNovel.author || "未知作者"}</Text>
           </View>
-          <View style={[styles.detailSection, appIsDark && styles.darkCard]}>
-            <Text style={[styles.sectionTitle, appIsDark && styles.darkPrimaryText]}>小说介绍</Text>
-            <Text style={[styles.detailDescription, appIsDark && styles.darkSecondaryText]}>{loadedNovelDetail?.description || selectedSearchNovel.description || "这个书源没有提供小说简介。"} </Text>
-          </View>
-          <View style={[styles.detailSection, appIsDark && styles.darkCard]}>
-            <Text style={[styles.sectionTitle, appIsDark && styles.darkPrimaryText]}>选择阅读源</Text>
-            <Text style={[styles.note, appIsDark && styles.darkMutedText]}>综合推荐同时考虑搜索响应速度和目录章节数量。点击下方按钮统计各源目录并生成综合排名。</Text>
-            <Pressable onPress={rankSourcesByChapterCount} disabled={rankingChapterCounts} style={[styles.onlineSearchButton, appIsDark && styles.darkAccentButton, rankingChapterCounts && styles.importButtonDisabled]}>
-              {rankingChapterCounts ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>生成综合推荐排序</Text>}
-            </Pressable>
-            {sortedSources.map((option, index) => {
-              const isRecommended = index === 0 && option.chapterCount !== null && option.chapterCount !== undefined;
-              const isSelected = option.summary.sourceId === activeSource?.summary.sourceId;
-              return (
-                <Pressable key={option.summary.sourceId} onPress={() => {
-                  setSelectedSourceId(option.summary.sourceId);
-                  setLoadedNovelDetail(null);
-                  setLoadedChapters([]);
-                  setCatalogMessage("");
-                }} style={[styles.sourceChoice, appIsDark && styles.darkCard, isSelected && (appIsDark ? styles.darkSourceChoiceSelected : styles.sourceChoiceSelected)]}>
-                  <View style={styles.sourceChoiceInfo}>
-                    <Text style={[styles.sourceChoiceName, appIsDark && styles.darkPrimaryText]}>{option.summary.sourceName}</Text>
-                    <Text style={[styles.sourceChoiceLatency, appIsDark && styles.darkMutedText]}>{option.chapterCount === null || option.chapterCount === undefined ? `${option.latencyMs} ms · ${option.chapterError ? "目录读取失败" : "尚未检测目录"}` : `${option.chapterCount} 章 · ${option.latencyMs} ms`}</Text>
-                    {!!option.chapterError && <Text style={[styles.sourceChoiceLatency, appIsDark && styles.darkMutedText]}>{option.chapterError}</Text>}
-                  </View>
-                  {isRecommended && <Text style={styles.recommendTag}>综合推荐</Text>}
-                  {isSelected && <Text style={styles.selectedTag}>已选择</Text>}
-                </Pressable>
-              );
-            })}
-          </View>
-          {!!activeSource && (
+          {loadingCatalog && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={[styles.note, appIsDark && styles.darkMutedText]}>正在自动获取小说目录…</Text></View>}
+          {!!catalogMessage && !loadingCatalog && (
             <View style={[styles.detailSection, appIsDark && styles.darkCard]}>
-              <Text style={[styles.sectionTitle, appIsDark && styles.darkPrimaryText]}>真实小说目录</Text>
-              <Text style={[styles.note, appIsDark && styles.darkMutedText]}>当前选择：{activeSource.summary.sourceName}。点击下方按钮，从所选书源获取详情和目录。</Text>
-              <Pressable style={[styles.onlineSearchButton, appIsDark && styles.darkAccentButton, loadingCatalog && styles.importButtonDisabled]} onPress={loadSelectedNovelCatalog} disabled={loadingCatalog}>
-                {loadingCatalog ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>获取小说详情和目录</Text>}
+              <Text style={[styles.searchFeedback, appIsDark && styles.darkMutedText]}>{catalogMessage}</Text>
+              <Pressable style={[styles.onlineSearchButton, appIsDark && styles.darkAccentButton]} onPress={() => void loadSelectedNovelCatalog()}>
+                <Text style={styles.importButtonText}>重新自动获取</Text>
               </Pressable>
-              {!!catalogMessage && <Text style={[styles.searchFeedback, appIsDark && styles.darkMutedText]}>{catalogMessage}</Text>}
-              {!!loadedChapters.length && (
-                <Pressable style={styles.catalogLoadButton} onPress={saveOnlineBookToShelf}>
-                  <Text style={styles.importButtonText}>{books.some((book) => book.id === getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author)) ? "更新书架信息" : "加入本地书架"}</Text>
-                </Pressable>
-              )}
+            </View>
+          )}
+          {!!loadedChapters.length && (
+            <>
+              <Pressable style={styles.catalogLoadButton} onPress={saveOnlineBookToShelf}>
+                <Text style={styles.importButtonText}>{books.some((book) => book.id === getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author)) ? "更新书架信息" : "加入本地书架"}</Text>
+              </Pressable>
               {loadedChapters.map((chapter) => (
                 <Pressable key={chapter.id} onPress={() => openOnlineChapter(chapter)} disabled={loadingOnlineChapter} style={[styles.chapterRow, appIsDark && styles.darkCard]}>
                   <Text style={[styles.chapterRowTitle, appIsDark && styles.darkPrimaryText]}>{chapter.title}</Text>
@@ -1389,8 +1346,7 @@ export default function App() {
                 </Pressable>
               ))}
               {loadingOnlineChapter && <ActivityIndicator color="#65745D" style={{ marginVertical: 12 }} />}
-              {!!loadedChapters.length && <Text style={[styles.note, appIsDark && styles.darkMutedText]}>点击任意章节即可加载正文。当前内容由所选书源实时获取。</Text>}
-            </View>
+            </>
           )}
         </ScrollView>
       </SafeAreaView>
@@ -1702,11 +1658,6 @@ export default function App() {
 
       {tab === "搜索" && (
         <ScrollView contentContainerStyle={styles.pageContent} keyboardShouldPersistTaps="handled">
-          <View style={[styles.welcomeCard, appIsDark && styles.darkCard]}>
-            <Text style={styles.welcomeEyebrow}>DISCOVER</Text>
-            <Text style={[styles.welcomeTitle, appIsDark && styles.darkPrimaryText]}>搜索你想读的小说。</Text>
-            <Text style={[styles.welcomeSub, appIsDark && styles.darkSecondaryText]}>所有订阅书源统一搜索，结果会自动去重。</Text>
-          </View>
           <View style={[styles.onlineSearchCard, appIsDark && styles.darkCard]}>
             <TextInput
               value={onlineQuery}
@@ -1721,7 +1672,6 @@ export default function App() {
             <Pressable style={[styles.onlineSearchButton, searching && styles.importButtonDisabled]} onPress={searchOnlineNovels} disabled={searching}>
               {searching ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>搜索小说</Text>}
             </Pressable>
-            <Text style={[styles.note, appIsDark && styles.darkMutedText]}>所有合并订阅中的书源统一搜索；不会执行第三方 JavaScript。</Text>
           </View>
           {!!searchSummary && <Text style={styles.searchSummary}>{searchSummary}</Text>}
           {searching && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={styles.note}>正在搜索，请稍候…</Text></View>}
@@ -1799,7 +1749,7 @@ export default function App() {
                 </View>
                 <View style={styles.sourceItemActions}>
                   <Pressable style={styles.sourceAction} disabled={testingSourceIds.includes(source.id)} onPress={() => void testOneSource(source)}><Text style={styles.sourceActionText}>{testingSourceIds.includes(source.id) ? "检测中" : "测试"}</Text></Pressable>
-                  <Pressable style={styles.sourceAction} onPress={() => setSources((current) => current.map((item) => item.id === source.id ? { ...item, enabled: !item.enabled } : item))}><Text style={styles.sourceActionText}>{source.enabled ? "停用" : "启用"}</Text></Pressable>
+                  <Pressable style={styles.sourceAction} onPress={() => setSources((current) => current.map((item) => item.id === source.id ? { ...item, enabled: !item.enabled } : item))}><Text style={styles.sourceActionText}>{source.enabled ? "选中不使用" : "选中使用"}</Text></Pressable>
                   <Pressable onPress={() => Alert.alert("删除书源", "确定删除「" + source.name + "」？", [{ text: "取消", style: "cancel" }, { text: "删除", style: "destructive", onPress: () => { setSources((current) => current.filter((item) => item.id !== source.id)); setSelectedSourceIds((current) => current.filter((id) => id !== source.id)); } }])}><Text style={styles.sourceDeleteText}>删除</Text></Pressable>
                 </View>
               </View>
@@ -1816,24 +1766,13 @@ export default function App() {
             <Text style={[styles.profileTitle, appIsDark && styles.darkPrimaryText]}>我的阅读空间</Text>
             <Text style={[styles.note, appIsDark && styles.darkMutedText]}>本地阅读器 · 持续开发中</Text>
           </View>
-          <View style={styles.sectionHeading}>
-            <Text style={[styles.sectionTitle, appIsDark && styles.darkPrimaryText]}>最近阅读</Text>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <Text style={[styles.sectionMeta, appIsDark && styles.darkMutedText]}>{readingHistory.length} 条记录</Text>
-              {readingHistory.length > 0 && <Pressable onPress={() => Alert.alert("清空阅读记录", "只清除阅读历史，不会删除书架中的小说。", [{ text: "取消", style: "cancel" }, { text: "清空", style: "destructive", onPress: () => setReadingHistory([]) }])}><Text style={styles.sourceActionText}>清空</Text></Pressable>}
+          <Pressable style={[styles.settingRow, appIsDark && styles.darkCard]} onPress={() => setShowReadingHistory(true)}>
+            <Text style={[styles.settingText, appIsDark && styles.darkPrimaryText]}>最近阅读</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={[styles.settingValue, appIsDark && styles.darkSecondaryText]}>{readingHistory.length} 条记录</Text>
+              <Text style={[styles.chevron, appIsDark && styles.darkMutedText]}>›</Text>
             </View>
-          </View>
-          {readingHistory.length === 0 ? <Text style={styles.emptyText}>还没有阅读记录，打开一本小说后会自动记录。</Text> : readingHistory.map((entry) => (
-            <Pressable key={entry.bookId} style={[styles.historyRow, appIsDark && styles.darkCard]} onPress={() => resumeReadingHistory(entry)}>
-              <View style={styles.historyInfo}>
-                <Text style={[styles.bookTitle, appIsDark && styles.darkPrimaryText]}>{entry.title}</Text>
-                <Text style={[styles.bookAuthor, appIsDark && styles.darkSecondaryText]}>{entry.author} · {entry.chapterTitle}</Text>
-                <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${entry.progress}%` as `${number}%` }]} /></View>
-                <Text style={[styles.progressText, appIsDark && styles.darkMutedText]}>已读 {entry.progress}% · {new Date(entry.updatedAt).toLocaleString()}</Text>
-              </View>
-              <Text style={styles.chevron}>›</Text>
-            </Pressable>
-          ))}
+          </Pressable>
           <View style={[styles.updateCard, appIsDark && styles.darkCard]}>
             <View style={styles.updateHeader}>
               <Pressable accessibilityRole="button" accessibilityLabel="检测应用更新" disabled={appUpdateBusy} onPress={() => void checkForAppUpdate(false)} style={styles.updateIcon}><Text style={styles.updateIconText}>↻</Text></Pressable>
