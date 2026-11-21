@@ -15,6 +15,17 @@ on:
       - "package-lock.json"
       - "eas.json"
       - ".github/workflows/build-unsigned-ipa.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "app.json"
+      - "assets/icon.png.base64"
+      - "app.config.js"
+      - "package.json"
+      - "package-lock.json"
+      - "eas.json"
+      - ".github/workflows/build-unsigned-ipa.yml"
   workflow_dispatch:
 
 concurrency:
