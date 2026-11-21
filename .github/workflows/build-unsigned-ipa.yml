@@ -180,7 +180,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.app-version.outputs.version }}-build.${{ github.run_number }}
-          name: AppleNovelApp v${{ steps.app-version.outputs.version }}（构建 ${{ github.run_number }}）
+          name: AppleNovelApp v${{ steps.app-version.outputs.version }}
           body: |
             本版本由 GitHub Actions 自动构建。
 
