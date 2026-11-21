@@ -7,6 +7,8 @@ on:
     paths:
       - "App.tsx"
       - "src/**"
+      - "assets/**"
+      - ".github/workflows/publish-update.yml"
   workflow_dispatch:
     inputs:
       channel:
