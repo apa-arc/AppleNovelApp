@@ -1973,14 +1973,14 @@ export default function App() {
                 {appUpdateDownloaded
                   ? "更新包已下载完成。重启应用后将自动切换到新版本。"
                   : appUpdateBusy
-                    ? "正在下载更新资源，请保持网络连接。下载过程中暂不显示虚假百分比。"
+                    ? appUpdateStatus
                     : appUpdateStatus}
               </Text>
             </View>
             {appUpdateBusy ? (
               <View style={styles.forceUpdateProgress}>
                 <ActivityIndicator size="small" color="#FFFFFF" />
-                <Text style={styles.forceUpdateProgressText}>正在下载更新资源…</Text>
+                <Text style={styles.forceUpdateProgressText}>{appUpdateStatus}</Text>
               </View>
             ) : appUpdateDownloaded ? (
               <Pressable style={styles.forceUpdateButton} onPress={applyAppUpdate}>
