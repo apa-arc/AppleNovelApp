@@ -1972,9 +1972,7 @@ export default function App() {
               <Text style={styles.forceUpdateNoticeText}>
                 {appUpdateDownloaded
                   ? "更新包已下载完成。重启应用后将自动切换到新版本。"
-                  : appUpdateBusy
-                    ? appUpdateStatus
-                    : appUpdateStatus}
+                  : appUpdateStatus}
               </Text>
             </View>
             {appUpdateBusy ? (
