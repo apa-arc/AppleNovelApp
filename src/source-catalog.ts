@@ -95,16 +95,17 @@ function replaceTemplate(template: string, values: Record<string, string>): stri
     // Search results already contain absolute HTTPS URLs. Do not percent-encode
     // an entire URL into a path; pass it through so the bounded HTTP client can
     // validate its origin against the source's configured endpoints.
-    const replacement = /^https:\/\//i.test(value)
+    const tokenIndex = output.indexOf(token);
+    const prefix = output.slice(0, tokenIndex);
+    const suffix = output.slice(tokenIndex + token.length);
+    const absoluteUrlAsTarget = /^https:\/\//i.test(value) &&
+      /^https:\/\/[^/]+\/?$/i.test(prefix) && suffix.length === 0;
+    const replacement = absoluteUrlAsTarget
       ? value
       : key === "bookPath"
         ? value.split("/").map(encodeURIComponent).join("/")
         : encodeURIComponent(value);
     output = output.split(token).join(replacement);
-    if (/^https:\/\//i.test(value)) {
-      // A URL token represents the complete target, not a path/query fragment.
-      output = replacement;
-    }
     replaced = true;
   }
   return replaced ? output : null;
