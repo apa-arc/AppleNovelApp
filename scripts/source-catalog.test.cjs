@@ -90,3 +90,15 @@ test("resolves the First Edition mobile TOC path from its detail URL", async () 
   await fetchNovelChapterList(mobileSource, mobileSummary, client);
   assert.equal(requested, "https://m.111bz.cc/html/7/7116/index.html");
 });
+
+test("keeps absolute chapter URLs encoded when a source uses a query parameter", async () => {
+  const querySource = { ...source, chapterUrl: "https://books.example/read?url={chapterUrl}" };
+  const chapter = { id: "s1:c", novelId: summary.id, title: "第一章", url: "https://books.example/chapter/1" };
+  let requested = "";
+  const client = { get: async (_endpoint, url) => {
+    requested = url;
+    return { url, body: JSON.stringify({ title: "第一章", content: "正文" }) };
+  } };
+  await fetchNovelChapterContent(querySource, chapter, client);
+  assert.equal(requested, "https://books.example/read?url=https%3A%2F%2Fbooks.example%2Fchapter%2F1");
+});
