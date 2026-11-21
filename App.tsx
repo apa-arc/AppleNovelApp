@@ -77,6 +77,7 @@ type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCou
 type SearchNovelGroup = { id: string; title: string; author: string; description: string; coverUrl?: string; sources: SearchSourceOption[] };
 type SearchLogEntry = { id: string; sourceId: string; sourceName: string; keyword: string; ok: boolean; resultCount: number; error?: string; searchedAt: number };
 type Chapter = { title: string; content: string };
+const HOT_SEARCH_TERMS = ["斗罗大陆", "斗破苍穹", "凡人修仙传", "仙逆", "遮天", "诡秘之主"];
 const SAMPLE_CHAPTERS: Chapter[] = [
   { title: "第一章 · 故事的开始", content: "清晨的光从窗边慢慢铺开，新的旅程也在这一刻开始。\n\n这是用于测试阅读器的演示章节。正式接入书源后，这里会显示所选小说的真实章节正文。\n\n阅读器会记录你读到的章节，方便下次从上次的位置继续。\n\n请注意：当前内容仅为应用内置演示文本，并非真实小说正文。" },
   { title: "第二章 · 远方来信", content: "桌面上多了一封没有署名的信。信纸很薄，字迹却清晰。\n\n这是一段演示文本，用来检查章节切换、目录跳转和阅读位置保存是否正常。\n\n真正的章节内容将在后续接入经过授权的在线书源或用户导入的本地文本后展示。" },
@@ -1998,6 +1999,17 @@ export default function App() {
             <Pressable style={[styles.onlineSearchButton, searching && styles.importButtonDisabled]} onPress={searchOnlineNovels} disabled={searching}>
               {searching ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>搜索小说</Text>}
             </Pressable>
+          </View>
+          <View style={{ marginBottom: 18 }}>
+            <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText, { marginBottom: 11 }]}>热门搜索</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
+              {HOT_SEARCH_TERMS.map((item, index) => (
+                <Pressable key={item} onPress={() => { setOnlineQuery(item); void searchOnlineNovels(item); }} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 13, paddingVertical: 9, borderRadius: 18, backgroundColor: appIsDark ? "#30362F" : "#F0F0EB", borderWidth: 1, borderColor: appIsDark ? "#41483F" : "#E8E7E0" }}>
+                  <Text style={{ color: index < 3 ? "#A66D62" : (appIsDark ? "#E8E8E0" : "#55564E"), fontSize: 11, fontWeight: "800", marginRight: 6 }}>{index + 1}</Text>
+                  <Text style={{ color: appIsDark ? "#E8E8E0" : "#55564E", fontSize: 12 }}>{item}</Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
           {searchHistory.length > 0 && (
             <View style={{ marginBottom: 18 }}>
