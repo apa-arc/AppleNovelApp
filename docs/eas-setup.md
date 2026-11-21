@@ -17,8 +17,9 @@ The app config reads `EAS_PROJECT_ID` and sets both `extra.eas.projectId` and `u
 2. Add `EAS_PROJECT_ID` as a GitHub Actions repository variable and `EXPO_TOKEN` as a repository secret. Never commit the token.
 3. Run **Build iOS app** with the production profile and wait for a successful build. Install that build on an iPhone before expecting OTA delivery; an existing binary without the matching Updates URL/runtime cannot receive these updates.
 4. Run **Publish OTA update** and select the same channel used by the installed build (normally `production`). Enter concise release notes.
-5. Open the installed app, allow its startup check to finish, and verify that the update can be downloaded and applied after restart.
+5. Open the installed app, allow its startup check to finish, and verify that the update can be downloaded and applied after restart. The update center shows the app version and whether Expo Updates is enabled.
 6. Publish a second small update to verify the full repeatable release loop.
+7. The GitHub OTA workflow runs TypeScript checks and the App feature test suite before publishing, validates the resolved EAS project ID/update URL/runtime version, and publishes only the iOS platform.
 
 The app deliberately uses `checkAutomatically: "NEVER"` because it performs its own startup check after local app data loads and exposes a manual check in「我的」. This avoids competing automatic checks.
 
