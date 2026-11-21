@@ -67,10 +67,12 @@ const SOURCES_STORAGE_KEY = "@private_novel/sources_v1";
 const SUBSCRIPTION_URLS_STORAGE_KEY = "@private_novel/subscription_urls_v1";
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
+const SEARCH_LOGS_STORAGE_KEY = "@private_novel/search_logs_v1";
 const SHELF_VIEW_STORAGE_KEY = "@private_novel/shelf_view_v1";
 const APPEARANCE_STORAGE_KEY = "@private_novel/appearance_v1";
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
 type SearchNovelGroup = { id: string; title: string; author: string; description: string; sources: SearchSourceOption[] };
+type SearchLogEntry = { id: string; sourceId: string; sourceName: string; keyword: string; ok: boolean; resultCount: number; error?: string; searchedAt: number };
 type Chapter = { title: string; content: string };
 const SAMPLE_CHAPTERS: Chapter[] = [
   { title: "第一章 · 故事的开始", content: "清晨的光从窗边慢慢铺开，新的旅程也在这一刻开始。\n\n这是用于测试阅读器的演示章节。正式接入书源后，这里会显示所选小说的真实章节正文。\n\n阅读器会记录你读到的章节，方便下次从上次的位置继续。\n\n请注意：当前内容仅为应用内置演示文本，并非真实小说正文。" },
@@ -158,6 +160,10 @@ export default function App() {
   const [selectedSearchNovel, setSelectedSearchNovel] = useState<SearchNovelGroup | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
+  const [searchLogs, setSearchLogs] = useState<SearchLogEntry[]>([]);
+  const [showSearchLogs, setShowSearchLogs] = useState(false);
+  const [searchLogFilter, setSearchLogFilter] = useState<"成功" | "失败">("成功");
+  const [selectedSearchLogIds, setSelectedSearchLogIds] = useState<string[]>([]);
   const [searchMessage, setSearchMessage] = useState("");
   const [searchSummary, setSearchSummary] = useState("");
   const [loadedNovelDetail, setLoadedNovelDetail] = useState<NovelDetail | null>(null);
@@ -309,6 +315,11 @@ export default function App() {
         if (savedShelfView === "grid" || savedShelfView === "list") setShelfView(savedShelfView);
         const savedAppearance = await AsyncStorage.getItem(APPEARANCE_STORAGE_KEY);
         setAppearanceMode(savedAppearance === "dark" ? "dark" : "light");
+        const savedSearchLogs = await AsyncStorage.getItem(SEARCH_LOGS_STORAGE_KEY);
+        if (savedSearchLogs && active) {
+          const parsedLogs: unknown = JSON.parse(savedSearchLogs);
+          if (Array.isArray(parsedLogs)) setSearchLogs(parsedLogs as SearchLogEntry[]);
+        }
         const savedHistory = await AsyncStorage.getItem(READING_HISTORY_STORAGE_KEY);
         if (savedHistory && active) setReadingHistory(normalizeReadingHistory(JSON.parse(savedHistory)));
         const savedReaderSettings = await AsyncStorage.getItem(READER_SETTINGS_STORAGE_KEY);
@@ -363,6 +374,11 @@ export default function App() {
     if (!isLoaded) return;
     AsyncStorage.setItem(APPEARANCE_STORAGE_KEY, appearanceMode).catch(() => undefined);
   }, [appearanceMode, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem(SEARCH_LOGS_STORAGE_KEY, JSON.stringify(searchLogs.slice(0, 500))).catch(() => undefined);
+  }, [searchLogs, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -658,12 +674,18 @@ export default function App() {
     }));
     const groups = new Map<string, SearchNovelGroup>();
     let failed = 0;
-    settled.forEach((result) => {
+    const completedAt = Date.now();
+    const nextSearchLogs: SearchLogEntry[] = [];
+    settled.forEach((result, index) => {
+      const source = enabledSources[index];
       if (result.status !== "fulfilled") {
         failed += 1;
+        const reason = result.reason instanceof Error ? result.reason.message : String(result.reason || "搜索请求失败");
+        nextSearchLogs.push({ id: completedAt + ":" + index + ":" + source.id, sourceId: source.id, sourceName: source.name, keyword, ok: false, resultCount: 0, error: reason, searchedAt: completedAt });
         return;
       }
       const { page, latencyMs } = result.value;
+      nextSearchLogs.push({ id: completedAt + ":" + index + ":" + source.id, sourceId: source.id, sourceName: source.name, keyword, ok: true, resultCount: page.items.length, searchedAt: completedAt });
       page.items.forEach((item) => {
         const key = [normalizeNovelTitle(item.title), normalizeNovelTitle(item.author)].join("::");
         const existing = groups.get(key);
@@ -680,6 +702,7 @@ export default function App() {
       ...group,
       sources: [...group.sources].sort((a, b) => a.latencyMs - b.latencyMs),
     }));
+    setSearchLogs((current) => [...nextSearchLogs, ...current].slice(0, 500));
     setOnlineResults(groupedResults);
     setSearching(false);
     setSearchSummary("搜索完成：成功 " + (enabledSources.length - failed) + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。");
