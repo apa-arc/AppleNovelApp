@@ -164,6 +164,8 @@ export default function App() {
   const defaultSubscriptionAttemptedRef = useRef(false);
   const [onlineQuery, setOnlineQuery] = useState("");
   const [onlineResults, setOnlineResults] = useState<SearchNovelGroup[]>([]);
+  const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, boolean>>({});
+  const [chapterSortOrder, setChapterSortOrder] = useState<"asc" | "desc">("asc");
   const [selectedSearchNovel, setSelectedSearchNovel] = useState<SearchNovelGroup | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
@@ -823,6 +825,14 @@ export default function App() {
       return existing ? current.map((book) => book.id === id ? nextBook : book) : [nextBook, ...current];
     });
     setCatalogMessage("已加入本地书架。下次打开会从上次阅读的章节继续。");
+  };
+
+  const addCurrentBookToShelf = () => {
+    if (!selectedBook) return;
+    setBooks((current) => current.some((book) => book.id === selectedBook.id)
+      ? current.map((book) => book.id === selectedBook.id ? { ...book, ...selectedBook } : book)
+      : [selectedBook, ...current]);
+    Alert.alert("已加入书架", "这本小说已保存到本地书架，之后可以从书架继续阅读。");
   };
 
   const closeSearchNovel = () => {
@@ -1501,6 +1511,7 @@ export default function App() {
   }
 
   if (selectedSearchNovel && !selectedBook) {
+    const detailChapters = [...loadedChapters].sort((a, b) => chapterSortOrder === "asc" ? a.index - b.index : b.index - a.index);
     return (
       <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
         <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
@@ -1510,28 +1521,61 @@ export default function App() {
           <View style={{ width: 64 }} />
         </View>
         <ScrollView contentContainerStyle={styles.pageContent}>
-          <View style={[styles.detailHero, appIsDark && styles.darkCard]}>
-            <Text style={[styles.detailTitle, appIsDark && styles.darkPrimaryText]}>{selectedSearchNovel.title}</Text>
-            <Text style={[styles.detailAuthor, appIsDark && styles.darkSecondaryText]}>{selectedSearchNovel.author || "未知作者"}</Text>
+          <View style={[styles.detailHero, appIsDark && styles.darkCard, { flexDirection: "row", alignItems: "center", gap: 16 }]}>
+            {selectedSearchNovel.coverUrl && !failedCoverUrls[selectedSearchNovel.coverUrl] ? (
+              <Image source={{ uri: selectedSearchNovel.coverUrl }} style={{ width: 104, height: 142, borderRadius: 10, backgroundColor: "#EAE9E1" }} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [selectedSearchNovel.coverUrl as string]: true }))} />
+            ) : (
+              <View style={{ width: 104, height: 142, borderRadius: 10, backgroundColor: "#DDE4D6", alignItems: "center", justifyContent: "center", padding: 9 }}>
+                <Text style={{ color: "#394336", fontWeight: "800", textAlign: "center" }} numberOfLines={4}>{selectedSearchNovel.title}</Text>
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.detailTitle, appIsDark && styles.darkPrimaryText]}>{loadedNovelDetail?.title || selectedSearchNovel.title}</Text>
+              <Text style={[styles.detailAuthor, appIsDark && styles.darkSecondaryText]}>作者：{loadedNovelDetail?.author || selectedSearchNovel.author || "未知作者"}</Text>
+              {!!loadedNovelDetail?.status && <Text style={[styles.detailAuthor, appIsDark && styles.darkSecondaryText]}>{loadedNovelDetail.status === "completed" ? "已完结" : loadedNovelDetail.status === "serializing" ? "连载中" : "状态未知"}</Text>}
+              {!!loadedNovelDetail?.wordCount && <Text style={[styles.detailAuthor, appIsDark && styles.darkSecondaryText]}>{loadedNovelDetail.wordCount.toLocaleString()} 字</Text>}
+            </View>
           </View>
-          {loadingCatalog && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={[styles.note, appIsDark && styles.darkMutedText]}>正在自动获取小说目录…</Text></View>}
+          <View style={[styles.detailSection, appIsDark && styles.darkCard]}>
+            <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText]}>小说介绍</Text>
+            <Text style={[styles.detailDescription, appIsDark && styles.darkSecondaryText]}>{loadedNovelDetail?.description || selectedSearchNovel.description || "暂未获取到小说介绍。"}</Text>
+          </View>
+          {loadingCatalog && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={[styles.note, appIsDark && styles.darkMutedText]}>正在获取作者介绍和章节目录…</Text></View>}
           {!!catalogMessage && !loadingCatalog && (
             <View style={[styles.detailSection, appIsDark && styles.darkCard]}>
               <Text style={[styles.searchFeedback, appIsDark && styles.darkMutedText]}>{catalogMessage}</Text>
               <Pressable style={[styles.onlineSearchButton, appIsDark && styles.darkAccentButton]} onPress={() => void loadSelectedNovelCatalog()}>
-                <Text style={styles.importButtonText}>重新自动获取</Text>
+                <Text style={styles.importButtonText}>重新获取详情和目录</Text>
               </Pressable>
             </View>
           )}
           {!!loadedChapters.length && (
-            <View style={{ gap: 10 }}>
-              <Pressable style={styles.catalogLoadButton} onPress={() => void openOnlineChapter(loadedChapters[0])} disabled={loadingOnlineChapter}>
-                <Text style={styles.importButtonText}>{loadingOnlineChapter ? "正在打开…" : "开始阅读"}</Text>
-              </Pressable>
-              <Pressable style={[styles.catalogLoadButton, appIsDark && styles.darkCard]} onPress={saveOnlineBookToShelf}>
-                <Text style={[styles.importButtonText, appIsDark && styles.darkPrimaryText]}>{books.some((book) => book.id === getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author)) ? "更新书架信息" : "加入本地书架"}</Text>
-              </Pressable>
-            </View>
+            <>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+                <View>
+                  <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText]}>章节目录</Text>
+                  <Text style={[styles.note, appIsDark && styles.darkMutedText]}>共 {loadedChapters.length} 章</Text>
+                </View>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <Pressable style={[styles.themeButton, chapterSortOrder === "asc" && styles.modeButtonActive]} onPress={() => setChapterSortOrder("asc")}><Text style={styles.fontButtonText}>正序</Text></Pressable>
+                  <Pressable style={[styles.themeButton, chapterSortOrder === "desc" && styles.modeButtonActive]} onPress={() => setChapterSortOrder("desc")}><Text style={styles.fontButtonText}>倒序</Text></Pressable>
+                </View>
+              </View>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Pressable style={[styles.catalogLoadButton, { flex: 1 }]} onPress={() => void openOnlineChapter(detailChapters[0])} disabled={loadingOnlineChapter}>
+                  <Text style={styles.importButtonText}>{loadingOnlineChapter ? "正在打开…" : "从第一章开始"}</Text>
+                </Pressable>
+                <Pressable style={[styles.catalogLoadButton, { flex: 1, backgroundColor: "#EEF0E9" }, appIsDark && styles.darkCard]} onPress={saveOnlineBookToShelf}>
+                  <Text style={[styles.fontButtonText]}>{books.some((book) => book.id === getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author)) ? "更新书架" : "加入书架"}</Text>
+                </Pressable>
+              </View>
+              {detailChapters.map((chapter, index) => (
+                <Pressable key={chapter.id} onPress={() => void openOnlineChapter(chapter)} disabled={loadingOnlineChapter} style={[styles.chapterRow, appIsDark && styles.darkCard]}>
+                  <Text style={[styles.chapterRowTitle, appIsDark && styles.darkPrimaryText]}>{chapter.title}</Text>
+                  <Text style={styles.chapterRowMeta}>{index + 1}</Text>
+                </Pressable>
+              ))}
+            </>
           )}
           {loadingOnlineChapter && <ActivityIndicator color="#65745D" style={{ marginVertical: 12 }} />}
         </ScrollView>
@@ -1557,6 +1601,7 @@ export default function App() {
         {readerChromeVisible && <View style={styles.readerHeader}>
           <Pressable onPress={closeReader}><Text style={styles.backText}>‹ 返回</Text></Pressable>
           <Text style={[styles.readerHeaderTitle, readerTheme === "night" && styles.nightMuted]}>正在阅读</Text>
+          {onlineReading && !books.some((book) => book.id === currentBook.id) && <Pressable onPress={addCurrentBookToShelf}><Text style={styles.headerAction}>加入书架</Text></Pressable>}
           {onlineReading && (
             <Pressable disabled={checkingSubscription} onPress={() => { if (currentBook) void checkOnlineSubscription(currentBook, true); }}>
               <Text style={[styles.headerAction, checkingSubscription && styles.disabledText]}>{checkingSubscription ? "检查中…" : "检查更新"}</Text>
@@ -1570,7 +1615,8 @@ export default function App() {
           <ScrollView contentContainerStyle={styles.catalogContent}>
             <Text style={[styles.catalogHeading, readerTheme === "night" && styles.nightText]}>章节目录</Text>
             <Text style={[styles.catalogSub, readerTheme === "night" && styles.nightMuted]}>{currentBook.title} · 共 {activeChapterCount} 章{onlineReading ? "" : localReading ? "（本地导入）" : "（演示）"}</Text>
-            {onlineReading ? loadedChapters.map((chapter, index) => (
+            {onlineReading && <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}><Pressable style={[styles.themeButton, chapterSortOrder === "asc" && styles.modeButtonActive]} onPress={() => setChapterSortOrder("asc")}><Text style={styles.fontButtonText}>正序</Text></Pressable><Pressable style={[styles.themeButton, chapterSortOrder === "desc" && styles.modeButtonActive]} onPress={() => setChapterSortOrder("desc")}><Text style={styles.fontButtonText}>倒序</Text></Pressable></View>}
+            {onlineReading ? [...loadedChapters].sort((a, b) => chapterSortOrder === "asc" ? a.index - b.index : b.index - a.index).map((chapter, index) => (
               <Pressable key={chapter.id} onPress={() => void openOnlineChapter(chapter)} style={[styles.chapterRow, readerTheme === "night" && styles.nightCard, index === activeChapterIndex && styles.chapterRowActive]}>
                 <Text style={[styles.chapterRowTitle, readerTheme === "night" && styles.nightText]}>{chapter.title}</Text>
                 <Text style={styles.chapterRowMeta}>{index === activeChapterIndex ? "正在阅读" : "在线章节"}</Text>
@@ -1701,8 +1747,8 @@ export default function App() {
             <StatusBar barStyle="dark-content" />
             <View style={{ height: 58, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <Pressable onPress={() => setShowSpeechSettings(false)}><Text style={{ color: "#68765F", fontSize: 16, fontWeight: "700" }}>收起</Text></Pressable>
-              <Text style={{ color: "#292A24", fontSize: 16, fontWeight: "800" }}>AI 听书</Text>
-              <Text style={{ color: "#8D897F", fontSize: 11 }}>离线播放</Text>
+              <Text style={{ color: "#292A24", fontSize: 16, fontWeight: "800" }}>番茄式听书</Text>
+              <Text style={{ color: "#8D897F", fontSize: 11 }}>免费离线</Text>
             </View>
             <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 38 }}>
               <View style={{ backgroundColor: "#343B32", borderRadius: 24, padding: 22, marginTop: 12 }}>
@@ -1935,15 +1981,15 @@ export default function App() {
             <View style={styles.searchResultGrid}>
               {onlineResults.map((item) => (
                 <Pressable key={item.id} style={styles.searchResultTile} onPress={() => openSearchNovel(item)}>
-                  <Text style={[styles.searchResultTitle, appIsDark && styles.darkPrimaryText]} numberOfLines={2}>{item.title}</Text>
-                  {item.coverUrl ? (
-                    <Image source={{ uri: item.coverUrl }} style={styles.searchResultCover} resizeMode="cover" />
+                  {item.coverUrl && !failedCoverUrls[item.coverUrl] ? (
+                    <Image source={{ uri: item.coverUrl }} style={styles.searchResultCover} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [item.coverUrl as string]: true }))} />
                   ) : (
                     <View style={[styles.searchResultCover, styles.searchResultCoverFallback]}>
                       <Text style={styles.searchResultFallbackTitle} numberOfLines={4}>{item.title}</Text>
-                      <Text style={styles.searchResultFallbackLabel}>暂无封面</Text>
+                      <Text style={styles.searchResultFallbackLabel}>封面暂不可用</Text>
                     </View>
                   )}
+                  <Text style={[styles.searchResultTitle, appIsDark && styles.darkPrimaryText]} numberOfLines={2}>{item.title}</Text>
                   {!!item.author && <Text style={[styles.searchResultAuthor, appIsDark && styles.darkMutedText]} numberOfLines={1}>{item.author}</Text>}
                 </Pressable>
               ))}
