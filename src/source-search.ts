@@ -82,7 +82,7 @@ export function parseJsonSearchResults(body: string, source: NovelSource, keywor
 }
 
 export function buildSearchRequestUrl(searchUrl: string, keyword: string): string {
-  if (searchUrl.includes("{keyword}")) return searchUrl.replace(/\{keyword\}/g, encodeURIComponent(keyword));
+  if (searchUrl.includes("{keyword}")) return searchUrl.replace(/\{keyword\}/g, encodeURIComponent(keyword)).replace(/\{page\}/g, "1");
   const url = new URL(searchUrl);
   url.searchParams.set("q", keyword);
   return url.toString();
