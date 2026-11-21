@@ -19,3 +19,11 @@ test("HTML search accepts lazy-loaded covers hosted on a separate CDN", () => {
   const page = p.parseHtmlSearchResults(html, "s1", "源", "封面", "https://books.example/search", { itemSelector: "li.book", titleSelector: "a.title", urlSelector: "a.title", coverSelector: "img.cover" });
   assert.equal(page.items[0].coverUrl, "https://img.cdn.example/cover.jpg");
 });
+
+
+test("HTML search automatically extracts lazy cover images when a source has no cover selector", () => {
+  const html = '<ul><li class="book"><a class="title" href="/book/1">自动封面</a><img src="placeholder.gif" data-src="//img.cdn.example/real-cover.jpg"></li><li class="book"><a class="title" href="/book/2">第二本</a><img data-original="http://img.cdn.example/second.jpg"></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "s1", "源", "封面", "https://books.example/search", { itemSelector: "li.book", titleSelector: "a.title", urlSelector: "a.title" });
+  assert.equal(page.items[0].coverUrl, "https://img.cdn.example/real-cover.jpg");
+  assert.equal(page.items[1].coverUrl, "https://img.cdn.example/second.jpg");
+});
