@@ -16,6 +16,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - "eas.json"
+      - "scripts/patch-sherpa-native.js"
       - ".github/workflows/build-unsigned-ipa.yml"
   pull_request:
     branches:
