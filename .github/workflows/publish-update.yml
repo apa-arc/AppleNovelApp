@@ -101,6 +101,8 @@ jobs:
       - name: Verify published OTA fingerprint
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
+          APP_UPDATE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'production' }}
         run: |
           npx eas-cli fingerprint:compare --update-id "$PUBLISHED_UPDATE_ID" --json --non-interactive > "$RUNNER_TEMP/fingerprint-compare.json"
           node -e '
