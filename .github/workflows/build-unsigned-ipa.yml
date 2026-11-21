@@ -142,7 +142,7 @@ jobs:
           APP_CHANNEL="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRequestHeaders:expo-channel-name' "$APP_EXPO_PLIST")"
           APP_FINGERPRINT_FILE="$APP_PATH/EXUpdates.bundle/fingerprint"
           test -s "$APP_FINGERPRINT_FILE"
-          APP_FINGERPRINT="$(tr -d '\\r\\n' < "$APP_FINGERPRINT_FILE")"
+          APP_FINGERPRINT="$(cat "$APP_FINGERPRINT_FILE")"
           echo "Built app runtime policy: $APP_RUNTIME_POLICY"
           echo "Built app fingerprint: $APP_FINGERPRINT"
           echo "Built app channel: $APP_CHANNEL"
