@@ -122,6 +122,32 @@ replaceExactlyOnce(
 
 replaceExactlyOnce(
   "ios/tts/sherpa-onnx-tts-wrapper.mm",
+  `        result.samples = std::move(audio.samples);
+        result.sampleRate = audio.sample_rate;
+
+        LOGI("TTS: Generated %zu samples at %d Hz",
+             result.samples.size(), result.sampleRate);
+
+        return result;`,
+  `        result.samples = std::move(audio.samples);
+        result.sampleRate = audio.sample_rate;
+
+        LOGI("TTS: Generated %zu samples at %d Hz",
+             result.samples.size(), result.sampleRate);
+        if (result.samples.empty() || result.sampleRate <= 0) {
+            result.error = "Native Generate returned empty PCM; sid=" + std::to_string(sid) +
+                ", engineSampleRate=" + std::to_string(pImpl->tts.value().SampleRate()) +
+                ", speakerCount=" + std::to_string(pImpl->tts.value().NumSpeakers()) +
+                ", textLength=" + std::to_string(text.size());
+            LOGE("TTS: %s", result.error.c_str());
+        }
+
+        return result;`,
+  "diagnose empty Kokoro PCM output"
+);
+
+replaceExactlyOnce(
+  "ios/tts/sherpa-onnx-tts-wrapper.mm",
   `    } catch (const std::exception& e) {
         LOGE("TTS: Exception during generation: %s", e.what());
         return result;
