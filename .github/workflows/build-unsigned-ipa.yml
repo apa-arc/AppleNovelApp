@@ -11,6 +11,7 @@ on:
       - "app.config.js"
       - "package.json"
       - "eas.json"
+      - ".github/workflows/build-unsigned-ipa.yml"
   workflow_dispatch:
 
 permissions:
