@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const {
   buildSpeechAudioCacheKey,
   normalizeSpeechAudioCacheIndex,
+  isOwnedSpeechAudioCacheEntry,
   createSpeechAudioCache,
 } = require("../.test-build/speech-audio-cache.js");
 
@@ -45,6 +46,17 @@ test("normalizes invalid and duplicate cache entries", () => {
   const valid = { key: "k", uri: "cache://k.wav", format: "wav", bytes: 10, createdAt: 1, lastAccessedAt: 2 };
   assert.deepEqual(normalizeSpeechAudioCacheIndex([valid, null, { ...valid, bytes: 0 }, { ...valid, uri: "" }]), [valid]);
   assert.deepEqual(normalizeSpeechAudioCacheIndex([valid, { ...valid, uri: "cache://new.wav", lastAccessedAt: 3 }]), [{ ...valid, uri: "cache://new.wav", lastAccessedAt: 3 }]);
+});
+
+test("only accepts exact generated cache paths inside the private cache directory", () => {
+  const key = "speech-abc123";
+  const entry = { key, uri: "file:///app/cache/speech-audio-cache/" + key + ".wav", format: "wav", bytes: 10, createdAt: 1, lastAccessedAt: 2 };
+  const directory = "file:///app/cache/speech-audio-cache/";
+  assert.equal(isOwnedSpeechAudioCacheEntry(entry, directory), true);
+  assert.equal(isOwnedSpeechAudioCacheEntry({ ...entry, uri: "file:///app/documents/book.txt" }, directory), false);
+  assert.equal(isOwnedSpeechAudioCacheEntry({ ...entry, uri: directory + "other.wav" }, directory), false);
+  assert.equal(isOwnedSpeechAudioCacheEntry(entry, null), false);
+  assert.equal(isOwnedSpeechAudioCacheEntry(entry, "file:///app/cache/speech-audio-cache"), false);
 });
 
 test("stores and returns exact audio bytes, then updates access time", async () => {
