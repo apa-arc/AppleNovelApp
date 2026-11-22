@@ -23,7 +23,6 @@ import {
 } from "./src/offline-kokoro-runtime";
 import { playSpeechAudio, playWavAudio, type WavAudioPlayback } from "./src/wav-audio-playback";
 import { synthesizeGeminiTTS } from "./src/gemini-tts-client";
-import { getGeminiApiKey, saveGeminiApiKey, deleteGeminiApiKey } from "./src/speech-credentials";
 import { buildSpeechAudioCacheKey } from "./src/speech-audio-cache";
 import { getCachedSpeechAudio, saveCachedSpeechAudio } from "./src/speech-audio-cache-runtime";
 import {
@@ -135,9 +134,8 @@ export default function App() {
   const speechRunIdRef = useRef(0);
   const speechPlaybackRef = useRef<WavAudioPlayback | null>(null);
   const [speechVoiceCategoryFilter, setSpeechVoiceCategoryFilter] = useState<"中文女声" | "中文男声">("中文女声");
-  const [geminiApiKey, setGeminiApiKey] = useState("");
   const [geminiApiKeyDraft, setGeminiApiKeyDraft] = useState("");
-  const [geminiTestStatus, setGeminiTestStatus] = useState("尚未测试");
+  const [geminiTestStatus, setGeminiTestStatus] = useState("Key 仅在当前会话内存中使用");
   const [offlineModelStatus, setOfflineModelStatus] = useState<"checking" | "not-downloaded" | "downloading" | "paused" | "installed" | "failed" | "unavailable">("checking");
   const [offlineModelProgress, setOfflineModelProgress] = useState(0);
   const [offlineModelPhase, setOfflineModelPhase] = useState<OfflineKokoroProgress["phase"] | null>(null);
@@ -206,16 +204,6 @@ export default function App() {
   const [appUpdateDismissed, setAppUpdateDismissed] = useState(false);
   const appUpdateOperationRef = useRef(false);
   const lastAutomaticUpdateCheckRef = useRef(0);
-
-  useEffect(() => {
-    let active = true;
-    void getGeminiApiKey().then((key) => {
-      if (active && key) setGeminiApiKey(key);
-    }).catch(() => {
-      if (active) setGeminiTestStatus("无法读取安全存储");
-    });
-    return () => { active = false; };
-  }, []);
 
   const checkForAppUpdate = async (silent = false) => {
     if (__DEV__) {
@@ -1286,7 +1274,8 @@ export default function App() {
   };
 
   const previewGeminiVoice = async (mode: "single" | "dialogue") => {
-    if (!geminiApiKey.trim()) {
+    const apiKey = geminiApiKeyDraft.trim();
+    if (!apiKey) {
       Alert.alert("需要 Gemini API Key", "请先在下方输入并保存你自己的 Gemini API Key。不要把 Key 发到聊天里。");
       return;
     }
@@ -1298,7 +1287,7 @@ export default function App() {
     setGeminiTestStatus(mode === "dialogue" ? "正在合成双角色试听…" : "正在合成中文试听…");
     try {
       const bytes = await synthesizeGeminiTTS(mode === "dialogue" ? {
-        apiKey: geminiApiKey,
+        apiKey,
         speakers: [
           { name: "Narrator", voiceName: "Kore" },
           { name: "Character", voiceName: "Puck" },
@@ -1309,7 +1298,7 @@ export default function App() {
           { text: "我只是一个路过的人。", speaker: "Narrator", style: "calm and reassuring" },
         ],
       } : {
-        apiKey: geminiApiKey,
+        apiKey,
         voiceName: "Kore",
         parts: [{ text: "你好，欢迎使用私人小说。这是 Gemini 在线中文语音试听。", style: "warm, natural Chinese audiobook narrator" }],
       });
@@ -1948,7 +1937,7 @@ export default function App() {
                 <TextInput
                   value={geminiApiKeyDraft}
                   onChangeText={setGeminiApiKeyDraft}
-                  placeholder={geminiApiKey ? "已保存 API Key（重新输入可替换）" : "粘贴你的 Gemini API Key"}
+                  placeholder="粘贴 Gemini API Key（仅本次打开期间有效）"
                   placeholderTextColor="#A39F94"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -1956,23 +1945,12 @@ export default function App() {
                   style={{ minHeight: 44, borderWidth: 1, borderColor: "#E5E3DC", borderRadius: 10, paddingHorizontal: 12, marginTop: 11, color: "#33352D" }}
                 />
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                  <Pressable style={styles.fontButton} onPress={() => void (async () => {
-                    try {
-                      await saveGeminiApiKey(geminiApiKeyDraft);
-                      setGeminiApiKey(geminiApiKeyDraft.trim());
-                      setGeminiApiKeyDraft("");
-                      setGeminiTestStatus("API Key 已安全保存");
-                    } catch (error) { Alert.alert("保存失败", error instanceof Error ? error.message : "无法保存 API Key。"); }
-                  })()}><Text style={styles.fontButtonText}>安全保存 Key</Text></Pressable>
-                  <Pressable style={styles.fontButton} disabled={!geminiApiKey} onPress={() => void previewGeminiVoice("single")}><Text style={styles.fontButtonText}>中文单人试听</Text></Pressable>
-                  <Pressable style={styles.fontButton} disabled={!geminiApiKey} onPress={() => void previewGeminiVoice("dialogue")}><Text style={styles.fontButtonText}>双角色试听</Text></Pressable>
-                  <Pressable style={styles.fontButton} disabled={!geminiApiKey} onPress={() => void (async () => {
-                    try { await deleteGeminiApiKey(); setGeminiApiKey(""); setGeminiApiKeyDraft(""); setGeminiTestStatus("API Key 已删除"); }
-                    catch (error) { Alert.alert("删除失败", error instanceof Error ? error.message : "无法删除 API Key。"); }
-                  })()}><Text style={styles.fontButtonText}>删除 Key</Text></Pressable>
+                  <Pressable style={styles.fontButton} disabled={!geminiApiKeyDraft.trim()} onPress={() => void previewGeminiVoice("single")}><Text style={styles.fontButtonText}>中文单人试听</Text></Pressable>
+                  <Pressable style={styles.fontButton} disabled={!geminiApiKeyDraft.trim()} onPress={() => void previewGeminiVoice("dialogue")}><Text style={styles.fontButtonText}>双角色试听</Text></Pressable>
+                  <Pressable style={styles.fontButton} disabled={!geminiApiKeyDraft} onPress={() => { setGeminiApiKeyDraft(""); setGeminiTestStatus("已清除本次会话 Key"); }}><Text style={styles.fontButtonText}>清除 Key</Text></Pressable>
                 </View>
                 <Text style={{ color: "#777368", fontSize: 10, lineHeight: 16, marginTop: 10 }}>状态：{geminiTestStatus}</Text>
-                <Text style={{ color: "#A66D62", fontSize: 10, lineHeight: 16, marginTop: 6 }}>重要：Gemini 免费层内容可能用于改进 Google 产品。请只用测试文本试听，不要提交隐私内容。仅使用未关联结算账户的免费项目 Key；不要开启 Google Cloud 付费结算。达到免费配额后本实验会停止，不会切换付费模型。</Text>
+                <Text style={{ color: "#A66D62", fontSize: 10, lineHeight: 16, marginTop: 6 }}>Key 仅保存在当前运行的内存中，关闭 App 后自动清除，不写入本地存储。Gemini 免费层内容可能用于改进 Google 产品，请只用测试文本；不要开启付费结算。达到免费配额后停止，不会切换付费模型。</Text>
               </View>
 
               <View style={{ backgroundColor: "#FFFFFF", borderRadius: 18, padding: 17, marginTop: 13, borderWidth: 1, borderColor: "#EEECE5" }}>

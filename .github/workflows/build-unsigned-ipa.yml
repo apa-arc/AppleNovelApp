@@ -201,7 +201,7 @@ jobs:
             exit 1
           fi
 
-      - name: Publish final IPA to GitHub Releases
+      - name: Publish version record to GitHub Releases
         if: github.ref == 'refs/tags/v1.1.1'
         uses: softprops/action-gh-release@v2
         with:
@@ -210,30 +210,10 @@ jobs:
           body: |
             AppleNovelApp 1.1.1 正式版。
 
-            - 文件：未签名 iOS IPA（需使用个人签名安装）
-            - OTA 更新通道：production
+            - 应用更新：通过 production OTA 通道（仅限原生运行环境兼容的安装版本）
+            - 不提供需要用户重新签名安装的 IPA
+            - iOS 构建产物仅保留在 Actions 内部验收 Artifact
             - 提交：${{ github.sha }}
           prerelease: false
           draft: false
-          files: AppleNovelApp-unsigned.ipa
-          fail_on_unmatched_files: true
-          overwrite_files: true
           generate_release_notes: true
-
-      - name: Verify final Release asset matches the built IPA
-        if: github.ref == 'refs/tags/v1.1.1'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APP_VERSION: ${{ steps.app-version.outputs.version }}
-        run: |
-          set -euo pipefail
-          TAG="v1.1.1"
-          LOCAL_SHA="sha256:$(/usr/bin/shasum -a 256 AppleNovelApp-unsigned.ipa | awk '{print $1}')"
-          REMOTE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq '.assets[] | select(.name == "AppleNovelApp-unsigned.ipa") | .digest')"
-          if [ -z "$REMOTE_SHA" ] || [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
-            echo "::error::Release IPA asset is missing or its SHA256 does not match the verified build."
-            echo "Local: $LOCAL_SHA"
-            echo "Release: $REMOTE_SHA"
-            exit 1
-          fi
-          echo "Verified Release asset checksum: $REMOTE_SHA"
