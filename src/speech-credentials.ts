@@ -1,4 +1,4 @@
-import * as SecureStore from "expo-secure-store";
+type SecureStoreModule = typeof import("expo-secure-store");
 
 export const FISH_AUDIO_API_KEY_STORAGE = "fish_audio_api_key_v1";
 
@@ -9,31 +9,40 @@ export type SpeechCredentialStore = {
   deleteItemAsync: (key: string) => Promise<void>;
 };
 
-const defaultStore: SpeechCredentialStore = SecureStore;
+async function loadSecureStore(): Promise<SecureStoreModule> {
+  return import("expo-secure-store");
+}
 
 /** Store a user-supplied provider key in iOS Keychain / Android Keystore-backed storage. */
 export async function saveFishAudioApiKey(
   apiKey: string,
-  store: SpeechCredentialStore = defaultStore
+  store?: SpeechCredentialStore
 ): Promise<void> {
   const value = apiKey.trim();
   if (!value) throw new Error("API Key 不能为空。");
-  if (!(await store.isAvailableAsync())) throw new Error("当前设备不支持安全凭据存储。");
-  await store.setItemAsync(FISH_AUDIO_API_KEY_STORAGE, value, {
-    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
-  });
+
+  const secureStore = store ? null : await loadSecureStore();
+  const storage = store ?? secureStore!;
+  if (!(await storage.isAvailableAsync())) throw new Error("当前设备不支持安全凭据存储。");
+  await storage.setItemAsync(
+    FISH_AUDIO_API_KEY_STORAGE,
+    value,
+    secureStore ? { keychainAccessible: secureStore.AFTER_FIRST_UNLOCK } : undefined
+  );
 }
 
 export async function getFishAudioApiKey(
-  store: SpeechCredentialStore = defaultStore
+  store?: SpeechCredentialStore
 ): Promise<string | null> {
-  if (!(await store.isAvailableAsync())) throw new Error("当前设备不支持安全凭据存储。");
-  return store.getItemAsync(FISH_AUDIO_API_KEY_STORAGE);
+  const storage = store ?? await loadSecureStore();
+  if (!(await storage.isAvailableAsync())) throw new Error("当前设备不支持安全凭据存储。");
+  return storage.getItemAsync(FISH_AUDIO_API_KEY_STORAGE);
 }
 
 export async function deleteFishAudioApiKey(
-  store: SpeechCredentialStore = defaultStore
+  store?: SpeechCredentialStore
 ): Promise<void> {
-  if (!(await store.isAvailableAsync())) throw new Error("当前设备不支持安全凭据存储。");
-  await store.deleteItemAsync(FISH_AUDIO_API_KEY_STORAGE);
+  const storage = store ?? await loadSecureStore();
+  if (!(await storage.isAvailableAsync())) throw new Error("当前设备不支持安全凭据存储。");
+  await storage.deleteItemAsync(FISH_AUDIO_API_KEY_STORAGE);
 }
