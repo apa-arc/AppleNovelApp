@@ -10,6 +10,8 @@ on:
       - release/1.0.9-search-cover-grid
       - release/1.1.0-tomato-reader
       - release/1.1.1-online-ai-reader
+    tags:
+      - v1.1.1
     paths:
       - "app.json"
       - "assets/icon.png.base64"
@@ -189,37 +191,43 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Read app version
+      - name: Read and validate app version
         id: app-version
-        run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION="$(node -p 'require("./package.json").version')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF" = "refs/tags/v1.1.1" ] && [ "$VERSION" != "1.1.1" ]; then
+            echo "::error::The v1.1.1 release tag requires package.json version 1.1.1."
+            exit 1
+          fi
 
-      - name: Publish IPA to GitHub Releases
-        if: github.ref == 'refs/heads/release/1.1.0-tomato-reader'
+      - name: Publish final IPA to GitHub Releases
+        if: github.ref == 'refs/tags/v1.1.1'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.app-version.outputs.version }}-build.${{ github.run_number }}
-          name: AppleNovelApp v${{ steps.app-version.outputs.version }}
+          tag_name: v1.1.1
+          name: AppleNovelApp v1.1.1
           body: |
-            本版本由 GitHub Actions 自动构建。
+            AppleNovelApp 1.1.1 正式版。
 
-            - 文件：未签名 iOS IPA（需自行签名后安装）
+            - 文件：未签名 iOS IPA（需使用个人签名安装）
             - OTA 更新通道：production
             - 提交：${{ github.sha }}
-          prerelease: true
+          prerelease: false
           draft: false
           files: AppleNovelApp-unsigned.ipa
           fail_on_unmatched_files: true
           overwrite_files: true
           generate_release_notes: true
 
-      - name: Verify Release asset matches the built IPA
-        if: github.ref == 'refs/heads/release/1.1.0-tomato-reader'
+      - name: Verify final Release asset matches the built IPA
+        if: github.ref == 'refs/tags/v1.1.1'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APP_VERSION: ${{ steps.app-version.outputs.version }}
         run: |
           set -euo pipefail
-          TAG="v${APP_VERSION}-build.${GITHUB_RUN_NUMBER}"
+          TAG="v1.1.1"
           LOCAL_SHA="sha256:$(/usr/bin/shasum -a 256 AppleNovelApp-unsigned.ipa | awk '{print $1}')"
           REMOTE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq '.assets[] | select(.name == "AppleNovelApp-unsigned.ipa") | .digest')"
           if [ -z "$REMOTE_SHA" ] || [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
