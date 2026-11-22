@@ -1299,7 +1299,6 @@ export default function App() {
     try {
       const bytes = await synthesizeGeminiTTS(mode === "dialogue" ? {
         apiKey: geminiApiKey,
-        languageCode: "cmn-CN",
         speakers: [
           { name: "Narrator", voiceName: "Kore" },
           { name: "Character", voiceName: "Puck" },
@@ -1311,7 +1310,6 @@ export default function App() {
         ],
       } : {
         apiKey: geminiApiKey,
-        languageCode: "cmn-CN",
         voiceName: "Kore",
         parts: [{ text: "你好，欢迎使用私人小说。这是 Gemini 在线中文语音试听。", style: "warm, natural Chinese audiobook narrator" }],
       });
