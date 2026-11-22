@@ -24,6 +24,7 @@ on:
       - "eas.json"
       - "scripts/patch-sherpa-native.js"
       - ".github/workflows/build-unsigned-ipa.yml"
+      - ".github/workflows/publish-update.yml"
   pull_request:
     branches:
       - main
@@ -35,6 +36,7 @@ on:
       - "package-lock.json"
       - "eas.json"
       - ".github/workflows/build-unsigned-ipa.yml"
+      - ".github/workflows/publish-update.yml"
   workflow_dispatch:
 
 concurrency:
@@ -114,7 +116,7 @@ jobs:
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
           APP_UPDATE_CHANNEL: production
         run: |
-          npx eas-cli@latest fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/ios-fingerprint.json"
+          npx eas-cli@27.11.0 fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/ios-fingerprint.json"
           IOS_RUNTIME_FINGERPRINT="$(node -e '
             const fs = require("fs");
             const data = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/ios-fingerprint.json", "utf8"));
@@ -146,7 +148,7 @@ jobs:
           (
             cd "$BASE_DIR"
             npm install
-            npx eas-cli@latest fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/ios-fingerprint-1.1.0.json"
+            npx eas-cli@27.11.0 fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/ios-fingerprint-1.1.0.json"
           )
           node -e '
             const fs = require("fs");
