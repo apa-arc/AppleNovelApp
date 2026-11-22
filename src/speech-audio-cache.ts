@@ -47,6 +47,13 @@ export function buildSpeechAudioCacheKey(request: SpeechAudioCacheRequest): stri
   return "speech-" + first.toString(36) + second.toString(36);
 }
 
+/** Only accept entries whose exact filename belongs to this feature's private cache directory. */
+export function isOwnedSpeechAudioCacheEntry(entry: SpeechAudioCacheEntry, directory: string | null): boolean {
+  if (!directory || !directory.endsWith("/")) return false;
+  if (!/^speech-[a-z0-9]+$/.test(entry.key)) return false;
+  return entry.uri === directory + entry.key + "." + entry.format;
+}
+
 export function normalizeSpeechAudioCacheIndex(value: unknown): SpeechAudioCacheEntry[] {
   if (!Array.isArray(value)) return [];
   const valid = value.filter((item): item is SpeechAudioCacheEntry => {
