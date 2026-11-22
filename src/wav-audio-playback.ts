@@ -39,27 +39,42 @@ export async function playSpeechAudio(
       albumTitle: "私人小说",
     });
   } catch (error) {
-    player?.clearLockScreenControls();
-    player?.remove();
+    if (player) {
+      try { player.clearLockScreenControls(); } catch { /* Player may not have registered lock-screen controls yet. */ }
+      try { player.remove(); } catch { /* Continue releasing the native player. */ }
+      try { player.release(); } catch { /* Release may already have happened during native teardown. */ }
+    }
     player = null;
     await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
     throw error;
   }
 
   let resolveFinished: (() => void) | null = null;
+  let rejectFinished: ((error: Error) => void) | null = null;
   let settled = false;
-  const finished = new Promise<void>((resolve) => { resolveFinished = resolve; });
-  const finish = () => {
+  const finished = new Promise<void>((resolve, reject) => {
+    resolveFinished = resolve;
+    rejectFinished = reject;
+  });
+  const finish = (error?: Error) => {
     if (settled) return;
     settled = true;
     subscription.remove();
-    player?.clearLockScreenControls();
-    player?.remove();
+    if (player) {
+      try { player.clearLockScreenControls(); } catch { /* Player may already be detached. */ }
+      try { player.remove(); } catch { /* Continue releasing the native player. */ }
+      try { player.release(); } catch { /* Release may already have happened during native teardown. */ }
+    }
     player = null;
     void FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
-    resolveFinished?.();
+    if (error) rejectFinished?.(error);
+    else resolveFinished?.();
   };
   const subscription = player.addListener("playbackStatusUpdate", (status) => {
+    if (status.error) {
+      finish(new Error("音频播放失败：" + status.error));
+      return;
+    }
     if (status.didJustFinish) finish();
   });
   player.play();
