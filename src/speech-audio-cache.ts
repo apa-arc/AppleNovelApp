@@ -108,14 +108,11 @@ export function createSpeechAudioCache(store: SpeechAudioCacheStore, maxBytes = 
     if (removed && removed.uri !== uri) await store.remove(removed.uri).catch(() => undefined);
 
     let total = entries.reduce((sum, entry) => sum + entry.bytes, 0);
-    const kept: SpeechAudioCacheEntry[] = [];
-    for (const entry of entries) {
-      if (total <= maxBytes) {
-        kept.push(entry);
-      } else {
-        total -= entry.bytes;
-        await store.remove(entry.uri).catch(() => undefined);
-      }
+    const kept = [...entries];
+    while (total > maxBytes && kept.length > 0) {
+      const oldest = kept.pop()!;
+      total -= oldest.bytes;
+      await store.remove(oldest.uri).catch(() => undefined);
     }
     await save(kept);
   });
