@@ -52,6 +52,7 @@ export async function playSpeechAudio(
   let resolveFinished: (() => void) | null = null;
   let rejectFinished: ((error: Error) => void) | null = null;
   let settled = false;
+  let loadTimeout: ReturnType<typeof setTimeout> | null = null;
   const finished = new Promise<void>((resolve, reject) => {
     resolveFinished = resolve;
     rejectFinished = reject;
@@ -59,6 +60,7 @@ export async function playSpeechAudio(
   const finish = (error?: Error) => {
     if (settled) return;
     settled = true;
+    if (loadTimeout) clearTimeout(loadTimeout);
     subscription.remove();
     if (player) {
       try { player.clearLockScreenControls(); } catch { /* Player may already be detached. */ }
@@ -71,12 +73,21 @@ export async function playSpeechAudio(
     else resolveFinished?.();
   };
   const subscription = player.addListener("playbackStatusUpdate", (status) => {
-    if (status.error) {
-      finish(new Error("音频播放失败：" + status.error));
+    if (status.playbackState === "failed") {
+      finish(new Error("音频文件无法加载或播放失败。"));
       return;
+    }
+    if (status.isLoaded && loadTimeout) {
+      clearTimeout(loadTimeout);
+      loadTimeout = null;
     }
     if (status.didJustFinish) finish();
   });
+  loadTimeout = setTimeout(() => {
+    if (player && !player.isLoaded) {
+      finish(new Error("音频加载超时，请检查音频文件后重试。"));
+    }
+  }, 20000);
   player.play();
 
   return {
