@@ -952,6 +952,8 @@ export default function App() {
     setIsSpeaking(false);
     setSpeechPaused(false);
     speechPausedRef.current = false;
+    setSpeechChunkProgress(0);
+    setSpeechChunkCount(0);
     setSpeechCurrentTime(0);
     setSpeechDuration(0);
   };
