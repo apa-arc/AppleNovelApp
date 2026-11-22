@@ -70,6 +70,23 @@ jobs:
             if (config.updates?.requestHeaders?.["expo-channel-name"] !== channel) throw new Error("Embedded OTA channel does not match the publish channel.");
             console.log("OTA configuration validated for", projectId, "slug", config.slug, "channel", channel);
           '
+      - name: Verify production channel mapping before publishing
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
+        run: |
+          npx eas-cli channel:view production --json --non-interactive > "$RUNNER_TEMP/production-channel.json"
+          node -e '
+            const fs = require("fs");
+            const result = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/production-channel.json", "utf8"));
+            const channel = result.currentPage;
+            const branches = channel?.updateBranches || [];
+            if (channel?.name !== "production" || channel.isPaused || !branches.some((branch) => branch.name === "production")) {
+              console.error("Production channel is not active or does not point to the production branch:", JSON.stringify({ name: channel?.name, isPaused: channel?.isPaused, branches: branches.map((branch) => branch.name) }));
+              process.exit(1);
+            }
+            console.log("Verified active production channel -> production branch.");
+          '
       - name: Publish iOS Expo Update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
