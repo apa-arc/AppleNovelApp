@@ -89,6 +89,12 @@ const SAMPLE_CHAPTERS: Chapter[] = [
 
 
 
+function formatPlaybackTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
+  const wholeSeconds = Math.floor(seconds);
+  return Math.floor(wholeSeconds / 60) + ":" + String(wholeSeconds % 60).padStart(2, "0");
+}
+
 function getSourceClient(_source: NovelSource) {
   return undefined;
 }
@@ -128,6 +134,8 @@ export default function App() {
   const [speechPaused, setSpeechPaused] = useState(false);
   const [speechChunkProgress, setSpeechChunkProgress] = useState(0);
   const [speechChunkCount, setSpeechChunkCount] = useState(0);
+  const [speechCurrentTime, setSpeechCurrentTime] = useState(0);
+  const [speechDuration, setSpeechDuration] = useState(0);
   const [sleepTimerLabel, setSleepTimerLabel] = useState("关闭");
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speechPausedRef = useRef(false);
@@ -944,6 +952,8 @@ export default function App() {
     setIsSpeaking(false);
     setSpeechPaused(false);
     speechPausedRef.current = false;
+    setSpeechCurrentTime(0);
+    setSpeechDuration(0);
   };
 
   const pauseSpeech = () => {
@@ -1373,6 +1383,8 @@ export default function App() {
     setSpeechPaused(false);
     setSpeechChunkProgress(0);
     setSpeechChunkCount(0);
+    setSpeechCurrentTime(0);
+    setSpeechDuration(0);
     speechPausedRef.current = false;
     try {
       while (runId === speechRunIdRef.current) {
@@ -1389,7 +1401,17 @@ export default function App() {
             await saveCachedSpeechAudio(cacheKey, audioBytes, "wav").catch(() => undefined);
           }
           if (runId !== speechRunIdRef.current) break;
-          const playback = await playWavAudio(audioBytes, { title: selectedBook.title, artist: selectedBook.author });
+          setSpeechCurrentTime(0);
+          setSpeechDuration(0);
+          const playback = await playWavAudio(audioBytes, {
+            title: selectedBook.title,
+            artist: selectedBook.author,
+            onProgress: (progress) => {
+              if (runId !== speechRunIdRef.current) return;
+              setSpeechCurrentTime(progress.currentTime);
+              setSpeechDuration(progress.duration);
+            },
+          });
           speechPlaybackRef.current = playback;
           if (speechPausedRef.current) playback.pause();
           await playback.finished;
@@ -1456,6 +1478,8 @@ export default function App() {
         setSpeechPaused(false);
         setSpeechChunkProgress(0);
         setSpeechChunkCount(0);
+        setSpeechCurrentTime(0);
+        setSpeechDuration(0);
         speechPausedRef.current = false;
       }
     }
@@ -1856,10 +1880,23 @@ export default function App() {
                 <View style={{ marginTop: 23 }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                     <Text style={{ color: "#E4E7DF", fontSize: 11 }}>{isSpeaking ? speechPaused ? "已暂停" : "正在朗读" : "准备就绪"}</Text>
-                    <Text style={{ color: "#C7CDBE", fontSize: 10 }}>{speechChunkCount > 0 ? "片段 " + speechChunkProgress + " / " + speechChunkCount : "连续章节播放"}</Text>
+                    <Text style={{ color: "#C7CDBE", fontSize: 10 }}>
+                      {speechChunkCount > 0
+                        ? "片段 " + speechChunkProgress + " / " + speechChunkCount + " · " + formatPlaybackTime(speechCurrentTime) + " / " + formatPlaybackTime(speechDuration)
+                        : "连续章节播放"}
+                    </Text>
                   </View>
                   <View style={{ height: 5, backgroundColor: "#B76B59", borderRadius: 5, marginTop: 10, overflow: "hidden" }}>
-                    <View style={{ height: 5, width: speechChunkCount > 0 ? (speechChunkProgress / speechChunkCount * 100) + "%" as any : "0%", backgroundColor: "#FFE0D6", borderRadius: 5 }} />
+                    <View
+                      style={{
+                        height: 5,
+                        width: speechChunkCount > 0
+                          ? (Math.min(100, ((Math.max(0, speechChunkProgress - 1) + (speechDuration > 0 ? Math.min(1, speechCurrentTime / speechDuration) : 0)) / speechChunkCount) * 100)) + "%" as any
+                          : "0%",
+                        backgroundColor: "#FFE0D6",
+                        borderRadius: 5,
+                      }}
+                    />
                   </View>
                 </View>
                 <View style={{ flexDirection: "row", justifyContent: "space-around", alignItems: "center", marginTop: 25 }}>
