@@ -36,6 +36,13 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Restrict production OTA to main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Production OTA is restricted to the main branch. Do not dispatch this workflow from a release or feature branch."
+            exit 1
+          fi
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -87,6 +94,26 @@ jobs:
             }
             console.log("Verified active production channel -> production branch.");
           '
+      - name: Verify iOS runtime fingerprint before publishing
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
+          APP_UPDATE_CHANNEL: production
+        run: |
+          set -euo pipefail
+          npx eas-cli@27.11.0 fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/prepublish-ios-fingerprint.json"
+          node -e '
+            const fs = require("fs");
+            const result = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/prepublish-ios-fingerprint.json", "utf8"));
+            const actual = result.hash || result.fingerprint?.hash;
+            const expected = "7805c46b77b76a0cce34bdf7c95c8385425325be";
+            if (actual !== expected) {
+              console.error("Production OTA blocked: native runtime fingerprint changed.", JSON.stringify({ expected, actual }));
+              process.exit(1);
+            }
+            console.log("Verified expected 1.1.1 iOS runtime fingerprint:", actual);
+          '
+
       - name: Publish iOS Expo Update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
