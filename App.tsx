@@ -24,6 +24,8 @@ import {
 import { playSpeechAudio, playWavAudio, type WavAudioPlayback } from "./src/wav-audio-playback";
 import { synthesizeGeminiTTS } from "./src/gemini-tts-client";
 import { getGeminiApiKey, saveGeminiApiKey, deleteGeminiApiKey } from "./src/speech-credentials";
+import { buildSpeechAudioCacheKey } from "./src/speech-audio-cache";
+import { getCachedSpeechAudio, saveCachedSpeechAudio } from "./src/speech-audio-cache-runtime";
 import {
   AppState,
   SafeAreaView,
@@ -1371,6 +1373,7 @@ export default function App() {
     }
     const initialIndex = onlineReading ? onlineChapterIndex : chapterIndex;
     let currentIndex = initialIndex;
+    let currentChapterId = onlineReading ? loadedChapters.find((chapter) => chapter.index === onlineChapterIndex)?.id || String(onlineChapterIndex) : localReading ? localChapters[currentIndex]?.title || String(currentIndex) : String(currentIndex);
     let currentTitle = onlineReading ? onlineChapterTitle : localReading ? localChapters[currentIndex]?.title || "全文" : SAMPLE_CHAPTERS[currentIndex].title;
     let currentText = onlineReading ? onlineChapterContent : localReading ? localChapters[currentIndex]?.content || "" : SAMPLE_CHAPTERS[currentIndex].content;
     const chapterCount = onlineReading ? loadedChapters.length : localReading ? localChapters.length : SAMPLE_CHAPTERS.length;
@@ -1392,7 +1395,12 @@ export default function App() {
         for (let index = 0; index < chunks.length; index += 1) {
           if (runId !== speechRunIdRef.current) break;
           setSpeechChunkProgress(index + 1);
-          const audioBytes = await synthesizeKokoroChunk(chunks[index], speechModelVoiceId);
+          const cacheKey = buildSpeechAudioCacheKey({ bookId: selectedBook.id, chapterId: currentChapterId, engine: "kokoro", model: "offline-kokoro-v1", voiceId: speechModelVoiceId, speed: speechRate, text: chunks[index] });
+          let audioBytes = await getCachedSpeechAudio(cacheKey).catch(() => null);
+          if (!audioBytes) {
+            audioBytes = await synthesizeKokoroChunk(chunks[index], speechModelVoiceId);
+            await saveCachedSpeechAudio(cacheKey, audioBytes, "wav").catch(() => undefined);
+          }
           if (runId !== speechRunIdRef.current) break;
           const playback = await playWavAudio(audioBytes, { title: selectedBook.title, artist: selectedBook.author });
           speechPlaybackRef.current = playback;
@@ -1415,6 +1423,7 @@ export default function App() {
             currentTitle = result.title || nextChapter.title;
             currentText = result.content;
             currentIndex = nextIndex;
+            currentChapterId = nextChapter.id;
             setOnlineChapterIndex(nextChapter.index);
             setOnlineChapterTitle(currentTitle);
             setOnlineChapterContent(currentText);
@@ -1436,6 +1445,7 @@ export default function App() {
           if (!nextChapter) break;
           currentTitle = nextChapter.title;
           currentText = nextChapter.content;
+          currentChapterId = localReading ? nextChapter.title : String(currentIndex);
           setChapterIndex(currentIndex);
           setReaderParagraphIndex(0);
           restoreReaderPositionRef.current = true;
