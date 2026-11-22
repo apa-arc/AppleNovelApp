@@ -76,6 +76,15 @@ jobs:
           test -s assets/icon.png
           file assets/icon.png
 
+      - name: Validate GitHub Actions workflow YAML
+        run: |
+          ruby -e '
+            require "yaml"
+            %w[.github/workflows/build-unsigned-ipa.yml .github/workflows/publish-update.yml].each do |path|
+              YAML.load_file(path)
+              puts "Valid YAML: #{path}"
+            end
+          '
       - name: Run app checks
         run: |
           npm run typecheck
