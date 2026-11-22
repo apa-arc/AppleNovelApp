@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import { decode, encode } from "base64-arraybuffer";
-import { createSpeechAudioCache, type SpeechAudioCacheFormat } from "./speech-audio-cache";
+import { createSpeechAudioCache, isOwnedSpeechAudioCacheEntry, normalizeSpeechAudioCacheIndex, type SpeechAudioCacheFormat } from "./speech-audio-cache";
 
 const INDEX_KEY = "@private_novel/speech_audio_cache_v1";
 const DIRECTORY = FileSystem.cacheDirectory ? FileSystem.cacheDirectory + "speech-audio-cache/" : null;
@@ -10,7 +10,11 @@ const cache = createSpeechAudioCache({
   loadIndex: async () => {
     const raw = await AsyncStorage.getItem(INDEX_KEY);
     if (!raw) return [];
-    try { return JSON.parse(raw) as unknown; } catch { return []; }
+    try {
+      // Never trust persisted paths when clearing or repairing cache entries.
+      // Only files with the exact generated name inside our own directory are managed here.
+      return normalizeSpeechAudioCacheIndex(JSON.parse(raw)).filter((entry) => isOwnedSpeechAudioCacheEntry(entry, DIRECTORY));
+    } catch { return []; }
   },
   saveIndex: async (entries) => {
     await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(entries));
