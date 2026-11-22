@@ -1070,7 +1070,7 @@ export default function App() {
     ]
   );
 
-  const synthesizeKokoroChunk = async (text: string, voiceId: string): Promise<Uint8Array> => {
+  const synthesizeKokoroChunk = async (text: string, voiceId: string, speed = speechRateRef.current): Promise<Uint8Array> => {
     const voice = SPEECH_VOICES.find((item) => item.id === voiceId);
     if (!voice) throw new Error("所选中文声音不存在。");
     if (offlineModelStatus !== "installed" || !offlineModelPath) {
@@ -1079,7 +1079,7 @@ export default function App() {
     if (!offlineEngineRef.current) {
       offlineEngineRef.current = await createOfflineKokoroEngine(offlineModelPath);
     }
-    return synthesizeOfflineKokoro(offlineEngineRef.current, text, voice.speakerId, speechRateRef.current);
+    return synthesizeOfflineKokoro(offlineEngineRef.current, text, voice.speakerId, speed);
   };
 
   const checkOnlineSubscription = async (book: Book, showNoUpdates = false): Promise<Book | null> => {
@@ -1403,10 +1403,11 @@ export default function App() {
         for (let index = 0; index < chunks.length; index += 1) {
           if (runId !== speechRunIdRef.current) break;
           setSpeechChunkProgress(index + 1);
-          const cacheKey = buildSpeechAudioCacheKey({ bookId: selectedBook.id, chapterId: currentChapterId, engine: "kokoro", model: "offline-kokoro-v1", voiceId: speechModelVoiceId, speed: speechRateRef.current, text: chunks[index] });
+          const chunkSpeed = speechRateRef.current;
+          const cacheKey = buildSpeechAudioCacheKey({ bookId: selectedBook.id, chapterId: currentChapterId, engine: "kokoro", model: "offline-kokoro-v1", voiceId: speechModelVoiceId, speed: chunkSpeed, text: chunks[index] });
           let audioBytes = await getCachedSpeechAudio(cacheKey).catch(() => null);
           if (!audioBytes) {
-            audioBytes = await synthesizeKokoroChunk(chunks[index], speechModelVoiceId);
+            audioBytes = await synthesizeKokoroChunk(chunks[index], speechModelVoiceId, chunkSpeed);
             await saveCachedSpeechAudio(cacheKey, audioBytes, "wav").catch(() => undefined);
           }
           if (runId !== speechRunIdRef.current) break;
@@ -1964,6 +1965,7 @@ export default function App() {
                     </Pressable>
                   ))}
                 </View>
+                {isSpeaking && <Text style={{ color: "#A39D91", fontSize: 10, marginTop: 7 }}>播放中调整速度，将从下一段语音开始生效</Text>}
                 <Text style={{ color: "#777368", fontSize: 11, marginTop: 18 }}>定时关闭 · {sleepTimerLabel}</Text>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 9 }}>
                   {[15, 30, 60, 90].map((minutes) => (
