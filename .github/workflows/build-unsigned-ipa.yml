@@ -121,6 +121,43 @@ jobs:
           echo "Resolved iOS runtime fingerprint: $IOS_RUNTIME_FINGERPRINT"
 
 
+      - name: Compare iOS runtime fingerprint with 1.1.0 baseline
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
+          APP_UPDATE_CHANNEL: production
+        run: |
+          set -euo pipefail
+          BASE_SHA=23ab2562809e03ff54ee47a270e868b9144c8d64
+          BASE_DIR="$RUNNER_TEMP/novel-1.1.0-baseline"
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git worktree add --detach "$BASE_DIR" "$BASE_SHA"
+          mkdir -p "$BASE_DIR/assets"
+          base64 -D -i "$BASE_DIR/assets/icon.png.base64" -o "$BASE_DIR/assets/icon.png"
+          (
+            cd "$BASE_DIR"
+            npm install
+            npx eas-cli@latest fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/ios-fingerprint-1.1.0.json"
+          )
+          node -e '
+            const fs = require("fs");
+            const read = (name) => JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/" + name, "utf8"));
+            const current = read("ios-fingerprint.json");
+            const baseline = read("ios-fingerprint-1.1.0.json");
+            const sources = (value) => value.sources || value.fingerprint?.sources || [];
+            const key = (source) => source.id || source.filePath || source.name || JSON.stringify(source);
+            const hash = (source) => source.hash ?? source.hex ?? null;
+            const before = new Map(sources(baseline).map((source) => [key(source), hash(source)]));
+            const after = new Map(sources(current).map((source) => [key(source), hash(source)]));
+            const names = [...new Set([...before.keys(), ...after.keys()])].sort();
+            const changed = names.filter((name) => before.get(name) !== after.get(name));
+            console.log("1.1.0 runtime fingerprint:", baseline.hash || baseline.fingerprint?.hash);
+            console.log("1.1.1 runtime fingerprint:", current.hash || current.fingerprint?.hash);
+            console.log("Fingerprint source count:", before.size, "->", after.size);
+            console.log("Changed fingerprint sources:", JSON.stringify(changed.map((name) => ({ name, baseline: before.get(name), current: after.get(name) })), null, 2));
+          '
+
+
       - name: Generate iOS native project
         env:
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
