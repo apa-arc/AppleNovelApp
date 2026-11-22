@@ -1,38 +1,34 @@
-/** Split long chapters at natural boundaries for speech synthesis providers. */
-export function splitSpeechText(value: string, maxLength = 420): string[] {
-  const text = value.replace(/\\r\\n?/g, "\\n").trim();
-  if (!text) return [];
-  const limit = Number.isFinite(maxLength) ? Math.max(80, Math.floor(maxLength)) : 420;
-  const sentences = text.match(/[^。！？!?；;\\n]+[。！？!?；;]?|\\n+/g) || [text];
-  const chunks: string[] = [];
-  let current = "";
-  let currentLength = 0;
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { splitSpeechText } = require("../.test-build/speech-engine.js");
 
-  const push = () => {
-    const normalized = current.trim();
-    if (normalized) chunks.push(normalized);
-    current = "";
-    currentLength = 0;
-  };
+test("splits long Chinese text at natural punctuation boundaries", () => {
+  const chunks = splitSpeechText("第一句。第二句！第三句？", 80);
+  assert.deepEqual(chunks, ["第一句。第二句！第三句？"]);
+});
 
-  for (const raw of sentences) {
-    const sentence = raw.trim();
-    if (!sentence) continue;
-    // Count Unicode code points rather than UTF-16 code units so emoji and
-    // supplementary CJK characters are never split into invalid surrogates.
-    const characters = Array.from(sentence);
-    if (characters.length > limit) {
-      push();
-      for (let offset = 0; offset < characters.length; offset += limit) {
-        const part = characters.slice(offset, offset + limit).join("").trim();
-        if (part) chunks.push(part);
-      }
-      continue;
-    }
-    if (current && currentLength + characters.length > limit) push();
-    current += sentence;
-    currentLength += characters.length;
-  }
-  push();
-  return chunks;
-}
+test("normalizes CRLF and removes empty lines", () => {
+  assert.deepEqual(splitSpeechText("  第一段。\r\n\r\n 第二段！  ", 80), ["第一段。第二段！"]);
+});
+
+test("keeps supplementary Unicode characters intact at chunk boundaries", () => {
+  const emoji = "😀";
+  const input = "甲".repeat(79) + emoji + "乙".repeat(90);
+  const chunks = splitSpeechText(input, 80);
+  assert.ok(chunks.length > 1);
+  assert.equal(chunks.join(""), input);
+  assert.ok(chunks.every((chunk) => Array.from(chunk).length <= 80));
+  assert.ok(chunks.every((chunk) => !chunk.includes("\uFFFD")));
+});
+
+test("splits a single oversized sentence without breaking Unicode code points", () => {
+  const input = "😀".repeat(95);
+  const chunks = splitSpeechText(input, 80);
+  assert.deepEqual(chunks.map((chunk) => Array.from(chunk).length), [80, 15]);
+  assert.equal(chunks.join(""), input);
+  assert.ok(chunks.every((chunk) => !chunk.includes("\uFFFD")));
+});
+
+test("returns no chunks for empty or whitespace-only input", () => {
+  assert.deepEqual(splitSpeechText("  \r\n  "), []);
+});
