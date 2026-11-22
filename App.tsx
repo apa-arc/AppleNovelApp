@@ -154,6 +154,7 @@ export default function App() {
   const offlineModelAutoStartRef = useRef(false);
   const offlineEngineRef = useRef<OfflineKokoroEngine | null>(null);
   const [speechRate, setSpeechRate] = useState(DEFAULT_READER_SETTINGS.speechRate);
+  const speechRateRef = useRef(DEFAULT_READER_SETTINGS.speechRate);
   const [readerFontSize, setReaderFontSize] = useState(DEFAULT_READER_SETTINGS.fontSize);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(DEFAULT_READER_SETTINGS.theme);
   const [readerLineSpacing, setReaderLineSpacing] = useState(DEFAULT_READER_SETTINGS.lineSpacing);
@@ -371,6 +372,7 @@ export default function App() {
             : SPEECH_VOICES.find((voice) => voice.category === "中文女声");
           setSpeechModelVoiceId(chineseVoice?.id || DEFAULT_READER_SETTINGS.speechModelVoiceId);
           setSpeechVoiceCategoryFilter(chineseVoice?.category === "中文男声" ? "中文男声" : "中文女声");
+          speechRateRef.current = settings.speechRate;
           setSpeechRate(settings.speechRate);
         }
       } catch {
@@ -970,6 +972,11 @@ export default function App() {
     speechPlaybackRef.current?.resume();
   };
 
+  const updateSpeechRate = (rate: number) => {
+    speechRateRef.current = rate;
+    setSpeechRate(rate);
+  };
+
   const setSpeechSleepTimer = (minutes: number | null) => {
     if (sleepTimerRef.current) {
       clearTimeout(sleepTimerRef.current);
@@ -1072,7 +1079,7 @@ export default function App() {
     if (!offlineEngineRef.current) {
       offlineEngineRef.current = await createOfflineKokoroEngine(offlineModelPath);
     }
-    return synthesizeOfflineKokoro(offlineEngineRef.current, text, voice.speakerId, speechRate);
+    return synthesizeOfflineKokoro(offlineEngineRef.current, text, voice.speakerId, speechRateRef.current);
   };
 
   const checkOnlineSubscription = async (book: Book, showNoUpdates = false): Promise<Book | null> => {
@@ -1396,7 +1403,7 @@ export default function App() {
         for (let index = 0; index < chunks.length; index += 1) {
           if (runId !== speechRunIdRef.current) break;
           setSpeechChunkProgress(index + 1);
-          const cacheKey = buildSpeechAudioCacheKey({ bookId: selectedBook.id, chapterId: currentChapterId, engine: "kokoro", model: "offline-kokoro-v1", voiceId: speechModelVoiceId, speed: speechRate, text: chunks[index] });
+          const cacheKey = buildSpeechAudioCacheKey({ bookId: selectedBook.id, chapterId: currentChapterId, engine: "kokoro", model: "offline-kokoro-v1", voiceId: speechModelVoiceId, speed: speechRateRef.current, text: chunks[index] });
           let audioBytes = await getCachedSpeechAudio(cacheKey).catch(() => null);
           if (!audioBytes) {
             audioBytes = await synthesizeKokoroChunk(chunks[index], speechModelVoiceId);
@@ -1952,7 +1959,7 @@ export default function App() {
                 <Text style={{ color: "#777368", fontSize: 11, marginTop: 13 }}>朗读速度 · {speechRate.toFixed(1)}×</Text>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 7, marginTop: 9 }}>
                   {[0.7, 0.85, 1, 1.15, 1.3, 1.5, 1.8, 2].map((rate) => (
-                    <Pressable key={rate} onPress={() => setSpeechRate(rate)} style={[styles.themeButton, { flex: 1, alignItems: "center", paddingHorizontal: 0 }, speechRate === rate && styles.modeButtonActive]}>
+                    <Pressable key={rate} onPress={() => updateSpeechRate(rate)} style={[styles.themeButton, { flex: 1, alignItems: "center", paddingHorizontal: 0 }, speechRate === rate && styles.modeButtonActive]}>
                       <Text style={styles.fontButtonText}>{rate}×</Text>
                     </Pressable>
                   ))}
