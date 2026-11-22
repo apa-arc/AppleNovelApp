@@ -20,7 +20,7 @@ test("uses the explicitly free model and requests MP3 output", async () => {
   const body = JSON.parse(captured.init.body);
   assert.equal(body.format, "mp3");
   assert.deepEqual(body.reference_id, ["narrator-id", "character-id"]);
-  assert.match(body.text, /<\\|speaker:0\\|>/);
+  assert.equal(body.text.includes("<|speaker:0|>"), true);
 });
 
 test("rejects missing key and empty text before making a request", async () => {
