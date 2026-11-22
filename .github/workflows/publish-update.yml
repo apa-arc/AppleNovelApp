@@ -146,6 +146,7 @@ jobs:
             exit 1
           fi
           echo "Published compatibility update for runtime $APP_RUNTIME_VERSION_OVERRIDE: $V110_UPDATE_ID"
+          export V110_UPDATE_ID
           npx eas-cli update:view "$V110_UPDATE_ID" --json > "$RUNNER_TEMP/v110-update-view.json"
           node -e '
             const fs = require("fs");
