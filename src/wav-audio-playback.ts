@@ -2,6 +2,8 @@ import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
 import { encode } from "base64-arraybuffer";
 
+export type SpeechAudioFormat = "wav" | "mp3";
+
 export type WavAudioPlayback = {
   finished: Promise<void>;
   pause: () => void;
@@ -9,13 +11,17 @@ export type WavAudioPlayback = {
   stop: () => void;
 };
 
-export async function playWavAudio(
+export type SpeechAudioPlayback = WavAudioPlayback;
+
+/** Play provider-produced audio bytes while keeping background and lock-screen controls. */
+export async function playSpeechAudio(
   bytes: Uint8Array,
+  format: SpeechAudioFormat,
   metadata: { title: string; artist: string }
-): Promise<WavAudioPlayback> {
+): Promise<SpeechAudioPlayback> {
   const cacheDirectory = FileSystem.cacheDirectory;
   if (!cacheDirectory) throw new Error("当前设备无法创建语音缓存文件。");
-  const uri = cacheDirectory + "kokoro-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + ".wav";
+  const uri = cacheDirectory + "speech-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + format;
   const exactBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
   await FileSystem.writeAsStringAsync(uri, encode(exactBuffer), { encoding: FileSystem.EncodingType.Base64 });
 
@@ -64,4 +70,12 @@ export async function playWavAudio(
     resume: () => player?.play(),
     stop: finish,
   };
+}
+
+/** Backward-compatible WAV entry point for the existing Kokoro engine. */
+export function playWavAudio(
+  bytes: Uint8Array,
+  metadata: { title: string; artist: string }
+): Promise<WavAudioPlayback> {
+  return playSpeechAudio(bytes, "wav", metadata);
 }
