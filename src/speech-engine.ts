@@ -1,9 +1,9 @@
 /** Split long chapters at natural boundaries for speech synthesis providers. */
 export function splitSpeechText(value: string, maxLength = 420): string[] {
-  const text = value.replace(/\\r\\n?/g, "\\n").trim();
+  const text = value.replace(/\r\n?/g, "\n").trim();
   if (!text) return [];
   const limit = Number.isFinite(maxLength) ? Math.max(80, Math.floor(maxLength)) : 420;
-  const sentences = text.match(/[^。！？!?；;\\n]+[。！？!?；;]?|\\n+/g) || [text];
+  const sentences = text.match(/[^。！？!?；;\n]+[。！？!?；;]?|\n+/g) || [text];
   const chunks: string[] = [];
   let current = "";
   let currentLength = 0;
