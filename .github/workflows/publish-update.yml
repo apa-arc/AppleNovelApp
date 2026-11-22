@@ -152,7 +152,7 @@ jobs:
             const updates = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/v110-update-view.json", "utf8"));
             const update = updates.find((item) => item.id === process.env.V110_UPDATE_ID);
             const expected = process.env.APP_RUNTIME_VERSION_OVERRIDE;
-            if (!update || update.runtimeVersion !== expected || update.platform !== "ios" || update.branch !== "production") {
+            if (!update || update.runtimeVersion !== expected || update.platform !== "IOS" || update.branch !== "production") {
               console.error("v1.1.0 compatibility OTA target mismatch:", JSON.stringify({ update, expected }));
               process.exit(1);
             }
