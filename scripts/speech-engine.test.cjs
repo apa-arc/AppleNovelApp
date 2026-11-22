@@ -10,3 +10,12 @@ test("speech text is split on natural boundaries and respects the size limit", (
   assert.ok(long.every((chunk) => chunk.length <= 80));
   assert.deepEqual(splitSpeechText("  \n "), []);
 });
+
+
+test("long text is split by Unicode code points without breaking emoji", () => {
+  const text = "甲".repeat(79) + "😀" + "乙".repeat(80);
+  const chunks = splitSpeechText(text, 80);
+  assert.equal(chunks.join(""), text);
+  assert.ok(chunks.every((chunk) => Array.from(chunk).length <= 80));
+  assert.ok(chunks.every((chunk) => !chunk.includes("\\uFFFD")));
+});
