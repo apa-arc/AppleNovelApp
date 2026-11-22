@@ -130,6 +130,10 @@ jobs:
           echo "IOS_RUNTIME_FINGERPRINT=$IOS_RUNTIME_FINGERPRINT" >> "$GITHUB_ENV"
           echo "EXPO_UPDATES_FINGERPRINT_OVERRIDE=$IOS_RUNTIME_FINGERPRINT" >> "$GITHUB_ENV"
           echo "Resolved iOS runtime fingerprint: $IOS_RUNTIME_FINGERPRINT"
+          if [ "$IOS_RUNTIME_FINGERPRINT" != "7805c46b77b76a0cce34bdf7c95c8385425325be" ]; then
+            echo "::error::1.1.1 native runtime fingerprint changed; stop before OTA compatibility publishing."
+            exit 1
+          fi
 
 
       - name: Compare iOS runtime fingerprint with 1.1.0 baseline
@@ -162,6 +166,8 @@ jobs:
             const after = new Map(sources(current).map((source) => [key(source), hash(source)]));
             const names = [...new Set([...before.keys(), ...after.keys()])].sort();
             const changed = names.filter((name) => before.get(name) !== after.get(name));
+            const unexpected = changed.filter((name) => name !== "packageJson:scripts");
+            if (unexpected.length) throw new Error("Unexpected native runtime fingerprint sources changed: " + unexpected.join(", "));
             console.log("1.1.0 runtime fingerprint:", baseline.hash || baseline.fingerprint?.hash);
             console.log("1.1.1 runtime fingerprint:", current.hash || current.fingerprint?.hash);
             console.log("Fingerprint source count:", before.size, "->", after.size);
@@ -242,10 +248,16 @@ jobs:
       - name: Read and validate app version
         id: app-version
         run: |
-          VERSION="$(node -p 'require("./package.json").version')"
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          APP_VERSION="$(node -p 'require("./app.json").expo.version')"
+          if [ "$PACKAGE_VERSION" != "$APP_VERSION" ]; then
+            echo "::error::package.json and app.json versions must match."
+            exit 1
+          fi
+          VERSION="$PACKAGE_VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_REF" = "refs/tags/v1.1.1" ] && [ "$VERSION" != "1.1.1" ]; then
-            echo "::error::The v1.1.1 release tag requires package.json version 1.1.1."
+            echo "::error::The v1.1.1 release tag requires package.json and app.json version 1.1.1."
             exit 1
           fi
 
