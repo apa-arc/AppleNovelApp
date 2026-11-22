@@ -1,7 +1,7 @@
 import { decode } from "base64-arraybuffer";
 
 export const GEMINI_TTS_MODEL = "gemini-3.8-flash-tts";
-export const GEMINI_TTS_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_TTS_MODEL + ":generateContent";
+export const GEMINI_TTS_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
 export type GeminiTTSPart = {
   text: string;
@@ -13,7 +13,6 @@ export type GeminiTTSRequest = {
   apiKey: string;
   parts: GeminiTTSPart[];
   voiceName?: string;
-  languageCode?: string;
   speakers?: Array<{ name: string; voiceName: string }>;
   signal?: AbortSignal;
 };
@@ -28,7 +27,7 @@ function safeErrorMessage(value: unknown): string {
   return [status, message].filter(Boolean).join("：").slice(0, 300);
 }
 
-/** Calls the Gemini Developer API TTS endpoint. The caller supplies a Keychain-stored key. */
+/** Calls the documented Gemini Interactions TTS endpoint. The caller supplies a Keychain-stored key. */
 export async function synthesizeGeminiTTS(
   request: GeminiTTSRequest,
   fetchImpl: GeminiTTSFetch = fetch
@@ -51,18 +50,12 @@ export async function synthesizeGeminiTTS(
 
   const speechConfig = speakers.length === 2
     ? {
-        multiSpeakerVoiceConfig: {
-          speakerVoiceConfigs: speakers.map((speaker) => ({
-            speaker: speaker.name,
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: speaker.voiceName } },
-          })),
-        },
-        languageCode: request.languageCode ?? "cmn-CN",
+        speakers: speakers.map((speaker) => ({
+          speaker: speaker.name,
+          voice: speaker.voiceName,
+        })),
       }
-    : {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName: request.voiceName ?? "Kore" } },
-        languageCode: request.languageCode ?? "cmn-CN",
-      };
+    : [{ voice: request.voiceName ?? "Kore" }];
 
   const response = await fetchImpl(GEMINI_TTS_ENDPOINT, {
     method: "POST",
@@ -71,22 +64,23 @@ export async function synthesizeGeminiTTS(
       "x-goog-api-key": apiKey,
     },
     body: JSON.stringify({
-      contents: [{
-        role: "user",
-        parts: parts.map((part) => ({
+      model: GEMINI_TTS_MODEL,
+      input: [{
+        type: "user_input",
+        content: parts.map((part) => ({
+          type: "text",
           text: part.text,
           ...(part.speaker || part.style
-            ? { speechMetadata: {
+            ? { annotations: [{
+                type: "speech_metadata",
                 ...(part.speaker ? { speaker: part.speaker } : {}),
                 ...(part.style ? { style: part.style } : {}),
-              } }
+              }] }
             : {}),
         })),
       }],
-      generationConfig: {
-        responseModalities: ["AUDIO"],
-        speechConfig,
-      },
+      response_format: { type: "audio" },
+      generation_config: { speech_config: speechConfig },
     }),
     signal: request.signal,
   });
@@ -104,18 +98,20 @@ export async function synthesizeGeminiTTS(
   }
 
   const payload = await response.json() as {
-    candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { mimeType?: string; data?: string } }> } }>;
-    promptFeedback?: { blockReason?: string };
+    output_audio?: { data?: string };
+    steps?: Array<{ type?: string; content?: Array<{ type?: string; data?: string }> }>;
   };
-  const audioPart = payload.candidates?.flatMap((candidate) => candidate.content?.parts ?? [])
-    .find((part) => part.inlineData?.data && part.inlineData.mimeType?.startsWith("audio/"));
-  const encoded = audioPart?.inlineData?.data;
-  if (!encoded) {
-    const reason = payload.promptFeedback?.blockReason;
-    throw new Error("Gemini 没有返回音频数据" + (reason ? "（" + reason + "）" : "。"));
-  }
+  const encoded = payload.output_audio?.data
+    ?? payload.steps?.filter((step) => step.type === "model_output")
+      .flatMap((step) => step.content ?? [])
+      .filter((part) => part.type === "audio")
+      .map((part) => part.data)
+      .find((data): data is string => typeof data === "string" && data.length > 0);
+  if (!encoded) throw new Error("Gemini 没有返回音频数据。");
+
   const bytes = new Uint8Array(decode(encoded));
-  if (bytes.length < 44 || String.fromCharCode(...bytes.slice(0, 4)) !== "RIFF") {
+  if (bytes.length < 44 || String.fromCharCode(...bytes.slice(0, 4)) !== "RIFF"
+      || String.fromCharCode(...bytes.slice(8, 12)) !== "WAVE") {
     throw new Error("Gemini 返回的音频不是有效 WAV 文件。");
   }
   return bytes;
