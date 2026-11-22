@@ -17,8 +17,10 @@ test("keeps ambiguous quoted dialogue unassigned", () => {
 
 test("supports full-width book quotes and CRLF", () => {
   const result = splitSpeechDialogue("甲说道：『出发。』\r\n");
-  assert.equal(result[0].speakerName, "甲");
-  assert.equal(result[0].text, "出发。");
+  const dialogue = result.find((item) => item.kind === "dialogue");
+  assert.ok(dialogue, "expected a dialogue segment");
+  assert.equal(dialogue.speakerName, "甲");
+  assert.equal(dialogue.text, "出发。");
 });
 
 test("creates Fish Audio speaker markers only for configured references", () => {
