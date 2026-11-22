@@ -146,6 +146,19 @@ jobs:
             exit 1
           fi
           echo "Published compatibility update for runtime $APP_RUNTIME_VERSION_OVERRIDE: $V110_UPDATE_ID"
+          npx eas-cli fingerprint:compare --update-id "$V110_UPDATE_ID" --json --non-interactive > "$RUNNER_TEMP/v110-fingerprint-compare.json"
+          node -e '
+            const fs = require("fs");
+            const result = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/v110-fingerprint-compare.json", "utf8"));
+            const published = result.fingerprint1?.hash;
+            const local = result.fingerprint2?.hash;
+            const expected = process.env.APP_RUNTIME_VERSION_OVERRIDE;
+            if (!published || !local || published !== local || published !== expected) {
+              console.error("v1.1.0 compatibility OTA fingerprint mismatch:", JSON.stringify({ published, local, expected }));
+              process.exit(1);
+            }
+            console.log("Verified v1.1.0 compatibility OTA fingerprint:", published);
+          '
       - name: Publish compatibility OTA for existing v1.0.4 installs
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
