@@ -1,21 +1,38 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const { splitSpeechText } = require("../.test-build/speech-engine.js");
+/** Split long chapters at natural boundaries for speech synthesis providers. */
+export function splitSpeechText(value: string, maxLength = 420): string[] {
+  const text = value.replace(/\\r\\n?/g, "\\n").trim();
+  if (!text) return [];
+  const limit = Number.isFinite(maxLength) ? Math.max(80, Math.floor(maxLength)) : 420;
+  const sentences = text.match(/[^。！？!?；;\\n]+[。！？!?；;]?|\\n+/g) || [text];
+  const chunks: string[] = [];
+  let current = "";
+  let currentLength = 0;
 
-test("speech text is split on natural boundaries and respects the size limit", () => {
-  const chunks = splitSpeechText("第一句。第二句！\n第三句？", 80);
-  assert.deepEqual(chunks, ["第一句。第二句！第三句？"]);
-  const long = splitSpeechText("甲".repeat(190), 80);
-  assert.equal(long.join("").length, 190);
-  assert.ok(long.every((chunk) => chunk.length <= 80));
-  assert.deepEqual(splitSpeechText("  \n "), []);
-});
+  const push = () => {
+    const normalized = current.trim();
+    if (normalized) chunks.push(normalized);
+    current = "";
+    currentLength = 0;
+  };
 
-
-test("long text is split by Unicode code points without breaking emoji", () => {
-  const text = "甲".repeat(79) + "😀" + "乙".repeat(80);
-  const chunks = splitSpeechText(text, 80);
-  assert.equal(chunks.join(""), text);
-  assert.ok(chunks.every((chunk) => Array.from(chunk).length <= 80));
-  assert.ok(chunks.every((chunk) => !chunk.includes("\\uFFFD")));
-});
+  for (const raw of sentences) {
+    const sentence = raw.trim();
+    if (!sentence) continue;
+    // Count Unicode code points rather than UTF-16 code units so emoji and
+    // supplementary CJK characters are never split into invalid surrogates.
+    const characters = Array.from(sentence);
+    if (characters.length > limit) {
+      push();
+      for (let offset = 0; offset < characters.length; offset += limit) {
+        const part = characters.slice(offset, offset + limit).join("").trim();
+        if (part) chunks.push(part);
+      }
+      continue;
+    }
+    if (current && currentLength + characters.length > limit) push();
+    current += sentence;
+    currentLength += characters.length;
+  }
+  push();
+  return chunks;
+}
