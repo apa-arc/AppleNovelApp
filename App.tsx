@@ -784,7 +784,7 @@ export default function App() {
     setSearchLogs((current) => [...nextSearchLogs, ...current].slice(0, 500));
     setOnlineResults(groupedResults);
     setSearching(false);
-    setSearchSummary("搜索完成：成功 " + (enabledSources.length - failed) + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。");
+    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + "搜索完成：成功 " + (enabledSources.length - failed) + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。");
     setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（目前仅支持常见 JSON 列表）。" : "点击小说名称即可自动获取可用阅读源和章节目录。");
   };
 
