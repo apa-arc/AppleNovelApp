@@ -32,7 +32,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Parses the repository manifest format without executing its scriptUrl.
- * Only entries with an explicit JSON endpoint appConfig can be imported.
+ * Normal entries require an explicit JSON endpoint appConfig; alias dictionaries
+ * are validated and returned separately because they do not fetch book content.
  */
 export function parseSourceSubscription(raw: string): ParsedSourceSubscription {
   let payload: unknown;
