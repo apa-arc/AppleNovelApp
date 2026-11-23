@@ -161,10 +161,27 @@ jobs:
             const current = read("ios-fingerprint.json");
             const baseline = read("ios-fingerprint-1.1.0.json");
             const sources = (value) => value.sources || value.fingerprint?.sources || [];
-            const key = (source) => source.id || source.filePath || source.name || JSON.stringify(source);
-            const hash = (source) => source.hash ?? source.hex ?? null;
-            const before = new Map(sources(baseline).map((source) => [key(source), hash(source)]));
-            const after = new Map(sources(current).map((source) => [key(source), hash(source)]));
+            const normalize = (value, label) => {
+              const list = sources(value);
+              if (!Array.isArray(list) || list.length === 0) {
+                throw new Error(label + " fingerprint has no source details; refusing to assume OTA compatibility.");
+              }
+              const entries = list.map((source) => {
+                const name = source.id || source.filePath || source.name;
+                const digest = source.hash ?? source.hex ?? null;
+                if (typeof name !== "string" || !name || typeof digest !== "string" || !digest) {
+                  throw new Error(label + " fingerprint contains a source without a stable name/hash.");
+                }
+                return [name, digest];
+              });
+              const map = new Map(entries);
+              if (map.size !== entries.length) {
+                throw new Error(label + " fingerprint contains duplicate source names.");
+              }
+              return map;
+            };
+            const before = normalize(baseline, "1.1.0 baseline");
+            const after = normalize(current, "1.1.1");
             const names = [...new Set([...before.keys(), ...after.keys()])].sort();
             const changed = names.filter((name) => before.get(name) !== after.get(name));
             const unexpected = changed.filter((name) => name !== "packageJson:scripts");
