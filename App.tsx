@@ -5,6 +5,7 @@ import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system/legacy";
 import type { NovelSource } from "./src/source";
 import { parseSourceSubscription } from "./src/source-subscription";
+import { normalizeBookAlias, parseBookAliasDictionary } from "./src/book-alias-dictionary";
 import { searchNovelSource } from "./src/source-search";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
@@ -693,23 +694,11 @@ export default function App() {
         if (aliasLength > 1024 * 1024) throw new Error("别名库文件超过 1 MB 限制。");
         const aliasRaw = await aliasResponse.text();
         if (aliasRaw.length > 1024 * 1024) throw new Error("别名库文件超过 1 MB 限制。");
-        const aliasPayload: unknown = JSON.parse(aliasRaw);
-        if (!aliasPayload || typeof aliasPayload !== "object" || Array.isArray(aliasPayload)) throw new Error("别名库格式错误。");
-        const aliasObject = aliasPayload as { schemaVersion?: unknown; records?: unknown; recordCount?: unknown };
-        if (aliasObject.schemaVersion !== 1 || !Array.isArray(aliasObject.records) || aliasObject.records.length > 20000) throw new Error("别名库结构不受支持。");
-        if (typeof aliasObject.recordCount === "number" && aliasObject.recordCount !== aliasObject.records.length) throw new Error("别名库记录数量校验失败。");
-        for (const record of aliasObject.records) {
-          if (!record || typeof record !== "object" || Array.isArray(record)) continue;
-          const item = record as { aliases?: unknown; title?: unknown };
-          if (typeof item.title !== "string" || !item.title.trim() || item.title.length > 200 || !Array.isArray(item.aliases)) continue;
-          for (const alias of item.aliases) {
-            if (typeof alias !== "string" || !alias.trim() || alias.length > 120) continue;
-            const key = alias.trim().toLocaleLowerCase().replace(/\s+/g, "");
-            if (key === "__proto__" || key === "prototype" || key === "constructor") continue;
-            importedAliases[key] = item.title.trim();
-          }
+        const parsedDictionary = parseBookAliasDictionary(aliasRaw);
+        for (const [key, title] of Object.entries(parsedDictionary.aliases)) {
+          importedAliases[key] = title;
         }
-        aliasRecordCount += aliasObject.records.length;
+        aliasRecordCount += parsedDictionary.recordCount;
       }
       if (subscription.compatible.length === 0 && subscription.aliasSources.length === 0) {
         setBookAliasMap({});
