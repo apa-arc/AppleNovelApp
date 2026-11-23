@@ -148,6 +148,8 @@ jobs:
           BASE_DIR="$RUNNER_TEMP/novel-1.1.0-baseline"
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           git worktree add --detach "$BASE_DIR" "$BASE_SHA"
+          # Capture the current branch's resolved public Expo config as well as the baseline.
+          EAS_PROJECT_ID="$EAS_PROJECT_ID" APP_UPDATE_CHANNEL=production npx expo config --type public --json > "$RUNNER_TEMP/expo-config.json"
           mkdir -p "$BASE_DIR/assets"
           base64 -D -i "$BASE_DIR/assets/icon.png.base64" -o "$BASE_DIR/assets/icon.png"
           (
