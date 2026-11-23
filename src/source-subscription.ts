@@ -15,11 +15,14 @@ export type CompatibleSubscriptionSource = {
   };
 };
 
+export type AliasDictionarySource = { id: string; name: string; version: string; dataUrl: string };
+
 export type ParsedSourceSubscription = {
   subscriptionId: string;
   name: string;
   updatedAt: string;
   compatible: Array<Omit<NovelSource, "id" | "enabled" | "importedAt"> & { remoteId: string; version: string }>;
+  aliasSources: AliasDictionarySource[];
   unsupported: Array<{ id: string; name: string; reason: string }>;
 };
 
@@ -29,7 +32,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Parses the repository manifest format without executing its scriptUrl.
- * Only entries with an explicit JSON endpoint appConfig can be imported.
+ * Normal entries require an explicit JSON endpoint appConfig; alias dictionaries
+ * are validated and returned separately because they do not fetch book content.
  */
 export function parseSourceSubscription(raw: string): ParsedSourceSubscription {
   let payload: unknown;
@@ -42,6 +46,7 @@ export function parseSourceSubscription(raw: string): ParsedSourceSubscription {
   if (payload.sources.length > 500) throw new Error("订阅书源数量超过 500 个限制。");
   const ids = new Set<string>();
   const compatible: ParsedSourceSubscription["compatible"] = [];
+  const aliasSources: AliasDictionarySource[] = [];
   const unsupported: ParsedSourceSubscription["unsupported"] = [];
   payload.sources.forEach((entry, index) => {
     if (!isRecord(entry) || typeof entry.id !== "string" || typeof entry.name !== "string") {
@@ -53,6 +58,19 @@ export function parseSourceSubscription(raw: string): ParsedSourceSubscription {
       return;
     }
     ids.add(entry.id);
+    if (entry.kind === "alias-dictionary") {
+      try {
+        if (typeof entry.dataUrl !== "string" || entry.dataUrl.length > 2048) throw new Error("别名数据地址无效。");
+        const dataUrl = new URL(entry.dataUrl);
+        if (dataUrl.protocol !== "https:" || dataUrl.hostname !== "raw.githubusercontent.com" || dataUrl.username || dataUrl.password) {
+          throw new Error("别名数据地址必须来自 HTTPS raw.githubusercontent.com。");
+        }
+        aliasSources.push({ id: entry.id, name: entry.name, version: typeof entry.version === "string" ? entry.version : "0.0.0", dataUrl: dataUrl.toString() });
+      } catch (error) {
+        unsupported.push({ id: entry.id, name: entry.name, reason: error instanceof Error ? error.message : "别名源校验失败。" });
+      }
+      return;
+    }
     const config = entry.appConfig;
     if (!isRecord(config)) {
       unsupported.push({ id: entry.id, name: entry.name, reason: "尚未提供 App JSON 接口配置；脚本规则暂不执行。" });
@@ -97,6 +115,7 @@ export function parseSourceSubscription(raw: string): ParsedSourceSubscription {
     name: typeof payload.name === "string" ? payload.name : "小说书源订阅",
     updatedAt: typeof payload.updatedAt === "string" ? payload.updatedAt : "",
     compatible,
+    aliasSources,
     unsupported,
   };
 }
