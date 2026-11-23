@@ -29,6 +29,33 @@ test("imports only entries with explicit safe JSON endpoint configuration", () =
   assert.match(result.unsupported[0].reason, /脚本规则暂不执行/);
 });
 
+test("imports a validated alias dictionary separately from normal reading sources", () => {
+  const alias = {
+    id: "book-alias-dictionary", name: "小说别名库", kind: "alias-dictionary", version: "1.0.0",
+    dataUrl: "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/aliases/book-aliases.json"
+  };
+  const result = parseSourceSubscription(JSON.stringify({
+    schemaVersion: 1, subscriptionId: "test", name: "测试订阅", sources: [compatible, alias]
+  }));
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.aliasSources.length, 1);
+  assert.equal(result.aliasSources[0].id, "book-alias-dictionary");
+  assert.equal(result.unsupported.length, 0);
+});
+
+test("rejects alias dictionaries outside the trusted raw GitHub host", () => {
+  const alias = {
+    id: "bad-alias", name: "错误别名库", kind: "alias-dictionary",
+    dataUrl: "https://evil.example/aliases.json"
+  };
+  const result = parseSourceSubscription(JSON.stringify({
+    schemaVersion: 1, subscriptionId: "test", sources: [alias]
+  }));
+  assert.equal(result.aliasSources.length, 0);
+  assert.equal(result.unsupported.length, 1);
+  assert.match(result.unsupported[0].reason, /raw.githubusercontent.com/);
+});
+
 test("rejects endpoints outside declared HTTPS domain allowlist", () => {
   const bad = { ...compatible, appConfig: { ...compatible.appConfig, chapterUrl: "https://evil.example/chapter" } };
   const result = parseSourceSubscription(JSON.stringify({ schemaVersion: 1, subscriptionId: "x", sources: [bad] }));
