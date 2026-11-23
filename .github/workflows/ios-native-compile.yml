@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   ios-simulator-compile:
-    runs-on: macos-latest
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - name: Check out repository
@@ -28,6 +28,10 @@ jobs:
       - name: Install CocoaPods dependencies
         working-directory: ios
         run: pod install
+      - name: Inspect generated Xcode workspace and scheme
+        run: |
+          xcodebuild -version
+          xcodebuild -list -workspace ios/xiaoshuo.xcworkspace
       - name: Compile iOS Simulator app without code signing
         run: |
           xcodebuild \
