@@ -41,7 +41,8 @@ on:
 
 concurrency:
   group: unsigned-ipa-${{ github.ref }}
-  cancel-in-progress: true
+  # Keep active iOS builds running; newer updates may wait in the queue.
+  cancel-in-progress: false
 
 permissions:
   contents: write
