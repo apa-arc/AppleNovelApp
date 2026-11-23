@@ -679,7 +679,7 @@ export default function App() {
           if (typeof item.title !== "string" || !item.title.trim() || item.title.length > 200 || !Array.isArray(item.aliases)) continue;
           for (const alias of item.aliases) {
             if (typeof alias !== "string" || !alias.trim() || alias.length > 120) continue;
-            const key = alias.trim().toLocaleLowerCase().replace(/\\s+/g, "");
+            const key = alias.trim().toLocaleLowerCase().replace(/\s+/g, "");
             if (key === "__proto__" || key === "prototype" || key === "constructor") continue;
             importedAliases[key] = item.title.trim();
           }
@@ -766,7 +766,7 @@ export default function App() {
       return;
     }
     setSearchHistory((current) => [keyword, ...current.filter((item) => item.toLocaleLowerCase() !== keyword.toLocaleLowerCase())].slice(0, 10));
-    const aliasKey = keyword.toLocaleLowerCase().replace(/\\s+/g, "");
+    const aliasKey = keyword.toLocaleLowerCase().replace(/\s+/g, "");
     const resolvedKeyword = bookAliasMap[aliasKey] || keyword;
     const enabledSources = sources.filter((source) => source.enabled);
     if (enabledSources.length === 0) {
