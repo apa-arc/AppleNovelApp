@@ -153,6 +153,7 @@ jobs:
           (
             cd "$BASE_DIR"
             npm install
+            EAS_PROJECT_ID="$EAS_PROJECT_ID" APP_UPDATE_CHANNEL=production npx expo config --type public --json > "$RUNNER_TEMP/expo-config-1.1.0.json"
             npx eas-cli@27.11.0 fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/ios-fingerprint-1.1.0.json"
           )
           node -e '
@@ -160,6 +161,23 @@ jobs:
             const read = (name) => JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/" + name, "utf8"));
             const current = read("ios-fingerprint.json");
             const baseline = read("ios-fingerprint-1.1.0.json");
+            // Expo includes the marketing version in expoConfig fingerprints.
+            // Compare the effective public configs after removing only that field;
+            // every other Expo config value must remain identical.
+            const stable = (value) => {
+              if (Array.isArray(value)) return value.map(stable);
+              if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
+              return value;
+            };
+            const normalizedConfig = (name) => {
+              const config = read(name);
+              delete config.version;
+              return JSON.stringify(stable(config));
+            };
+            if (normalizedConfig("expo-config.json") !== normalizedConfig("expo-config-1.1.0.json")) {
+              throw new Error("Expo public config differs from 1.1.0 beyond the app version; refusing to assume OTA compatibility.");
+            }
+            console.log("Expo public config matches 1.1.0 after excluding only the marketing version.");
             const sources = (value) => value.sources || value.fingerprint?.sources || [];
             const normalize = (value, label) => {
               const list = sources(value);
@@ -184,12 +202,13 @@ jobs:
             const after = normalize(current, "1.1.1");
             const names = [...new Set([...before.keys(), ...after.keys()])].sort();
             const changed = names.filter((name) => before.get(name) !== after.get(name));
-            const unexpected = changed.filter((name) => name !== "packageJson:scripts");
+            const unexpected = changed.filter((name) => name !== "packageJson:scripts" && name !== "expoConfig");
             if (unexpected.length) throw new Error("Unexpected native runtime fingerprint sources changed: " + unexpected.join(", "));
             console.log("1.1.0 runtime fingerprint:", baseline.hash || baseline.fingerprint?.hash);
             console.log("1.1.1 runtime fingerprint:", current.hash || current.fingerprint?.hash);
             console.log("Fingerprint source count:", before.size, "->", after.size);
             console.log("Changed fingerprint sources:", JSON.stringify(changed.map((name) => ({ name, baseline: before.get(name), current: after.get(name) })), null, 2));
+            if (changed.includes("expoConfig")) console.log("Accepted expoConfig change only after normalized public Expo config matched with version excluded.");
           '
 
 
