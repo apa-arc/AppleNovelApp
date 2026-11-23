@@ -153,7 +153,6 @@ export default function App() {
   const [offlineModelError, setOfflineModelError] = useState<string | null>(null);
   const offlineModelPhaseRef = useRef<OfflineKokoroProgress["phase"]>("downloading");
   const offlineModelBusyRef = useRef(false);
-  const offlineModelAutoStartRef = useRef(false);
   const offlineEngineRef = useRef<OfflineKokoroEngine | null>(null);
   const [speechRate, setSpeechRate] = useState(DEFAULT_READER_SETTINGS.speechRate);
   const speechRateRef = useRef(DEFAULT_READER_SETTINGS.speechRate);
@@ -484,10 +483,8 @@ export default function App() {
         offlineModelPhaseRef.current = model.pendingPhase;
         setOfflineModelPhase(model.pendingPhase);
         setOfflineModelStatus("paused");
-        if (!offlineModelAutoStartRef.current) { offlineModelAutoStartRef.current = true; void runOfflineModelTransfer(true); }
       } else {
         setOfflineModelStatus("not-downloaded");
-        if (!offlineModelAutoStartRef.current) { offlineModelAutoStartRef.current = true; void runOfflineModelTransfer(false); }
       }
     }).catch((error) => {
       if (!active) return;
@@ -1099,7 +1096,14 @@ export default function App() {
     }
   };
 
-  const requestOfflineModelDownload = () => { void runOfflineModelTransfer(false); };
+  const requestOfflineModelDownload = () => Alert.alert(
+    "下载离线朗读模型",
+    "需要下载约 147 MB 的 Kokoro 中文语音模型。下载完成后可离线朗读，是否现在下载？",
+    [
+      { text: "暂不下载", style: "cancel" },
+      { text: "确认下载", onPress: () => { void runOfflineModelTransfer(false); } },
+    ]
+  );
 
   const pauseOfflineModelDownload = async () => {
     if (offlineModelStatus !== "downloading" || !offlineModelPhase) return;
