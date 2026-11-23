@@ -45,3 +45,49 @@ test("rejects invalid envelopes, mismatched counts, and oversized dictionaries",
   })), /数量校验失败/);
   assert.throws(() => parseBookAliasDictionary("x".repeat(1024 * 1024 + 1)), /超过 1 MB/);
 });
+
+test("imports every record and alias from the live registry fixture", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const raw = fs.readFileSync(path.join(__dirname, "fixtures", "current-book-aliases.json"), "utf8");
+  const source = JSON.parse(raw);
+  const result = parseBookAliasDictionary(raw);
+  assert.equal(result.recordCount, source.records.length);
+  assert.equal(result.aliasCount, source.records.reduce((count, record) => count + record.aliases.length, 0));
+  for (const record of source.records) {
+    for (const alias of record.aliases) {
+      assert.equal(result.aliases[normalizeBookAlias(alias)], record.title);
+    }
+  }
+});
+
+test("supports many books and multiple aliases per book without hardcoded titles", () => {
+  const result = parseBookAliasDictionary(JSON.stringify({
+    schemaVersion: 1,
+    records: [
+      { title: "小说甲", aliases: ["甲别名一", "甲别名二"] },
+      { title: "小说乙", aliases: ["乙别名一", "乙别名二", "乙别名三"] },
+      { title: "小说丙", aliases: ["丙别名"] }
+    ]
+  }));
+  assert.equal(result.recordCount, 3);
+  assert.equal(result.aliasCount, 6);
+  assert.equal(result.aliases["甲别名二"], "小说甲");
+  assert.equal(result.aliases["乙别名三"], "小说乙");
+  assert.equal(result.aliases["丙别名"], "小说丙");
+});
+
+test("excludes ambiguous aliases instead of silently overwriting another book", () => {
+  const result = parseBookAliasDictionary(JSON.stringify({
+    schemaVersion: 1,
+    records: [
+      { title: "小说甲", aliases: ["共同别名", "甲独有"] },
+      { title: "小说乙", aliases: ["共同别名", "乙独有"] }
+    ]
+  }));
+  assert.equal(result.aliases["共同别名"], undefined);
+  assert.equal(result.aliases["甲独有"], "小说甲");
+  assert.equal(result.aliases["乙独有"], "小说乙");
+  assert.equal(result.conflictCount, 1);
+  assert.deepEqual(result.conflicts, ["共同别名"]);
+});
