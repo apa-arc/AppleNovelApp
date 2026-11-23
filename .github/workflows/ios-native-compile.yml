@@ -1,0 +1,40 @@
+name: iOS native compile (unsigned)
+
+on:
+  push:
+    branches: [release/1.1.2-alias-kokoro]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-native-compile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-simulator-compile:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install JavaScript dependencies
+        run: npm install
+      - name: Generate native iOS project
+        run: npx expo prebuild --platform ios --non-interactive
+      - name: Install CocoaPods dependencies
+        working-directory: ios
+        run: pod install
+      - name: Compile iOS Simulator app without code signing
+        run: |
+          xcodebuild \
+            -workspace ios/xiaoshuo.xcworkspace \
+            -scheme xiaoshuo \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
