@@ -347,9 +347,14 @@ export default function App() {
           const parsedUrls: unknown = JSON.parse(savedSubscriptionUrls);
           if (parsedUrls && typeof parsedUrls === "object") {
             const urls = parsedUrls as { url?: unknown; normal?: unknown };
-            if (typeof urls.url === "string" && urls.url.trim()) setSubscriptionUrl(urls.url);
-            else if (typeof urls.normal === "string" && urls.normal.trim() && urls.normal !== DEFAULT_SUBSCRIPTION_URL) setSubscriptionUrl(urls.normal);
-            else setSubscriptionUrl(DEFAULT_SUBSCRIPTION_URL);
+            const legacySubscriptionUrl = "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/app-subscription.json";
+            if (typeof urls.url === "string" && urls.url.trim()) {
+              setSubscriptionUrl(urls.url === legacySubscriptionUrl ? DEFAULT_SUBSCRIPTION_URL : urls.url);
+            } else if (typeof urls.normal === "string" && urls.normal.trim() && urls.normal !== DEFAULT_SUBSCRIPTION_URL) {
+              setSubscriptionUrl(urls.normal === legacySubscriptionUrl ? DEFAULT_SUBSCRIPTION_URL : urls.normal);
+            } else {
+              setSubscriptionUrl(DEFAULT_SUBSCRIPTION_URL);
+            }
           }
         }
         const savedShelfView = await AsyncStorage.getItem(SHELF_VIEW_STORAGE_KEY);
