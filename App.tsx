@@ -69,6 +69,7 @@ type Book = {
 const STORAGE_KEY = "@private_novel/books_v1";
 const SOURCES_STORAGE_KEY = "@private_novel/sources_v1";
 const SUBSCRIPTION_URLS_STORAGE_KEY = "@private_novel/subscription_urls_v1";
+const BOOK_ALIAS_MAP_STORAGE_KEY = "@private_novel/book_alias_map_v1";
 const DEFAULT_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/subscription.json";
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
@@ -329,6 +330,18 @@ export default function App() {
         } else if (active) {
           setSources([]);
         }
+        const savedAliases = await AsyncStorage.getItem(BOOK_ALIAS_MAP_STORAGE_KEY);
+        if (savedAliases && active) {
+          const parsedAliases: unknown = JSON.parse(savedAliases);
+          if (parsedAliases && typeof parsedAliases === "object" && !Array.isArray(parsedAliases)) {
+            const safeAliases: Record<string, string> = Object.create(null);
+            for (const [key, value] of Object.entries(parsedAliases as Record<string, unknown>)) {
+              if (key === "__proto__" || key === "prototype" || key === "constructor") continue;
+              if (typeof value === "string" && value.trim()) safeAliases[key] = value.trim();
+            }
+            setBookAliasMap(safeAliases);
+          }
+        }
         const savedSubscriptionUrls = await AsyncStorage.getItem(SUBSCRIPTION_URLS_STORAGE_KEY);
         if (savedSubscriptionUrls && active) {
           const parsedUrls: unknown = JSON.parse(savedSubscriptionUrls);
@@ -401,6 +414,13 @@ export default function App() {
       setSubscriptionUrlMessage("订阅地址保存失败，请稍后重试。");
     });
   }, [subscriptionUrl, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem(BOOK_ALIAS_MAP_STORAGE_KEY, JSON.stringify(bookAliasMap)).catch(() => {
+      setSubscriptionUrlMessage("别名库缓存保存失败，请稍后重试。");
+    });
+  }, [bookAliasMap, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -687,6 +707,7 @@ export default function App() {
         aliasRecordCount += aliasObject.records.length;
       }
       if (subscription.compatible.length === 0 && subscription.aliasSources.length === 0) {
+        setBookAliasMap({});
         setSubscriptionUrlMessage(subscription.name + " 已连接，但目前没有可导入的兼容书源。" + (subscription.unsupported.length ? " 已跳过 " + subscription.unsupported.length + " 个不兼容条目。" : ""));
         return;
       }
