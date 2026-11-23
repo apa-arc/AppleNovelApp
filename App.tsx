@@ -179,6 +179,7 @@ export default function App() {
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const defaultSubscriptionAttemptedRef = useRef(false);
   const [onlineQuery, setOnlineQuery] = useState("");
+  const [bookAliasMap, setBookAliasMap] = useState<Record<string, string>>({});
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [onlineResults, setOnlineResults] = useState<SearchNovelGroup[]>([]);
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, boolean>>({});
@@ -648,7 +649,44 @@ export default function App() {
       const raw = await response.text();
       if (raw.length > 2 * 1024 * 1024) throw new Error("订阅文件超过 2 MB 限制。");
       const subscription = parseSourceSubscription(raw);
-      if (subscription.compatible.length === 0) {
+      const importedAliases: Record<string, string> = {};
+      let aliasRecordCount = 0;
+      for (const aliasSource of subscription.aliasSources) {
+        const aliasController = new AbortController();
+        const aliasTimeout = setTimeout(() => aliasController.abort(), 15000);
+        let aliasResponse: Response;
+        try {
+          aliasResponse = await fetch(aliasSource.dataUrl, {
+            method: "GET", credentials: "omit", redirect: "error", signal: aliasController.signal,
+            headers: { Accept: "application/json" },
+          });
+        } finally {
+          clearTimeout(aliasTimeout);
+        }
+        if (!aliasResponse.ok) throw new Error("别名库下载失败，HTTP " + aliasResponse.status + "。");
+        const aliasLength = Number(aliasResponse.headers.get("content-length") || 0);
+        if (aliasLength > 1024 * 1024) throw new Error("别名库文件超过 1 MB 限制。");
+        const aliasRaw = await aliasResponse.text();
+        if (aliasRaw.length > 1024 * 1024) throw new Error("别名库文件超过 1 MB 限制。");
+        const aliasPayload: unknown = JSON.parse(aliasRaw);
+        if (!aliasPayload || typeof aliasPayload !== "object" || Array.isArray(aliasPayload)) throw new Error("别名库格式错误。");
+        const aliasObject = aliasPayload as { schemaVersion?: unknown; records?: unknown; recordCount?: unknown };
+        if (aliasObject.schemaVersion !== 1 || !Array.isArray(aliasObject.records) || aliasObject.records.length > 20000) throw new Error("别名库结构不受支持。");
+        if (typeof aliasObject.recordCount === "number" && aliasObject.recordCount !== aliasObject.records.length) throw new Error("别名库记录数量校验失败。");
+        for (const record of aliasObject.records) {
+          if (!record || typeof record !== "object" || Array.isArray(record)) continue;
+          const item = record as { aliases?: unknown; title?: unknown };
+          if (typeof item.title !== "string" || !item.title.trim() || item.title.length > 200 || !Array.isArray(item.aliases)) continue;
+          for (const alias of item.aliases) {
+            if (typeof alias !== "string" || !alias.trim() || alias.length > 120) continue;
+            const key = alias.trim().toLocaleLowerCase().replace(/\\s+/g, "");
+            if (key === "__proto__" || key === "prototype" || key === "constructor") continue;
+            importedAliases[key] = item.title.trim();
+          }
+        }
+        aliasRecordCount += aliasObject.records.length;
+      }
+      if (subscription.compatible.length === 0 && subscription.aliasSources.length === 0) {
         setSubscriptionUrlMessage(subscription.name + " 已连接，但目前没有可导入的兼容书源。" + (subscription.unsupported.length ? " 已跳过 " + subscription.unsupported.length + " 个不兼容条目。" : ""));
         return;
       }
@@ -698,7 +736,8 @@ export default function App() {
         }
       }
       setSources(next);
-      setSubscriptionUrlMessage(subscription.name + (action === "add" ? " 添加完成：" : " 更新完成：") + "新增 " + added + "，更新 " + updated + "，移除已下架 " + removed + "，重复跳过 " + skipped + "，不兼容 " + subscription.unsupported.length + "。");
+      setBookAliasMap(importedAliases);
+      setSubscriptionUrlMessage(subscription.name + (action === "add" ? " 添加完成：" : " 更新完成：") + "正文源新增 " + added + "，更新 " + updated + "，移除已下架 " + removed + "，重复跳过 " + skipped + "；别名源 " + subscription.aliasSources.length + " 个，别名记录 " + aliasRecordCount + " 条；不兼容 " + subscription.unsupported.length + "。");
     } catch (error) {
       setSubscriptionUrlMessage(error instanceof Error ? error.message : "订阅导入失败，请检查地址和网络。");
     } finally {
@@ -727,6 +766,8 @@ export default function App() {
       return;
     }
     setSearchHistory((current) => [keyword, ...current.filter((item) => item.toLocaleLowerCase() !== keyword.toLocaleLowerCase())].slice(0, 10));
+    const aliasKey = keyword.toLocaleLowerCase().replace(/\\s+/g, "");
+    const resolvedKeyword = bookAliasMap[aliasKey] || keyword;
     const enabledSources = sources.filter((source) => source.enabled);
     if (enabledSources.length === 0) {
       setSearchMessage("还没有启用的书源。请先到「源」页面添加订阅。");
@@ -736,11 +777,11 @@ export default function App() {
     }
     setSearching(true);
     setSearchMessage("");
-    setSearchSummary("正在向 " + enabledSources.length + " 个书源发起搜索…");
+    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」已匹配真实书名「" + resolvedKeyword + "」。" : "") + "正在向 " + enabledSources.length + " 个书源发起搜索…");
     setOnlineResults([]);
     const settled = await Promise.allSettled(enabledSources.map(async (source) => {
       const startedAt = Date.now();
-      const page = await searchNovelSource(source, keyword, getSourceClient(source));
+      const page = await searchNovelSource(source, resolvedKeyword, getSourceClient(source));
       return { page, latencyMs: Date.now() - startedAt };
     }));
     const groups = new Map<string, SearchNovelGroup>();
@@ -777,7 +818,7 @@ export default function App() {
     setSearchLogs((current) => [...nextSearchLogs, ...current].slice(0, 500));
     setOnlineResults(groupedResults);
     setSearching(false);
-    setSearchSummary("搜索完成：成功 " + (enabledSources.length - failed) + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。");
+    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + "搜索完成：成功 " + (enabledSources.length - failed) + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。");
     setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（支持常见 JSON 与已配置规则的 HTML）。" : "点击小说名称即可自动获取可用阅读源和章节目录。");
   };
 
