@@ -130,10 +130,11 @@ jobs:
           echo "IOS_RUNTIME_FINGERPRINT=$IOS_RUNTIME_FINGERPRINT" >> "$GITHUB_ENV"
           echo "EXPO_UPDATES_FINGERPRINT_OVERRIDE=$IOS_RUNTIME_FINGERPRINT" >> "$GITHUB_ENV"
           echo "Resolved iOS runtime fingerprint: $IOS_RUNTIME_FINGERPRINT"
-          if [ "$IOS_RUNTIME_FINGERPRINT" != "7805c46b77b76a0cce34bdf7c95c8385425325be" ]; then
-            echo "::error::1.1.1 native runtime fingerprint changed; stop before OTA compatibility publishing."
+          if ! [[ "$IOS_RUNTIME_FINGERPRINT" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "::error::Invalid iOS runtime fingerprint."
             exit 1
           fi
+          echo "Fingerprint source comparison below is the authoritative compatibility guard."
 
 
       - name: Compare iOS runtime fingerprint with 1.1.0 baseline
