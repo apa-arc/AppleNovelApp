@@ -655,6 +655,7 @@ export default function App() {
           for (const alias of item.aliases) {
             if (typeof alias !== "string" || !alias.trim() || alias.length > 120) continue;
             const key = alias.trim().toLocaleLowerCase().replace(/\s+/g, "");
+            if (key === "__proto__" || key === "prototype" || key === "constructor") continue;
             importedAliases[key] = item.title.trim();
           }
         }
