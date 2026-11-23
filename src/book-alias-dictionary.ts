@@ -1,6 +1,9 @@
 export type BookAliasDictionary = {
   aliases: Record<string, string>;
   recordCount: number;
+  aliasCount: number;
+  conflictCount: number;
+  conflicts: string[];
 };
 
 const MAX_DICTIONARY_BYTES = 1024 * 1024;
@@ -17,9 +20,8 @@ export function normalizeBookAlias(value: string): string {
 }
 
 /**
- * Parse the versioned alias registry used by the novel-source subscription.
- * Invalid individual records are skipped; an invalid registry envelope fails
- * the import so a broken update cannot silently erase a previously working map.
+ * Parse every valid record in the versioned alias registry. Ambiguous aliases
+ * are excluded rather than silently selecting one of several possible books.
  */
 export function parseBookAliasDictionary(raw: string): BookAliasDictionary {
   if (raw.length > MAX_DICTIONARY_BYTES) {
@@ -44,6 +46,8 @@ export function parseBookAliasDictionary(raw: string): BookAliasDictionary {
   }
 
   const aliases: Record<string, string> = Object.create(null);
+  const conflicts = new Set<string>();
+  let aliasCount = 0;
   for (const record of payload.records) {
     if (!isRecord(record) || typeof record.title !== "string" ||
         !record.title.trim() || record.title.length > MAX_TITLE_LENGTH ||
@@ -62,9 +66,22 @@ export function parseBookAliasDictionary(raw: string): BookAliasDictionary {
           key === "constructor") {
         continue;
       }
-      aliases[key] = title;
+      aliasCount++;
+      const previous = aliases[key];
+      if (previous && previous !== title) {
+        delete aliases[key];
+        conflicts.add(key);
+      } else if (!conflicts.has(key)) {
+        aliases[key] = title;
+      }
     }
   }
 
-  return { aliases, recordCount: payload.records.length };
+  return {
+    aliases,
+    recordCount: payload.records.length,
+    aliasCount,
+    conflictCount: conflicts.size,
+    conflicts: [...conflicts],
+  };
 }
