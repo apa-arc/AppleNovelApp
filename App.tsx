@@ -710,7 +710,7 @@ export default function App() {
         }
       }
       setSources(next);
-      if (subscription.aliasSources.length > 0) setBookAliasMap(importedAliases);
+      setBookAliasMap(importedAliases);
       setSubscriptionUrlMessage(subscription.name + (action === "add" ? " 添加完成：" : " 更新完成：") + "正文源新增 " + added + "，更新 " + updated + "，移除已下架 " + removed + "，重复跳过 " + skipped + "；别名源 " + subscription.aliasSources.length + " 个，别名记录 " + aliasRecordCount + " 条；不兼容 " + subscription.unsupported.length + "。");
     } catch (error) {
       setSubscriptionUrlMessage(error instanceof Error ? error.message : "订阅导入失败，请检查地址和网络。");
