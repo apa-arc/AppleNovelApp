@@ -117,3 +117,31 @@ test("imports the two native novel sources with path URL templates and multiple 
 });
 
 test("imports the complete AppleNovelApp-compatible 26-source subscription",()=>{const raw=fs.readFileSync(path.join(__dirname,"fixtures","novel-source-subscription.json"),"utf8");const result=parseSourceSubscription(raw);assert.equal(result.name,"小说源");assert.equal(result.compatible.length,26);assert.equal(result.unsupported.length,0);assert.equal(new Set(result.compatible.map(x=>x.remoteId)).size,26);for(const source of result.compatible){assert.ok(source.htmlRules?.search,source.remoteId+" missing search rules");assert.ok(source.htmlRules?.detail,source.remoteId+" missing detail rules");assert.ok(source.htmlRules?.chapters,source.remoteId+" missing chapter rules");assert.ok(source.htmlRules?.content,source.remoteId+" missing content rules");}});
+
+
+test("rejects alias dictionary URLs containing credentials", () => {
+  const alias = {
+    id: "credential-alias", name: "带凭据的别名库", kind: "alias-dictionary",
+    dataUrl: "https://user:pass@raw.githubusercontent.com/apa-arc/Novel-book-source-/main/aliases/book-aliases.json"
+  };
+  const result = parseSourceSubscription(JSON.stringify({
+    schemaVersion: 1, subscriptionId: "test", sources: [alias]
+  }));
+  assert.equal(result.aliasSources.length, 0);
+  assert.equal(result.unsupported.length, 1);
+  assert.match(result.unsupported[0].reason, /raw.githubusercontent.com/);
+});
+
+test("keeps alias dictionary IDs unique across the whole subscription", () => {
+  const alias = {
+    id: compatible.id, name: "重复别名库", kind: "alias-dictionary",
+    dataUrl: "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/aliases/book-aliases.json"
+  };
+  const result = parseSourceSubscription(JSON.stringify({
+    schemaVersion: 1, subscriptionId: "test", sources: [compatible, alias]
+  }));
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.aliasSources.length, 0);
+  assert.equal(result.unsupported.length, 1);
+  assert.match(result.unsupported[0].reason, /重复 ID/);
+});

@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { parseJsonSearchResults, buildSearchRequestUrl, searchNovelSource } = require("../.test-build/source-search.js");
+const { parseJsonSearchResults, buildSearchRequestUrl, searchNovelSource, resolveCoverImageUrl } = require("../.test-build/source-search.js");
 const source = { id:"s1", name:"测试源", baseUrl:"https://books.example", searchUrl:"https://books.example/search?keyword={keyword}", bookUrl:"https://books.example/book", chapterListUrl:"https://books.example/toc", chapterUrl:"https://books.example/chapter", enabled:true, importedAt:1 };
 
 test("builds encoded keyword URL from template", () => {
@@ -36,3 +36,10 @@ test("empty keyword is rejected", async () => {
 });
 
 test("replaces page placeholder in search templates",()=>{assert.equal(buildSearchRequestUrl("https://books.example/search?keyword={keyword}&page={page}","斗罗大陆"),"https://books.example/search?keyword=%E6%96%97%E7%BD%97%E5%A4%A7%E9%99%86&page=1");});
+
+test("accepts external CDN cover URLs and upgrades legacy HTTP image links", () => {
+  const page = parseJsonSearchResults(JSON.stringify({ data: [{ title: "封面测试", author: "作者", url: "/book/cover", cover: "http://img.cdn.example/cover.jpg" }] }), source, "封面", "https://books.example/search");
+  assert.equal(page.items[0].coverUrl, "https://img.cdn.example/cover.jpg");
+  assert.equal(resolveCoverImageUrl("//img.cdn.example/cover2.jpg", "https://books.example/search"), "https://img.cdn.example/cover2.jpg");
+  assert.equal(resolveCoverImageUrl("javascript:alert(1)", "https://books.example/search"), undefined);
+});

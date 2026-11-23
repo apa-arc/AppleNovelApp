@@ -13,3 +13,17 @@ test("supports nth-of-type, nth-child ranges and meta content attributes",()=>{c
 test("supports self-selected anchor chapter lists",()=>{const chapters=p.parseHtmlChapterList('<div id="toc"><a href="/c/1">第一章</a><a href="/c/2">第二章</a></div>',"b","https://example.com",{itemSelector:"#toc a",titleSelector:":self",urlSelector:":self"});assert.equal(chapters.length,2);assert.equal(chapters[1].title,"第二章");});
 
 test("all selectors in the 26-source subscription use supported App CSS syntax",()=>{const raw=JSON.parse(fs.readFileSync(path.join(__dirname,"fixtures","novel-source-subscription.json"),"utf8"));const root=p.parseHtmlDocument("<html><body><div></div></body></html>");for(const source of raw.sources){const rules=source.appConfig.htmlRules;for(const [group,config] of Object.entries(rules)){for(const [key,selector] of Object.entries(config)){if(!key.toLowerCase().includes("selector")||selector===":self")continue;assert.doesNotThrow(()=>p.selectHtmlNodes(root,selector),source.id+" "+group+"."+key+" "+selector);}}}});
+
+test("HTML search accepts lazy-loaded covers hosted on a separate CDN", () => {
+  const html = '<ul><li class="book"><a class="title" href="/book/1">封面书</a><img class="cover" data-src="http://img.cdn.example/cover.jpg"></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "s1", "源", "封面", "https://books.example/search", { itemSelector: "li.book", titleSelector: "a.title", urlSelector: "a.title", coverSelector: "img.cover" });
+  assert.equal(page.items[0].coverUrl, "https://img.cdn.example/cover.jpg");
+});
+
+
+test("HTML search automatically extracts lazy cover images when a source has no cover selector", () => {
+  const html = '<ul><li class="book"><a class="title" href="/book/1">自动封面</a><img src="placeholder.gif" data-src="//img.cdn.example/real-cover.jpg"></li><li class="book"><a class="title" href="/book/2">第二本</a><img data-original="http://img.cdn.example/second.jpg"></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "s1", "源", "封面", "https://books.example/search", { itemSelector: "li.book", titleSelector: "a.title", urlSelector: "a.title" });
+  assert.equal(page.items[0].coverUrl, "https://img.cdn.example/real-cover.jpg");
+  assert.equal(page.items[1].coverUrl, "https://img.cdn.example/second.jpg");
+});
