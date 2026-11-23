@@ -23,7 +23,7 @@ export type OfflineKokoroEngine = Awaited<ReturnType<TtsApi["createTTS"]>>;
 
 const MODEL_ID = SPEECH_MODEL.downloadAssetId;
 
-type FileSystemApi = typeof import("@dr.pogodin/react-native-fs");
+type FileSystemApi = typeof import("@dr.pogodin/react-native-fs", { with: { "resolution-mode": "import" } });
 
 function loadFileSystemApi(): FileSystemApi {
   return require("@dr.pogodin/react-native-fs") as FileSystemApi;
