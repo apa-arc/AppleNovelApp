@@ -1,8 +1,8 @@
 name: iOS native compile (unsigned)
 
 on:
-  push:
-    branches: [release/1.1.2-alias-kokoro]
+  # Paused automatic iOS builds on 1.1.2 to keep the release queue clear.
+  # Run manually when native validation is needed.
   workflow_dispatch:
 
 concurrency:
