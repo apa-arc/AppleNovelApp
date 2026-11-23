@@ -6,6 +6,9 @@ type TtsApi = typeof import("react-native-sherpa-onnx/tts", { with: { "resolutio
 type Progress = import("react-native-sherpa-onnx/download", { with: { "resolution-mode": "import" } }).Progress;
 type ProgressPhase = import("react-native-sherpa-onnx/download", { with: { "resolution-mode": "import" } }).ProgressPhase;
 
+type IncompleteModelTransfer = { modelId: string; phase: ProgressPhase };
+type AvailableModel = { id: string };
+
 function loadDownloadApi(): DownloadApi {
   return require("react-native-sherpa-onnx/download") as DownloadApi;
 }
@@ -94,11 +97,11 @@ export async function getOfflineKokoroModel(): Promise<{
     api.getIncompleteDownloads(category),
     api.getIncompleteExtractions(category),
   ]);
-  const extraction = extractions.find((entry) => entry.modelId === MODEL_ID);
+  const extraction = extractions.find((entry: IncompleteModelTransfer) => entry.modelId === MODEL_ID);
   if (extraction) {
     return { installed: false, localPath: null, pendingPhase: "extracting" };
   }
-  const download = downloads.find((entry) => entry.modelId === MODEL_ID);
+  const download = downloads.find((entry: IncompleteModelTransfer) => entry.modelId === MODEL_ID);
   return {
     installed: false,
     localPath: null,
@@ -118,14 +121,14 @@ export async function downloadOfflineKokoroModel(
     throw new Error(disk.message || "设备可用存储空间不足，无法安装 Kokoro 离线模型。");
   }
   const models = await api.refreshModels(category);
-  const model = models.find((entry) => entry.id === MODEL_ID);
+  const model = models.find((entry: AvailableModel) => entry.id === MODEL_ID);
   if (!model) {
     throw new Error("Kokoro 官方模型列表中没有找到预期的 int8 多语言模型。");
   }
   const result = await api.downloadModel(category, MODEL_ID, {
     verifyChecksum: true,
     deleteArchiveAfterExtract: true,
-    onProgress: (progress) => onProgress?.({
+    onProgress: (progress: Progress) => onProgress?.({
       phase: progress.phase,
       percent: Math.max(0, Math.min(100, progress.percent)),
       bytesProcessed: progress.bytesProcessed,
