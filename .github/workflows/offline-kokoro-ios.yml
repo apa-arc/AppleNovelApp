@@ -2,7 +2,8 @@ name: Offline Kokoro iOS native smoke test
 
 concurrency:
   group: offline-kokoro-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Keep active iOS simulator checks running; newer updates may wait in the queue.
+  cancel-in-progress: false
 
 on:
   pull_request:
