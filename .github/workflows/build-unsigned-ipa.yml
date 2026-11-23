@@ -48,7 +48,7 @@ permissions:
 
 jobs:
   build-unsigned-ipa:
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 90
     steps:
       - name: Check out repository
