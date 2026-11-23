@@ -9,6 +9,7 @@ on:
     branches: [main, release/1.1.1-online-ai-reader, release/1.1.2-alias-kokoro]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   validate:
