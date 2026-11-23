@@ -156,6 +156,7 @@ export default function App() {
   const [subscriptionUrlMessage, setSubscriptionUrlMessage] = useState("");
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const [onlineQuery, setOnlineQuery] = useState("");
+  const [bookAliasMap, setBookAliasMap] = useState<Record<string, string>>({});
   const [onlineResults, setOnlineResults] = useState<SearchNovelGroup[]>([]);
   const [selectedSearchNovel, setSelectedSearchNovel] = useState<SearchNovelGroup | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
@@ -291,6 +292,17 @@ export default function App() {
           const parsed: unknown = JSON.parse(saved);
           if (Array.isArray(parsed)) setBooks((parsed as Book[]).filter((book) => !["1", "2", "3"].includes(book.id)));
         }
+        const savedAliases = await AsyncStorage.getItem("novel-book-alias-map-v1");
+        if (savedAliases && active) {
+          const parsedAliases: unknown = JSON.parse(savedAliases);
+          if (parsedAliases && typeof parsedAliases === "object" && !Array.isArray(parsedAliases)) {
+            const safeAliases: Record<string, string> = {};
+            for (const [key, value] of Object.entries(parsedAliases as Record<string, unknown>)) {
+              if (typeof value === "string" && key.length > 0 && key.length <= 120 && value.length > 0 && value.length <= 200) safeAliases[key] = value;
+            }
+            setBookAliasMap(safeAliases);
+          }
+        }
         const savedSources = await AsyncStorage.getItem(SOURCES_STORAGE_KEY);
         if (savedSources && active) {
           const parsedSources: unknown = JSON.parse(savedSources);
@@ -386,6 +398,11 @@ export default function App() {
       Alert.alert("保存失败", "阅读记录暂时未能保存，请检查手机存储空间。");
     });
   }, [readingHistory, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem("novel-book-alias-map-v1", JSON.stringify(bookAliasMap)).catch(() => undefined);
+  }, [bookAliasMap, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -607,7 +624,43 @@ export default function App() {
       const raw = await response.text();
       if (raw.length > 2 * 1024 * 1024) throw new Error("订阅文件超过 2 MB 限制。");
       const subscription = parseSourceSubscription(raw);
-      if (subscription.compatible.length === 0) {
+      const importedAliases: Record<string, string> = {};
+      let aliasRecordCount = 0;
+      for (const aliasSource of subscription.aliasSources) {
+        const aliasController = new AbortController();
+        const aliasTimeout = setTimeout(() => aliasController.abort(), 15000);
+        let aliasResponse: Response;
+        try {
+          aliasResponse = await fetch(aliasSource.dataUrl, {
+            method: "GET", credentials: "omit", redirect: "error", signal: aliasController.signal,
+            headers: { Accept: "application/json" },
+          });
+        } finally {
+          clearTimeout(aliasTimeout);
+        }
+        if (!aliasResponse.ok) throw new Error("别名库下载失败，HTTP " + aliasResponse.status + "。");
+        const aliasLength = Number(aliasResponse.headers.get("content-length") || 0);
+        if (aliasLength > 1024 * 1024) throw new Error("别名库文件超过 1 MB 限制。");
+        const aliasRaw = await aliasResponse.text();
+        if (aliasRaw.length > 1024 * 1024) throw new Error("别名库文件超过 1 MB 限制。");
+        const aliasPayload: unknown = JSON.parse(aliasRaw);
+        if (!aliasPayload || typeof aliasPayload !== "object" || Array.isArray(aliasPayload)) throw new Error("别名库格式错误。");
+        const aliasObject = aliasPayload as { schemaVersion?: unknown; records?: unknown; recordCount?: unknown };
+        if (aliasObject.schemaVersion !== 1 || !Array.isArray(aliasObject.records) || aliasObject.records.length > 20000) throw new Error("别名库结构不受支持。");
+        if (typeof aliasObject.recordCount === "number" && aliasObject.recordCount !== aliasObject.records.length) throw new Error("别名库记录数量校验失败。");
+        for (const record of aliasObject.records) {
+          if (!record || typeof record !== "object" || Array.isArray(record)) continue;
+          const item = record as { aliases?: unknown; title?: unknown };
+          if (typeof item.title !== "string" || !item.title.trim() || item.title.length > 200 || !Array.isArray(item.aliases)) continue;
+          for (const alias of item.aliases) {
+            if (typeof alias !== "string" || !alias.trim() || alias.length > 120) continue;
+            const key = alias.trim().toLocaleLowerCase().replace(/\\s+/g, "");
+            importedAliases[key] = item.title.trim();
+          }
+        }
+        aliasRecordCount += aliasObject.records.length;
+      }
+      if (subscription.compatible.length === 0 && subscription.aliasSources.length === 0) {
         setSubscriptionUrlMessage(subscription.name + " 已连接，但目前没有可导入的兼容书源。" + (subscription.unsupported.length ? " 已跳过 " + subscription.unsupported.length + " 个不兼容条目。" : ""));
         return;
       }
@@ -657,7 +710,8 @@ export default function App() {
         }
       }
       setSources(next);
-      setSubscriptionUrlMessage(subscription.name + (action === "add" ? " 添加完成：" : " 更新完成：") + "新增 " + added + "，更新 " + updated + "，移除已下架 " + removed + "，重复跳过 " + skipped + "，不兼容 " + subscription.unsupported.length + "。");
+      if (subscription.aliasSources.length > 0) setBookAliasMap(importedAliases);
+      setSubscriptionUrlMessage(subscription.name + (action === "add" ? " 添加完成：" : " 更新完成：") + "正文源新增 " + added + "，更新 " + updated + "，移除已下架 " + removed + "，重复跳过 " + skipped + "；别名源 " + subscription.aliasSources.length + " 个，别名记录 " + aliasRecordCount + " 条；不兼容 " + subscription.unsupported.length + "。");
     } catch (error) {
       setSubscriptionUrlMessage(error instanceof Error ? error.message : "订阅导入失败，请检查地址和网络。");
     } finally {
@@ -679,6 +733,8 @@ export default function App() {
       setOnlineResults([]);
       return;
     }
+    const aliasKey = keyword.toLocaleLowerCase().replace(/\\s+/g, "");
+    const resolvedKeyword = bookAliasMap[aliasKey] || keyword;
     const enabledSources = sources.filter((source) => source.enabled);
     if (enabledSources.length === 0) {
       setSearchMessage("还没有启用的书源。请先到「源」页面添加订阅。");
@@ -688,11 +744,11 @@ export default function App() {
     }
     setSearching(true);
     setSearchMessage("");
-    setSearchSummary("正在向 " + enabledSources.length + " 个书源发起搜索…");
+    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」已匹配真实书名「" + resolvedKeyword + "」。" : "") + "正在向 " + enabledSources.length + " 个书源发起搜索…");
     setOnlineResults([]);
     const settled = await Promise.allSettled(enabledSources.map(async (source) => {
       const startedAt = Date.now();
-      const page = await searchNovelSource(source, keyword, getSourceClient(source));
+      const page = await searchNovelSource(source, resolvedKeyword, getSourceClient(source));
       return { page, latencyMs: Date.now() - startedAt };
     }));
     const groups = new Map<string, SearchNovelGroup>();
