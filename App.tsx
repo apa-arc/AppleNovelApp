@@ -654,7 +654,7 @@ export default function App() {
           if (typeof item.title !== "string" || !item.title.trim() || item.title.length > 200 || !Array.isArray(item.aliases)) continue;
           for (const alias of item.aliases) {
             if (typeof alias !== "string" || !alias.trim() || alias.length > 120) continue;
-            const key = alias.trim().toLocaleLowerCase().replace(/\\s+/g, "");
+            const key = alias.trim().toLocaleLowerCase().replace(/\s+/g, "");
             importedAliases[key] = item.title.trim();
           }
         }
@@ -733,7 +733,7 @@ export default function App() {
       setOnlineResults([]);
       return;
     }
-    const aliasKey = keyword.toLocaleLowerCase().replace(/\\s+/g, "");
+    const aliasKey = keyword.toLocaleLowerCase().replace(/\s+/g, "");
     const resolvedKeyword = bookAliasMap[aliasKey] || keyword;
     const enabledSources = sources.filter((source) => source.enabled);
     if (enabledSources.length === 0) {
@@ -1866,7 +1866,7 @@ export default function App() {
           </View>
           <View style={[styles.sourceCard, appIsDark && styles.darkCard, { marginTop: 14 }]}>
             <View style={styles.sourceListHeading}>
-              <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText]}>书源列表（{sources.length}）</Text>
+              <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText]}>书源列表（{sources.length + (Object.keys(bookAliasMap).length > 0 ? 1 : 0)}）</Text>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                 <Pressable onPress={() => void exportSourceFailures()}><Text style={styles.sourceActionText}>导出</Text></Pressable>
                 <Pressable onPress={() => setSourcesCollapsed((value) => !value)}><Text style={styles.sourceActionText}>{sourcesCollapsed ? "展开" : "折叠"}</Text></Pressable>
@@ -1877,6 +1877,13 @@ export default function App() {
             <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
               {(["全部", "成功源", "失败源"] as const).map((filter) => <Pressable key={filter} onPress={() => setSourceFilter(filter)} style={[styles.sourceFilterButton, sourceFilter === filter && styles.sourceFilterActive]}><Text style={[styles.sourceFilterText, sourceFilter === filter && styles.sourceFilterTextActive]}>{filter}</Text></Pressable>)}
             </View>
+            {Object.keys(bookAliasMap).length > 0 && <View style={[styles.sourceItem, appIsDark && styles.darkCard, { marginTop: 10 }]}>
+              <View style={styles.sourceItemInfo}>
+                <Text style={[styles.sourceItemTitle, appIsDark && styles.darkPrimaryText]}>小说别名库 · 特殊源</Text>
+                <Text style={[styles.sourceItemUrl, appIsDark && styles.darkMutedText]}>{Object.keys(bookAliasMap).length} 条别名映射已启用，不参与正文抓取</Text>
+                <Text style={[styles.sourceItemStatus, appIsDark && styles.darkSecondaryText]}>已启用 · 搜索时自动转换为真实书名</Text>
+              </View>
+            </View>}
             {selectedSourceIds.length > 0 && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
               <Text style={[styles.sourceMessage, { alignSelf: "center" }]}>已选 {selectedSourceIds.length} 个</Text>
               <Pressable style={styles.sourceAction} onPress={() => void testSelectedSources()}><Text style={styles.sourceActionText}>测试</Text></Pressable>
