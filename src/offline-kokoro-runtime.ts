@@ -1,10 +1,10 @@
 import { encodePcm16Wav } from "./wav-encoder";
 import { SPEECH_MODEL } from "./speech-voice-catalog";
 
-type DownloadApi = typeof import("react-native-sherpa-onnx/download");
-type TtsApi = typeof import("react-native-sherpa-onnx/tts");
-type Progress = import("react-native-sherpa-onnx/download").Progress;
-type ProgressPhase = import("react-native-sherpa-onnx/download").ProgressPhase;
+type DownloadApi = typeof import("react-native-sherpa-onnx/download", { with: { "resolution-mode": "import" } });
+type TtsApi = typeof import("react-native-sherpa-onnx/tts", { with: { "resolution-mode": "import" } });
+type Progress = import("react-native-sherpa-onnx/download", { with: { "resolution-mode": "import" } }).Progress;
+type ProgressPhase = import("react-native-sherpa-onnx/download", { with: { "resolution-mode": "import" } }).ProgressPhase;
 
 function loadDownloadApi(): DownloadApi {
   return require("react-native-sherpa-onnx/download") as DownloadApi;
