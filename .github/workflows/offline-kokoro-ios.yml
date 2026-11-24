@@ -97,14 +97,13 @@ jobs:
           xcrun simctl install "$DEVICE_ID" "$APP_PATH"
           xcrun simctl launch "$DEVICE_ID" com.apaarc.applenovelapp
           sleep 20
-          # Exclude the macOS "log" process: its own diagnostic event includes
-          # the predicate text and can otherwise create a false-positive match.
-          LOG="$(xcrun simctl spawn "$DEVICE_ID" log show --style compact --last 2m --predicate 'process != "log" AND eventMessage CONTAINS "KOKORO_NATIVE_READY"')"
-          echo "$LOG"
-          if ! printf '%s\n' "$LOG" | grep -Fq '[KOKORO_NATIVE_READY]'; then
-            echo "::error::SherpaOnnx TurboModule did not emit its app-process ready marker."
-            echo "Expo Metro log:"
-            tail -n 100 /tmp/expo-metro.log || true
+          # React Native console.log output is forwarded to Metro, not necessarily
+          # to the simulator's unified system log. This marker is emitted only
+          # after the native TurboModule has been called and responded.
+          echo "Expo Metro log:"
+          tail -n 150 /tmp/expo-metro.log || true
+          if ! grep -Fq '[KOKORO_NATIVE_READY]' /tmp/expo-metro.log; then
+            echo "::error::SherpaOnnx TurboModule did not emit its runtime ready marker."
             exit 1
           fi
-          echo "Verified SherpaOnnx TurboModule ready marker from the app process."
+          echo "Verified SherpaOnnx TurboModule runtime ready marker in Metro output."
