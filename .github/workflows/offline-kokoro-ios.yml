@@ -96,14 +96,20 @@ jobs:
           fi
           xcrun simctl install "$DEVICE_ID" "$APP_PATH"
           xcrun simctl launch "$DEVICE_ID" com.apaarc.applenovelapp
-          sleep 20
-          # React Native console.log output is forwarded to Metro, not necessarily
-          # to the simulator's unified system log. This marker is emitted only
-          # after the native TurboModule has been called and responded.
+          # Give Metro time to finish the initial bundle, then wait for the native
+          # runtime marker instead of checking after a fixed short delay.
+          READY_MARKER=0
+          for attempt in $(seq 1 90); do
+            if grep -Fq '[KOKORO_NATIVE_READY]' /tmp/expo-metro.log; then
+              READY_MARKER=1
+              break
+            fi
+            sleep 2
+          done
           echo "Expo Metro log:"
           tail -n 150 /tmp/expo-metro.log || true
-          if ! grep -Fq '[KOKORO_NATIVE_READY]' /tmp/expo-metro.log; then
-            echo "::error::SherpaOnnx TurboModule did not emit its runtime ready marker."
+          if [ "$READY_MARKER" -ne 1 ]; then
+            echo "::error::SherpaOnnx TurboModule did not emit its runtime ready marker within 180 seconds."
             exit 1
           fi
           echo "Verified SherpaOnnx TurboModule runtime ready marker in Metro output."
