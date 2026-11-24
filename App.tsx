@@ -1093,6 +1093,7 @@ export default function App() {
 
   const openBook = async (book: Book) => {
     stopSpeech();
+    if (books.some((item) => item.id === book.id)) setBooks((current) => current.map((item) => item.id === book.id ? { ...item, unreadUpdateCount: 0 } : item));
     if (book.localFileUri) {
       try {
         const info = await FileSystem.getInfoAsync(book.localFileUri);
@@ -1151,6 +1152,7 @@ export default function App() {
 
       // Check the subscribed source every time a saved online novel is opened.
       const refreshedBook = await checkOnlineSubscription(book);
+      setBooks((current) => current.map((item) => item.id === book.id ? { ...item, unreadUpdateCount: 0 } : item));
       const chapters = refreshedBook?.onlineChapters || initialChapters;
       const targetIndex = refreshedBook?.chapterIndex ?? initialIndex;
       const targetChapter = chapters[targetIndex] || chapters[0];
@@ -1232,7 +1234,7 @@ export default function App() {
   const previewGeminiVoice = async (mode: "single" | "dialogue") => {
     const apiKey = geminiApiKeyDraft.trim();
     if (!apiKey) {
-      Alert.alert("需要 Gemini API Key", "请先在下方输入并保存你自己的 Gemini API Key。不要把 Key 发到聊天里。");
+      Alert.alert("需要 Gemini API Key", "请先点击「安全配置语音服务」，通过系统安全提示保存本机 Key。");
       return;
     }
     if (isSpeaking) stopSpeech();
@@ -1723,7 +1725,7 @@ export default function App() {
             <Text style={styles.playerAction}>Aa 设置</Text>
           </Pressable>
           <Pressable onPress={openSpeechSettings} style={styles.playerButton}>
-            <Text style={styles.playerAction}>语音实验</Text>
+            <Text style={styles.playerAction}>听书</Text>
           </Pressable>
           <Pressable disabled={activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter} onPress={() => changeChapter(1)} style={styles.chapterNavButton}>
             <Text style={[styles.chapterNavText, (activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter) && styles.disabledText]}>下一章</Text>
