@@ -109,3 +109,104 @@ replaceExactlyOnce(
                 config.model.kokoro.voices = detect.paths.voices;`,
   "Kokoro dictionary runtime configuration"
 );
+
+replaceExactlyOnce(
+  "ios/tts/sherpa-onnx-tts-wrapper.h",
+  `        int32_t sampleRate;          // Sample rate in Hz
+    };`,
+  `        int32_t sampleRate;          // Sample rate in Hz
+        std::string error;             // Native synthesis error, preserved for JS diagnostics
+    };`,
+  "TTS synthesis error field"
+);
+
+replaceExactlyOnce(
+  "ios/tts/sherpa-onnx-tts-wrapper.mm",
+  `        result.samples = std::move(audio.samples);
+        result.sampleRate = audio.sample_rate;
+
+        LOGI("TTS: Generated %zu samples at %d Hz",
+             result.samples.size(), result.sampleRate);
+
+        return result;`,
+  `        result.samples = std::move(audio.samples);
+        result.sampleRate = audio.sample_rate;
+
+        LOGI("TTS: Generated %zu samples at %d Hz",
+             result.samples.size(), result.sampleRate);
+        if (result.samples.empty() || result.sampleRate <= 0) {
+            result.error = "Native Generate returned empty PCM; sid=" + std::to_string(sid) +
+                ", engineSampleRate=" + std::to_string(pImpl->tts.value().SampleRate()) +
+                ", speakerCount=" + std::to_string(pImpl->tts.value().NumSpeakers()) +
+                ", textLength=" + std::to_string(text.size());
+            LOGE("TTS: %s", result.error.c_str());
+        }
+
+        return result;`,
+  "diagnose empty Kokoro PCM output"
+);
+
+replaceExactlyOnce(
+  "ios/tts/sherpa-onnx-tts-wrapper.mm",
+  `    } catch (const std::exception& e) {
+        LOGE("TTS: Exception during generation: %s", e.what());
+        return result;
+    } catch (...) {
+        LOGE("TTS: Unknown exception during generation");
+        return result;
+    }`,
+  `    } catch (const std::exception& e) {
+        result.error = e.what();
+        LOGE("TTS: Exception during generation: %s", e.what());
+        return result;
+    } catch (...) {
+        result.error = "Unknown native exception during TTS generation";
+        LOGE("TTS: Unknown exception during generation");
+        return result;
+    }`,
+  "preserve Kokoro generation exceptions"
+);
+
+replaceExactlyOnce(
+  "ios/SherpaOnnx+TTS.mm",
+  `        if (result.samples.empty() || result.sampleRate == 0) {
+            NSString *errorMsg = @"Failed to generate speech or result is empty";
+            RCTLogError(@"%@", errorMsg);`,
+  `        if (result.samples.empty() || result.sampleRate == 0) {
+            NSString *detail = result.error.empty()
+                ? [NSString stringWithFormat:@"native output was empty (sampleRate=%d)", result.sampleRate]
+                : [NSString stringWithUTF8String:result.error.c_str()];
+            NSString *errorMsg = [@"Kokoro synthesis failed: " stringByAppendingString:detail];
+            RCTLogError(@"%@", errorMsg);`,
+  "surface native Kokoro generation failure"
+);
+
+const imageSizeUtilsPath = path.resolve("node_modules/image-size/dist/cjs/types/utils.js");
+if (!fs.existsSync(imageSizeUtilsPath)) {
+  throw new Error("image-size utility patch target is missing: " + imageSizeUtilsPath);
+}
+{
+  const before = "const toUTF8String = (input, start = 0, end = input.length) => decoder.decode(input.slice(start, end));";
+  const after = "const toUTF8String = (input, start = 0, end = input.length) => {\n  const bytes = input instanceof ArrayBuffer\n    ? new Uint8Array(input)\n    : ArrayBuffer.isView(input)\n      ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength)\n      : Uint8Array.from(input);\n  return decoder.decode(bytes.subarray(start, end));\n};";
+  const viewBefore = "const getView = (input, offset) => new DataView(input.buffer, input.byteOffset + offset);";
+  const viewAfter = "const getView = (input, offset) => {\n  // Metro may pass Uint8Array-compatible data backed by a non-ArrayBuffer.\n  // DataView requires an actual ArrayBuffer, so copy only in that case.\n  const bytes = input.buffer instanceof ArrayBuffer ? input : Uint8Array.from(input);\n  return new DataView(bytes.buffer, bytes.byteOffset + offset);\n};";
+  const content = fs.readFileSync(imageSizeUtilsPath, "utf8");
+  let patched = content;
+  if (!patched.includes(after)) {
+    const matches = patched.split(before).length - 1;
+    if (matches !== 1) {
+      throw new Error("Expected one unpatched image-size UTF-8 decoder block, found " + matches);
+    }
+    patched = patched.replace(before, after);
+    process.stdout.write("Patched image-size byte input normalization for Metro compatibility\n");
+  }
+  if (!patched.includes(viewAfter)) {
+    const matches = patched.split(viewBefore).length - 1;
+    if (matches !== 1) {
+      throw new Error("Expected one unpatched image-size DataView block, found " + matches);
+    }
+    patched = patched.replace(viewBefore, viewAfter);
+    process.stdout.write("Patched image-size DataView backing buffer for Metro compatibility\n");
+  }
+  if (patched !== content) fs.writeFileSync(imageSizeUtilsPath, patched, "utf8");
+}

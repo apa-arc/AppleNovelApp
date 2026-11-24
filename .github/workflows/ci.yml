@@ -6,7 +6,7 @@ concurrency:
 
 on:
   push:
-    branches: [main]
+    branches: [main, release/1.1.1-online-ai-reader]
   pull_request:
     branches: [main]
 

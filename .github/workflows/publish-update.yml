@@ -36,6 +36,13 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Restrict production OTA to main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Production OTA is restricted to the main branch. Do not dispatch this workflow from a release or feature branch."
+            exit 1
+          fi
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -70,6 +77,43 @@ jobs:
             if (config.updates?.requestHeaders?.["expo-channel-name"] !== channel) throw new Error("Embedded OTA channel does not match the publish channel.");
             console.log("OTA configuration validated for", projectId, "slug", config.slug, "channel", channel);
           '
+      - name: Verify production channel mapping before publishing
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
+        run: |
+          npx eas-cli@27.11.0 channel:view production --json --non-interactive > "$RUNNER_TEMP/production-channel.json"
+          node -e '
+            const fs = require("fs");
+            const result = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/production-channel.json", "utf8"));
+            const channel = result.currentPage;
+            const branches = channel?.updateBranches || [];
+            if (channel?.name !== "production" || channel.isPaused || !branches.some((branch) => branch.name === "production")) {
+              console.error("Production channel is not active or does not point to the production branch:", JSON.stringify({ name: channel?.name, isPaused: channel?.isPaused, branches: branches.map((branch) => branch.name) }));
+              process.exit(1);
+            }
+            console.log("Verified active production channel -> production branch.");
+          '
+      - name: Verify iOS runtime fingerprint before publishing
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
+          APP_UPDATE_CHANNEL: production
+        run: |
+          set -euo pipefail
+          npx eas-cli@27.11.0 fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/prepublish-ios-fingerprint.json"
+          node -e '
+            const fs = require("fs");
+            const result = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/prepublish-ios-fingerprint.json", "utf8"));
+            const actual = result.hash || result.fingerprint?.hash;
+            const expected = "7805c46b77b76a0cce34bdf7c95c8385425325be";
+            if (actual !== expected) {
+              console.error("Production OTA blocked: native runtime fingerprint changed.", JSON.stringify({ expected, actual }));
+              process.exit(1);
+            }
+            console.log("Verified expected 1.1.1 iOS runtime fingerprint:", actual);
+          '
+
       - name: Publish iOS Expo Update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -83,7 +127,7 @@ jobs:
             exit 1
           fi
           set -euo pipefail
-          npx eas-cli update --channel "$UPDATE_CHANNEL" --message "$UPDATE_MESSAGE" --platform ios --non-interactive 2>&1 | tee "$RUNNER_TEMP/eas-update.log"
+          npx eas-cli@27.11.0 update --channel "$UPDATE_CHANNEL" --message "$UPDATE_MESSAGE" --platform ios --non-interactive 2>&1 | tee "$RUNNER_TEMP/eas-update.log"
           UPDATE_ID="$(sed -nE 's/^iOS update ID[[:space:]]+([[:xdigit:]-]+).*$/\1/p' "$RUNNER_TEMP/eas-update.log" | tail -n 1)"
           if [ -z "$UPDATE_ID" ]; then
             echo "::error::Could not read the published iOS update ID."
@@ -97,7 +141,7 @@ jobs:
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
           APP_UPDATE_CHANNEL: production
         run: |
-          npx eas-cli fingerprint:compare --update-id "$PUBLISHED_UPDATE_ID" --json --non-interactive > "$RUNNER_TEMP/fingerprint-compare.json"
+          npx eas-cli@27.11.0 fingerprint:compare --update-id "$PUBLISHED_UPDATE_ID" --json --non-interactive > "$RUNNER_TEMP/fingerprint-compare.json"
           node -e '
             const fs = require("fs");
             const result = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/fingerprint-compare.json", "utf8"));
@@ -110,13 +154,13 @@ jobs:
             console.log("Verified OTA runtime fingerprint:", published);
           '
 
-      - name: Publish compatibility OTA for existing v1.0.4 installs
+      - name: Publish compatibility OTA for existing v1.1.0 installs
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
           APP_UPDATE_CHANNEL: production
-          APP_RUNTIME_VERSION_OVERRIDE: 8def164f6876d081ebd22836b1b0741a5b42dad3
-          UPDATE_MESSAGE: Compatibility update for existing v1.0.4 installations
+          APP_RUNTIME_VERSION_OVERRIDE: 6d0ba2ea68e9f0a382b0293bb7071a2bc12f9ae0
+          UPDATE_MESSAGE: Compatibility update for existing v1.1.0 installations
         run: |
           set -euo pipefail
           cp app.config.js app.config.original.cjs
@@ -131,63 +175,32 @@ jobs:
             runtimeVersion: process.env.APP_RUNTIME_VERSION_OVERRIDE,
           });
           EOF
-          npx expo config --type public --json > "$RUNNER_TEMP/legacy-expo-config.json"
+          npx expo config --type public --json > "$RUNNER_TEMP/v110-expo-config.json"
           node -e '
             const fs = require("fs");
-            const config = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/legacy-expo-config.json", "utf8"));
-            if (config.runtimeVersion !== process.env.APP_RUNTIME_VERSION_OVERRIDE) {
-              throw new Error("v1.0.4 compatibility runtime override was not applied.");
-            }
-            if (config.updates?.requestHeaders?.["expo-channel-name"] !== "production") {
-              throw new Error("v1.0.4 compatibility update is not targeting production.");
-            }
-            console.log("Verified v1.0.4 compatibility runtime:", config.runtimeVersion);
+            const config = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/v110-expo-config.json", "utf8"));
+            if (config.runtimeVersion !== process.env.APP_RUNTIME_VERSION_OVERRIDE) throw new Error("v1.1.0 compatibility runtime override was not applied.");
+            if (config.updates?.requestHeaders?.["expo-channel-name"] !== "production") throw new Error("v1.1.0 compatibility update is not targeting production.");
+            console.log("Verified v1.1.0 compatibility runtime:", config.runtimeVersion);
           '
-          npx eas-cli update --channel production --message "$UPDATE_MESSAGE" --platform ios --non-interactive 2>&1 | tee "$RUNNER_TEMP/v104-eas-update.log"
-          V104_UPDATE_ID="$(sed -nE 's/^iOS update ID[[:space:]]+([[:xdigit:]-]+).*$/\1/p' "$RUNNER_TEMP/v104-eas-update.log" | tail -n 1)"
-          if [ -z "$V104_UPDATE_ID" ]; then
-            echo "::error::Could not read the v1.0.4 compatibility iOS update ID."
+          npx eas-cli@27.11.0 update --channel production --message "$UPDATE_MESSAGE" --platform ios --non-interactive 2>&1 | tee "$RUNNER_TEMP/v110-eas-update.log"
+          V110_UPDATE_ID="$(sed -nE 's/^iOS update ID[[:space:]]+([[:xdigit:]-]+).*$/\1/p' "$RUNNER_TEMP/v110-eas-update.log" | tail -n 1)"
+          if [ -z "$V110_UPDATE_ID" ]; then
+            echo "::error::Could not read the v1.1.0 compatibility iOS update ID."
             exit 1
           fi
-          echo "Published compatibility update for runtime $APP_RUNTIME_VERSION_OVERRIDE: $V104_UPDATE_ID"
-
-      - name: Publish compatibility OTA for existing v1.0.2 installs
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
-          APP_UPDATE_CHANNEL: production
-          APP_RUNTIME_VERSION_OVERRIDE: 23bc342704362f9359c194302587e065a4795b0c
-          UPDATE_MESSAGE: Compatibility update for existing v1.0.2 installations
-        run: |
-          set -euo pipefail
-          cp app.config.js app.config.original.cjs
-          restore_config() {
-            mv app.config.original.cjs app.config.js
-          }
-          trap restore_config EXIT
-          cat > app.config.js <<'EOF'
-          const originalConfig = require("./app.config.original.cjs");
-          module.exports = (context) => ({
-            ...originalConfig(context),
-            runtimeVersion: process.env.APP_RUNTIME_VERSION_OVERRIDE,
-          });
-          EOF
-          npx expo config --type public --json > "$RUNNER_TEMP/legacy-expo-config.json"
+          echo "Published compatibility update for runtime $APP_RUNTIME_VERSION_OVERRIDE: $V110_UPDATE_ID"
+          export V110_UPDATE_ID
+          npx eas-cli@27.11.0 update:view "$V110_UPDATE_ID" --json > "$RUNNER_TEMP/v110-update-view.json"
           node -e '
             const fs = require("fs");
-            const config = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/legacy-expo-config.json", "utf8"));
-            if (config.runtimeVersion !== process.env.APP_RUNTIME_VERSION_OVERRIDE) {
-              throw new Error("Legacy runtime override was not applied.");
+            const updates = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/v110-update-view.json", "utf8"));
+            const update = updates.find((item) => item.id === process.env.V110_UPDATE_ID);
+            const expected = process.env.APP_RUNTIME_VERSION_OVERRIDE;
+            if (!update || update.runtimeVersion !== expected || update.platform !== "IOS" || update.branch !== "production") {
+              console.error("v1.1.0 compatibility OTA target mismatch:", JSON.stringify({ update, expected }));
+              process.exit(1);
             }
-            if (config.updates?.requestHeaders?.["expo-channel-name"] !== "production") {
-              throw new Error("Legacy compatibility update is not targeting production.");
-            }
-            console.log("Verified compatibility runtime:", config.runtimeVersion);
+            console.log("Verified v1.1.0 compatibility OTA:", update.id, "runtime", update.runtimeVersion, "branch", update.branch);
           '
-          npx eas-cli update --channel production --message "$UPDATE_MESSAGE" --platform ios --non-interactive 2>&1 | tee "$RUNNER_TEMP/legacy-eas-update.log"
-          LEGACY_UPDATE_ID="$(sed -nE 's/^iOS update ID[[:space:]]+([[:xdigit:]-]+).*$/\1/p' "$RUNNER_TEMP/legacy-eas-update.log" | tail -n 1)"
-          if [ -z "$LEGACY_UPDATE_ID" ]; then
-            echo "::error::Could not read the compatibility iOS update ID."
-            exit 1
-          fi
-          echo "Published compatibility update for runtime $APP_RUNTIME_VERSION_OVERRIDE: $LEGACY_UPDATE_ID"
+      # Legacy v1.0.4/v1.0.2 runtime overrides are intentionally omitted until their native fingerprints are audited.

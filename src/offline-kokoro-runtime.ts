@@ -48,6 +48,24 @@ async function findModelFile(
   return null;
 }
 
+async function findModelDirectory(
+  directory: string,
+  directoryName: string,
+  depth = 0
+): Promise<string | null> {
+  if (depth > 6) return null;
+  const entries = await loadFileSystemApi().readDir(directory);
+  for (const entry of entries) {
+    if (entry.isDirectory() && entry.name === directoryName) return entry.path;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      const found = await findModelDirectory(entry.path, directoryName, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
 async function findKokoroRuleFsts(modelDirectory: string): Promise<string> {
   const names = ["phone-zh.fst", "date-zh.fst", "number-zh.fst"];
   const paths = await Promise.all(names.map((name) => findModelFile(modelDirectory, name)));
@@ -166,23 +184,50 @@ export async function createOfflineKokoroEngine(
   modelDirectory: string
 ): Promise<OfflineKokoroEngine> {
   const ruleFsts = await findKokoroRuleFsts(modelDirectory);
-  const engine = await loadTtsApi().createTTS({
-    modelPath: { type: "file", path: modelDirectory },
+  const [int8Model, chineseLexicon, englishLexicon, dictionaryDirectory] = await Promise.all([
+    findModelFile(modelDirectory, "model.int8.onnx"),
+    findModelFile(modelDirectory, "lexicon-zh.txt"),
+    findModelFile(modelDirectory, "lexicon-us-en.txt"),
+    findModelDirectory(modelDirectory, "dict"),
+  ]);
+  if (!int8Model || !chineseLexicon || !englishLexicon || !dictionaryDirectory) {
+    throw new Error(
+      "Kokoro 中文模型文件不完整：必须包含 model.int8.onnx、lexicon-zh.txt、lexicon-us-en.txt 和 dict 词典目录。请删除旧模型后重新下载。"
+    );
+  }
+  const api = loadTtsApi();
+  const modelPath = { type: "file" as const, path: modelDirectory };
+  const detection = await api.detectTtsModel(modelPath, { modelType: "kokoro" });
+  if (!detection.success) {
+    throw new Error(
+      "Kokoro 离线模型结构校验失败：" +
+        (detection.error || "Sherpa-ONNX 未识别到有效模型文件。")
+    );
+  }
+  const lexiconLanguages = detection.lexiconLanguageCandidates || [];
+  if (!lexiconLanguages.includes("zh") || !lexiconLanguages.includes("us-en")) {
+    throw new Error(
+      "Kokoro 模型没有同时检测到中文和英文词典（" + lexiconLanguages.join("、") + "），请删除旧模型后重新下载完整模型。"
+    );
+  }
+  const engine = await api.createTTS({
+    modelPath,
     modelType: "kokoro",
     provider: "cpu",
     numThreads: 2,
+    debug: __DEV__,
     ruleFsts,
     maxNumSentences: 1,
   });
-  const speakers = await engine.getNumSpeakers();
-  if (speakers !== SPEECH_MODEL.speakerCount) {
+  const [speakers, sampleRate] = await Promise.all([engine.getNumSpeakers(), engine.getSampleRate()]);
+  if (speakers !== SPEECH_MODEL.speakerCount || !Number.isFinite(sampleRate) || sampleRate <= 0) {
     await engine.destroy();
     throw new Error(
       "离线模型音色数量不匹配：预期 " +
         SPEECH_MODEL.speakerCount +
         "，实际 " +
         speakers +
-        "。"
+        "；采样率 " + sampleRate + " Hz。"
     );
   }
   return engine;
@@ -204,6 +249,9 @@ export async function synthesizeOfflineKokoro(
     sid: speakerId,
     speed: Number.isFinite(speed) ? Math.max(0.5, Math.min(2, speed)) : 1,
   });
+  if (!audio || !audio.samples || audio.samples.length === 0 || !Number.isFinite(audio.sampleRate) || audio.sampleRate <= 0) {
+    throw new Error("Kokoro 原生合成返回空音频（sampleRate=" + (audio?.sampleRate ?? 0) + "，samples=" + (audio?.samples?.length ?? 0) + "）。请检查模型词典和原生推理日志。");
+  }
   return encodePcm16Wav(audio.samples, audio.sampleRate);
 }
 

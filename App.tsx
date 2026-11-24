@@ -21,7 +21,10 @@ import {
   resumeOfflineKokoroModel, synthesizeOfflineKokoro, verifyOfflineKokoroNativeModule,
   type OfflineKokoroEngine, type OfflineKokoroProgress,
 } from "./src/offline-kokoro-runtime";
-import { playWavAudio, type WavAudioPlayback } from "./src/wav-audio-playback";
+import { playSpeechAudio, playWavAudio, type WavAudioPlayback } from "./src/wav-audio-playback";
+import { synthesizeGeminiTTS } from "./src/gemini-tts-client";
+import { buildSpeechAudioCacheKey } from "./src/speech-audio-cache";
+import { getCachedSpeechAudio, saveCachedSpeechAudio } from "./src/speech-audio-cache-runtime";
 import {
   AppState,
   SafeAreaView,
@@ -37,6 +40,7 @@ import {
   Dimensions,
   Modal,
   Share,
+  Image,
 } from "react-native";
 
 type Tab = "书架" | "搜索" | "源" | "我的";
@@ -65,15 +69,19 @@ type Book = {
 const STORAGE_KEY = "@private_novel/books_v1";
 const SOURCES_STORAGE_KEY = "@private_novel/sources_v1";
 const SUBSCRIPTION_URLS_STORAGE_KEY = "@private_novel/subscription_urls_v1";
+const BOOK_ALIAS_MAP_STORAGE_KEY = "@private_novel/book_alias_map_v1";
+const DEFAULT_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/subscription.json";
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
 const SEARCH_LOGS_STORAGE_KEY = "@private_novel/search_logs_v1";
+const SEARCH_HISTORY_STORAGE_KEY = "@private_novel/search_history_v1";
 const SHELF_VIEW_STORAGE_KEY = "@private_novel/shelf_view_v1";
 const APPEARANCE_STORAGE_KEY = "@private_novel/appearance_v1";
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
-type SearchNovelGroup = { id: string; title: string; author: string; description: string; sources: SearchSourceOption[] };
+type SearchNovelGroup = { id: string; title: string; author: string; description: string; coverUrl?: string; sources: SearchSourceOption[] };
 type SearchLogEntry = { id: string; sourceId: string; sourceName: string; keyword: string; ok: boolean; resultCount: number; error?: string; searchedAt: number };
 type Chapter = { title: string; content: string };
+const HOT_SEARCH_TERMS = ["斗罗大陆", "斗破苍穹", "凡人修仙传", "仙逆", "遮天", "诡秘之主", "全职高手"];
 const SAMPLE_CHAPTERS: Chapter[] = [
   { title: "第一章 · 故事的开始", content: "清晨的光从窗边慢慢铺开，新的旅程也在这一刻开始。\n\n这是用于测试阅读器的演示章节。正式接入书源后，这里会显示所选小说的真实章节正文。\n\n阅读器会记录你读到的章节，方便下次从上次的位置继续。\n\n请注意：当前内容仅为应用内置演示文本，并非真实小说正文。" },
   { title: "第二章 · 远方来信", content: "桌面上多了一封没有署名的信。信纸很薄，字迹却清晰。\n\n这是一段演示文本，用来检查章节切换、目录跳转和阅读位置保存是否正常。\n\n真正的章节内容将在后续接入经过授权的在线书源或用户导入的本地文本后展示。" },
@@ -81,6 +89,12 @@ const SAMPLE_CHAPTERS: Chapter[] = [
 ];
 
 
+
+function formatPlaybackTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
+  const wholeSeconds = Math.floor(seconds);
+  return Math.floor(wholeSeconds / 60) + ":" + String(wholeSeconds % 60).padStart(2, "0");
+}
 
 function getSourceClient(_source: NovelSource) {
   return undefined;
@@ -119,10 +133,18 @@ export default function App() {
   const [showSpeechSettings, setShowSpeechSettings] = useState(false);
   const [speechModelVoiceId, setSpeechModelVoiceId] = useState(DEFAULT_READER_SETTINGS.speechModelVoiceId);
   const [speechPaused, setSpeechPaused] = useState(false);
+  const [speechChunkProgress, setSpeechChunkProgress] = useState(0);
+  const [speechChunkCount, setSpeechChunkCount] = useState(0);
+  const [speechCurrentTime, setSpeechCurrentTime] = useState(0);
+  const [speechDuration, setSpeechDuration] = useState(0);
+  const [sleepTimerLabel, setSleepTimerLabel] = useState("关闭");
+  const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speechPausedRef = useRef(false);
   const speechRunIdRef = useRef(0);
   const speechPlaybackRef = useRef<WavAudioPlayback | null>(null);
   const [speechVoiceCategoryFilter, setSpeechVoiceCategoryFilter] = useState<"中文女声" | "中文男声">("中文女声");
+  const [geminiApiKeyDraft, setGeminiApiKeyDraft] = useState("");
+  const [geminiTestStatus, setGeminiTestStatus] = useState("Key 仅在当前会话内存中使用");
   const [offlineModelStatus, setOfflineModelStatus] = useState<"checking" | "not-downloaded" | "downloading" | "paused" | "installed" | "failed" | "unavailable">("checking");
   const [offlineModelProgress, setOfflineModelProgress] = useState(0);
   const [offlineModelPhase, setOfflineModelPhase] = useState<OfflineKokoroProgress["phase"] | null>(null);
@@ -133,6 +155,7 @@ export default function App() {
   const offlineModelAutoStartRef = useRef(false);
   const offlineEngineRef = useRef<OfflineKokoroEngine | null>(null);
   const [speechRate, setSpeechRate] = useState(DEFAULT_READER_SETTINGS.speechRate);
+  const speechRateRef = useRef(DEFAULT_READER_SETTINGS.speechRate);
   const [readerFontSize, setReaderFontSize] = useState(DEFAULT_READER_SETTINGS.fontSize);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(DEFAULT_READER_SETTINGS.theme);
   const [readerLineSpacing, setReaderLineSpacing] = useState(DEFAULT_READER_SETTINGS.lineSpacing);
@@ -152,12 +175,16 @@ export default function App() {
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
   const [testingSourceIds, setTestingSourceIds] = useState<string[]>([]);
   const [sourceTestMessage, setSourceTestMessage] = useState("");
-  const [subscriptionUrl, setSubscriptionUrl] = useState("");
+  const [subscriptionUrl, setSubscriptionUrl] = useState(DEFAULT_SUBSCRIPTION_URL);
   const [subscriptionUrlMessage, setSubscriptionUrlMessage] = useState("");
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const defaultSubscriptionAttemptedRef = useRef(false);
   const [onlineQuery, setOnlineQuery] = useState("");
   const [bookAliasMap, setBookAliasMap] = useState<Record<string, string>>({});
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [onlineResults, setOnlineResults] = useState<SearchNovelGroup[]>([]);
+  const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, boolean>>({});
+  const [chapterSortOrder, setChapterSortOrder] = useState<"asc" | "desc">("asc");
   const [selectedSearchNovel, setSelectedSearchNovel] = useState<SearchNovelGroup | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
@@ -292,17 +319,6 @@ export default function App() {
           const parsed: unknown = JSON.parse(saved);
           if (Array.isArray(parsed)) setBooks((parsed as Book[]).filter((book) => !["1", "2", "3"].includes(book.id)));
         }
-        const savedAliases = await AsyncStorage.getItem("novel-book-alias-map-v1");
-        if (savedAliases && active) {
-          const parsedAliases: unknown = JSON.parse(savedAliases);
-          if (parsedAliases && typeof parsedAliases === "object" && !Array.isArray(parsedAliases)) {
-            const safeAliases: Record<string, string> = {};
-            for (const [key, value] of Object.entries(parsedAliases as Record<string, unknown>)) {
-              if (typeof value === "string" && key.length > 0 && key.length <= 120 && value.length > 0 && value.length <= 200) safeAliases[key] = value;
-            }
-            setBookAliasMap(safeAliases);
-          }
-        }
         const savedSources = await AsyncStorage.getItem(SOURCES_STORAGE_KEY);
         if (savedSources && active) {
           const parsedSources: unknown = JSON.parse(savedSources);
@@ -314,19 +330,45 @@ export default function App() {
         } else if (active) {
           setSources([]);
         }
+        const savedAliases = await AsyncStorage.getItem(BOOK_ALIAS_MAP_STORAGE_KEY);
+        if (savedAliases && active) {
+          const parsedAliases: unknown = JSON.parse(savedAliases);
+          if (parsedAliases && typeof parsedAliases === "object" && !Array.isArray(parsedAliases)) {
+            const safeAliases: Record<string, string> = Object.create(null);
+            for (const [key, value] of Object.entries(parsedAliases as Record<string, unknown>)) {
+              if (key === "__proto__" || key === "prototype" || key === "constructor") continue;
+              if (typeof value === "string" && value.trim()) safeAliases[key] = value.trim();
+            }
+            setBookAliasMap(safeAliases);
+          }
+        }
         const savedSubscriptionUrls = await AsyncStorage.getItem(SUBSCRIPTION_URLS_STORAGE_KEY);
         if (savedSubscriptionUrls && active) {
           const parsedUrls: unknown = JSON.parse(savedSubscriptionUrls);
           if (parsedUrls && typeof parsedUrls === "object") {
             const urls = parsedUrls as { url?: unknown; normal?: unknown };
-            if (typeof urls.url === "string") setSubscriptionUrl(urls.url);
-            else if (typeof urls.normal === "string" && urls.normal !== "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/app-subscription.json") setSubscriptionUrl(urls.normal);
+            const legacySubscriptionUrl = "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/app-subscription.json";
+            if (typeof urls.url === "string" && urls.url.trim()) {
+              setSubscriptionUrl(urls.url === legacySubscriptionUrl ? DEFAULT_SUBSCRIPTION_URL : urls.url);
+            } else if (typeof urls.normal === "string" && urls.normal.trim() && urls.normal !== DEFAULT_SUBSCRIPTION_URL) {
+              setSubscriptionUrl(urls.normal === legacySubscriptionUrl ? DEFAULT_SUBSCRIPTION_URL : urls.normal);
+            } else {
+              setSubscriptionUrl(DEFAULT_SUBSCRIPTION_URL);
+            }
           }
         }
         const savedShelfView = await AsyncStorage.getItem(SHELF_VIEW_STORAGE_KEY);
         if (savedShelfView === "grid" || savedShelfView === "list") setShelfView(savedShelfView);
         const savedAppearance = await AsyncStorage.getItem(APPEARANCE_STORAGE_KEY);
         setAppearanceMode(savedAppearance === "dark" ? "dark" : "light");
+        const savedSearchHistory = await AsyncStorage.getItem(SEARCH_HISTORY_STORAGE_KEY);
+        if (savedSearchHistory && active) {
+          const parsedHistory: unknown = JSON.parse(savedSearchHistory);
+          if (Array.isArray(parsedHistory)) {
+            const normalizedHistory = parsedHistory.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+            setSearchHistory([...new Set(normalizedHistory.map((item) => item.trim()))].slice(0, 10));
+          }
+        }
         const savedSearchLogs = await AsyncStorage.getItem(SEARCH_LOGS_STORAGE_KEY);
         if (savedSearchLogs && active) {
           const parsedLogs: unknown = JSON.parse(savedSearchLogs);
@@ -349,6 +391,7 @@ export default function App() {
             : SPEECH_VOICES.find((voice) => voice.category === "中文女声");
           setSpeechModelVoiceId(chineseVoice?.id || DEFAULT_READER_SETTINGS.speechModelVoiceId);
           setSpeechVoiceCategoryFilter(chineseVoice?.category === "中文男声" ? "中文男声" : "中文女声");
+          speechRateRef.current = settings.speechRate;
           setSpeechRate(settings.speechRate);
         }
       } catch {
@@ -379,6 +422,13 @@ export default function App() {
 
   useEffect(() => {
     if (!isLoaded) return;
+    AsyncStorage.setItem(BOOK_ALIAS_MAP_STORAGE_KEY, JSON.stringify(bookAliasMap)).catch(() => {
+      setSubscriptionUrlMessage("别名库缓存保存失败，请稍后重试。");
+    });
+  }, [bookAliasMap, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
     AsyncStorage.setItem(SHELF_VIEW_STORAGE_KEY, shelfView).catch(() => undefined);
   }, [shelfView, isLoaded]);
 
@@ -394,15 +444,15 @@ export default function App() {
 
   useEffect(() => {
     if (!isLoaded) return;
+    AsyncStorage.setItem(SEARCH_HISTORY_STORAGE_KEY, JSON.stringify(searchHistory.slice(0, 10))).catch(() => undefined);
+  }, [searchHistory, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
     AsyncStorage.setItem(READING_HISTORY_STORAGE_KEY, JSON.stringify(readingHistory)).catch(() => {
       Alert.alert("保存失败", "阅读记录暂时未能保存，请检查手机存储空间。");
     });
   }, [readingHistory, isLoaded]);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    AsyncStorage.setItem("novel-book-alias-map-v1", JSON.stringify(bookAliasMap)).catch(() => undefined);
-  }, [bookAliasMap, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -662,6 +712,7 @@ export default function App() {
         aliasRecordCount += aliasObject.records.length;
       }
       if (subscription.compatible.length === 0 && subscription.aliasSources.length === 0) {
+        setBookAliasMap({});
         setSubscriptionUrlMessage(subscription.name + " 已连接，但目前没有可导入的兼容书源。" + (subscription.unsupported.length ? " 已跳过 " + subscription.unsupported.length + " 个不兼容条目。" : ""));
         return;
       }
@@ -720,6 +771,12 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (!isLoaded || sources.length > 0 || subscriptionUrl !== DEFAULT_SUBSCRIPTION_URL || defaultSubscriptionAttemptedRef.current) return;
+    defaultSubscriptionAttemptedRef.current = true;
+    void importSubscriptionFromUrl("add");
+  }, [isLoaded, sources.length, subscriptionUrl]);
+
   const filteredBooks = useMemo(
     () => books.filter((book) =>
       (book.title + book.author + book.category).toLowerCase().includes(query.trim().toLowerCase())
@@ -727,13 +784,14 @@ export default function App() {
     [books, query]
   );
 
-  const searchOnlineNovels = async () => {
-    const keyword = onlineQuery.trim();
+  const searchOnlineNovels = async (searchTerm = onlineQuery) => {
+    const keyword = searchTerm.trim();
     if (!keyword) {
       setSearchMessage("先输入小说名称再搜索。");
       setOnlineResults([]);
       return;
     }
+    setSearchHistory((current) => [keyword, ...current.filter((item) => item.toLocaleLowerCase() !== keyword.toLocaleLowerCase())].slice(0, 10));
     const aliasKey = keyword.toLocaleLowerCase().replace(/\s+/g, "");
     const resolvedKeyword = bookAliasMap[aliasKey] || keyword;
     const enabledSources = sources.filter((source) => source.enabled);
@@ -771,9 +829,10 @@ export default function App() {
         const existing = groups.get(key);
         const option = { summary: item, latencyMs };
         if (!existing) {
-          groups.set(key, { id: key, title: item.title, author: item.author, description: item.description, sources: [option] });
+          groups.set(key, { id: key, title: item.title, author: item.author, description: item.description, coverUrl: item.coverUrl, sources: [option] });
         } else {
           if (item.description.length > existing.description.length) existing.description = item.description;
+          if (!existing.coverUrl && item.coverUrl) existing.coverUrl = item.coverUrl;
           if (!existing.sources.some((entry) => entry.summary.sourceId === item.sourceId)) existing.sources.push(option);
         }
       });
@@ -786,7 +845,7 @@ export default function App() {
     setOnlineResults(groupedResults);
     setSearching(false);
     setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + "搜索完成：成功 " + (enabledSources.length - failed) + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。");
-    setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（目前仅支持常见 JSON 列表）。" : "点击小说名称即可自动获取可用阅读源和章节目录。");
+    setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（支持常见 JSON 与已配置规则的 HTML）。" : "点击小说名称即可自动获取可用阅读源和章节目录。");
   };
 
   const loadNovelCatalogFor = async (novel: SearchNovelGroup) => {
@@ -867,6 +926,14 @@ export default function App() {
     setCatalogMessage("已加入本地书架。下次打开会从上次阅读的章节继续。");
   };
 
+  const addCurrentBookToShelf = () => {
+    if (!selectedBook) return;
+    setBooks((current) => current.some((book) => book.id === selectedBook.id)
+      ? current.map((book) => book.id === selectedBook.id ? { ...book, ...selectedBook } : book)
+      : [selectedBook, ...current]);
+    Alert.alert("已加入书架", "这本小说已保存到本地书架，之后可以从书架继续阅读。");
+  };
+
   const closeSearchNovel = () => {
     setSelectedSearchNovel(null);
     setSelectedSourceId(null);
@@ -944,11 +1011,20 @@ export default function App() {
 
   const stopSpeech = () => {
     speechRunIdRef.current += 1;
+    if (sleepTimerRef.current) {
+      clearTimeout(sleepTimerRef.current);
+      sleepTimerRef.current = null;
+    }
+    setSleepTimerLabel("关闭");
     speechPlaybackRef.current?.stop();
     speechPlaybackRef.current = null;
     setIsSpeaking(false);
     setSpeechPaused(false);
     speechPausedRef.current = false;
+    setSpeechChunkProgress(0);
+    setSpeechChunkCount(0);
+    setSpeechCurrentTime(0);
+    setSpeechDuration(0);
   };
 
   const pauseSpeech = () => {
@@ -961,6 +1037,29 @@ export default function App() {
     setSpeechPaused(false);
     speechPausedRef.current = false;
     speechPlaybackRef.current?.resume();
+  };
+
+  const updateSpeechRate = (rate: number) => {
+    speechRateRef.current = rate;
+    setSpeechRate(rate);
+  };
+
+  const setSpeechSleepTimer = (minutes: number | null) => {
+    if (sleepTimerRef.current) {
+      clearTimeout(sleepTimerRef.current);
+      sleepTimerRef.current = null;
+    }
+    if (minutes === null) {
+      setSleepTimerLabel("关闭");
+      return;
+    }
+    setSleepTimerLabel(minutes + " 分钟");
+    sleepTimerRef.current = setTimeout(() => {
+      sleepTimerRef.current = null;
+      stopSpeech();
+      setSleepTimerLabel("关闭");
+      Alert.alert("定时关闭", "已按设定时间停止听书。");
+    }, minutes * 60 * 1000);
   };
 
   const updateOfflineModelProgress = (progress: OfflineKokoroProgress) => {
@@ -1038,7 +1137,7 @@ export default function App() {
     ]
   );
 
-  const synthesizeKokoroChunk = async (text: string, voiceId: string): Promise<Uint8Array> => {
+  const synthesizeKokoroChunk = async (text: string, voiceId: string, speed = speechRateRef.current): Promise<Uint8Array> => {
     const voice = SPEECH_VOICES.find((item) => item.id === voiceId);
     if (!voice) throw new Error("所选中文声音不存在。");
     if (offlineModelStatus !== "installed" || !offlineModelPath) {
@@ -1047,7 +1146,7 @@ export default function App() {
     if (!offlineEngineRef.current) {
       offlineEngineRef.current = await createOfflineKokoroEngine(offlineModelPath);
     }
-    return synthesizeOfflineKokoro(offlineEngineRef.current, text, voice.speakerId, speechRate);
+    return synthesizeOfflineKokoro(offlineEngineRef.current, text, voice.speakerId, speed);
   };
 
   const checkOnlineSubscription = async (book: Book, showNoUpdates = false): Promise<Book | null> => {
@@ -1260,6 +1359,57 @@ export default function App() {
     setShowSpeechSettings(true);
   };
 
+  const previewGeminiVoice = async (mode: "single" | "dialogue") => {
+    const apiKey = geminiApiKeyDraft.trim();
+    if (!apiKey) {
+      Alert.alert("需要 Gemini API Key", "请先在下方输入并保存你自己的 Gemini API Key。不要把 Key 发到聊天里。");
+      return;
+    }
+    if (isSpeaking) stopSpeech();
+    const runId = ++speechRunIdRef.current;
+    setIsSpeaking(true);
+    setSpeechPaused(false);
+    speechPausedRef.current = false;
+    setGeminiTestStatus(mode === "dialogue" ? "正在合成双角色试听…" : "正在合成中文试听…");
+    try {
+      const bytes = await synthesizeGeminiTTS(mode === "dialogue" ? {
+        apiKey,
+        speakers: [
+          { name: "Narrator", voiceName: "Kore" },
+          { name: "Character", voiceName: "Puck" },
+        ],
+        parts: [
+          { text: "夜色渐深，山谷里只剩下风声。", speaker: "Narrator", style: "warm, calm Chinese audiobook narration" },
+          { text: "你是谁？为什么会在这里？", speaker: "Character", style: "young Chinese male voice, alert and suspicious" },
+          { text: "我只是一个路过的人。", speaker: "Narrator", style: "calm and reassuring" },
+        ],
+      } : {
+        apiKey,
+        voiceName: "Kore",
+        parts: [{ text: "你好，欢迎使用私人小说。这是 Gemini 在线中文语音试听。", style: "warm, natural Chinese audiobook narrator" }],
+      });
+      if (runId !== speechRunIdRef.current) return;
+      const playback = await playSpeechAudio(bytes, "wav", { title: mode === "dialogue" ? "Gemini 双角色试听" : "Gemini 中文试听", artist: "Gemini 3.8 Flash TTS" });
+      speechPlaybackRef.current = playback;
+      if (speechPausedRef.current) playback.pause();
+      await playback.finished;
+      if (runId === speechRunIdRef.current) setGeminiTestStatus(mode === "dialogue" ? "双角色试听完成" : "中文试听完成");
+    } catch (error) {
+      if (runId === speechRunIdRef.current) {
+        const message = error instanceof Error ? error.message : "Gemini TTS 测试失败。";
+        setGeminiTestStatus(message);
+        Alert.alert("Gemini TTS 试听失败", message);
+      }
+    } finally {
+      if (runId === speechRunIdRef.current) {
+        speechPlaybackRef.current = null;
+        setIsSpeaking(false);
+        setSpeechPaused(false);
+        speechPausedRef.current = false;
+      }
+    }
+  };
+
   const previewKokoroVoice = async (voiceId: string) => {
     if (isSpeaking) stopSpeech();
     const runId = ++speechRunIdRef.current;
@@ -1294,24 +1444,105 @@ export default function App() {
       stopSpeech();
       return;
     }
-    const chapterTitle = onlineReading ? onlineChapterTitle : localReading ? localChapters[chapterIndex]?.title || "全文" : SAMPLE_CHAPTERS[chapterIndex].title;
-    const chapterText = onlineReading ? onlineChapterContent : localReading ? localChapters[chapterIndex]?.content || "" : SAMPLE_CHAPTERS[chapterIndex].content;
-    const chunks = splitSpeechText(selectedBook.title + "。" + chapterTitle + "。" + chapterText, 420);
-    if (chunks.length === 0) return;
+    const initialIndex = onlineReading ? onlineChapterIndex : chapterIndex;
+    let currentIndex = initialIndex;
+    let currentChapterId = onlineReading ? loadedChapters.find((chapter) => chapter.index === onlineChapterIndex)?.id || String(onlineChapterIndex) : localReading ? localChapters[currentIndex]?.title || String(currentIndex) : String(currentIndex);
+    let currentTitle = onlineReading ? onlineChapterTitle : localReading ? localChapters[currentIndex]?.title || "全文" : SAMPLE_CHAPTERS[currentIndex].title;
+    let currentText = onlineReading ? onlineChapterContent : localReading ? localChapters[currentIndex]?.content || "" : SAMPLE_CHAPTERS[currentIndex].content;
+    const chapterCount = onlineReading ? loadedChapters.length : localReading ? localChapters.length : SAMPLE_CHAPTERS.length;
+    if (!currentText.trim()) {
+      Alert.alert("暂时无法听书", "当前章节正文为空，请先加载章节内容。");
+      return;
+    }
     const runId = ++speechRunIdRef.current;
     setIsSpeaking(true);
     setSpeechPaused(false);
+    setSpeechChunkProgress(0);
+    setSpeechChunkCount(0);
+    setSpeechCurrentTime(0);
+    setSpeechDuration(0);
     speechPausedRef.current = false;
     try {
-      for (const chunk of chunks) {
+      while (runId === speechRunIdRef.current) {
+        const chapterText = (currentIndex === initialIndex ? selectedBook.title + "。" : "") + currentTitle + "。" + currentText;
+        const chunks = splitSpeechText(chapterText, 420);
+        setSpeechChunkCount(chunks.length);
+        for (let index = 0; index < chunks.length; index += 1) {
+          if (runId !== speechRunIdRef.current) break;
+          setSpeechChunkProgress(index + 1);
+          const chunkSpeed = speechRateRef.current;
+          const cacheKey = buildSpeechAudioCacheKey({ bookId: selectedBook.id, chapterId: currentChapterId, engine: "kokoro", model: "offline-kokoro-v1", voiceId: speechModelVoiceId, speed: chunkSpeed, text: chunks[index] });
+          let audioBytes = await getCachedSpeechAudio(cacheKey).catch(() => null);
+          if (!audioBytes) {
+            audioBytes = await synthesizeKokoroChunk(chunks[index], speechModelVoiceId, chunkSpeed);
+            await saveCachedSpeechAudio(cacheKey, audioBytes, "wav").catch(() => undefined);
+          }
+          if (runId !== speechRunIdRef.current) break;
+          setSpeechCurrentTime(0);
+          setSpeechDuration(0);
+          const playback = await playWavAudio(audioBytes, {
+            title: selectedBook.title,
+            artist: selectedBook.author,
+            onProgress: (progress) => {
+              if (runId !== speechRunIdRef.current) return;
+              setSpeechCurrentTime(progress.currentTime);
+              setSpeechDuration(progress.duration);
+            },
+          });
+          speechPlaybackRef.current = playback;
+          if (speechPausedRef.current) playback.pause();
+          await playback.finished;
+          if (speechPlaybackRef.current === playback) speechPlaybackRef.current = null;
+        }
         if (runId !== speechRunIdRef.current) break;
-        const audioBytes = await synthesizeKokoroChunk(chunk, speechModelVoiceId);
-        if (runId !== speechRunIdRef.current) break;
-        const playback = await playWavAudio(audioBytes, { title: selectedBook.title, artist: selectedBook.author });
-        speechPlaybackRef.current = playback;
-        if (speechPausedRef.current) playback.pause();
-        await playback.finished;
-        if (speechPlaybackRef.current === playback) speechPlaybackRef.current = null;
+        const nextIndex = currentIndex + 1;
+        if (nextIndex >= chapterCount) break;
+
+        if (onlineReading) {
+          const nextChapter = loadedChapters[nextIndex];
+          const source = sources.find((item) => item.id === selectedSourceId && item.enabled);
+          if (!nextChapter || !source) break;
+          setLoadingOnlineChapter(true);
+          try {
+            const result = await fetchNovelChapterContent(source, nextChapter, getSourceClient(source));
+            if (runId !== speechRunIdRef.current) break;
+            currentTitle = result.title || nextChapter.title;
+            currentText = result.content;
+            currentIndex = nextIndex;
+            currentChapterId = nextChapter.id;
+            setOnlineChapterIndex(nextChapter.index);
+            setOnlineChapterTitle(currentTitle);
+            setOnlineChapterContent(currentText);
+            setReaderParagraphIndex(0);
+            restoreReaderPositionRef.current = true;
+            setReaderContentHeight(0);
+            const progress = Math.round(((currentIndex + 1) / Math.max(1, chapterCount)) * 100);
+            const latestBook = books.find((book) => book.id === selectedBook.id) || selectedBook;
+            const updatedBook = { ...latestBook, chapterIndex: currentIndex, readerParagraphIndex: 0, progress, lastChapter: currentTitle, onlineChapterId: nextChapter.id };
+            setSelectedBook(updatedBook);
+            setBooks((current) => current.map((book) => book.id === updatedBook.id ? updatedBook : book));
+            recordReading(updatedBook, currentTitle, currentIndex, progress);
+          } finally {
+            setLoadingOnlineChapter(false);
+          }
+        } else {
+          currentIndex = nextIndex;
+          const nextChapter = localReading ? localChapters[currentIndex] : SAMPLE_CHAPTERS[currentIndex];
+          if (!nextChapter) break;
+          currentTitle = nextChapter.title;
+          currentText = nextChapter.content;
+          currentChapterId = localReading ? nextChapter.title : String(currentIndex);
+          setChapterIndex(currentIndex);
+          setReaderParagraphIndex(0);
+          restoreReaderPositionRef.current = true;
+          setReaderContentHeight(0);
+          const progress = Math.round(((currentIndex + 1) / Math.max(1, chapterCount)) * 100);
+          const latestBook = books.find((book) => book.id === selectedBook.id) || selectedBook;
+          const updatedBook = { ...latestBook, chapterIndex: currentIndex, readerParagraphIndex: 0, progress, lastChapter: currentTitle };
+          setSelectedBook(updatedBook);
+          setBooks((current) => current.map((book) => book.id === updatedBook.id ? updatedBook : book));
+          recordReading(updatedBook, currentTitle, currentIndex, progress);
+        }
       }
     } catch (error) {
       if (runId === speechRunIdRef.current) {
@@ -1322,6 +1553,10 @@ export default function App() {
         speechPlaybackRef.current = null;
         setIsSpeaking(false);
         setSpeechPaused(false);
+        setSpeechChunkProgress(0);
+        setSpeechChunkCount(0);
+        setSpeechCurrentTime(0);
+        setSpeechDuration(0);
         speechPausedRef.current = false;
       }
     }
@@ -1458,6 +1693,8 @@ export default function App() {
   }
 
   if (selectedSearchNovel && !selectedBook) {
+    const detailChapters = [...loadedChapters].sort((a, b) => chapterSortOrder === "asc" ? a.index - b.index : b.index - a.index);
+    const detailCoverUrl = (selectedSearchNovel.coverUrl && !failedCoverUrls[selectedSearchNovel.coverUrl] ? selectedSearchNovel.coverUrl : undefined) || selectedSearchNovel.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string])?.summary.coverUrl;
     return (
       <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
         <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
@@ -1467,28 +1704,61 @@ export default function App() {
           <View style={{ width: 64 }} />
         </View>
         <ScrollView contentContainerStyle={styles.pageContent}>
-          <View style={[styles.detailHero, appIsDark && styles.darkCard]}>
-            <Text style={[styles.detailTitle, appIsDark && styles.darkPrimaryText]}>{selectedSearchNovel.title}</Text>
-            <Text style={[styles.detailAuthor, appIsDark && styles.darkSecondaryText]}>{selectedSearchNovel.author || "未知作者"}</Text>
+          <View style={[styles.detailHero, appIsDark && styles.darkCard, { flexDirection: "row", alignItems: "center", gap: 16 }]}>
+            {detailCoverUrl ? (
+              <Image source={{ uri: detailCoverUrl }} style={{ width: 104, height: 142, borderRadius: 10, backgroundColor: "#EAE9E1" }} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [detailCoverUrl]: true }))} />
+            ) : (
+              <View style={{ width: 104, height: 142, borderRadius: 10, backgroundColor: "#DDE4D6", alignItems: "center", justifyContent: "center", padding: 9 }}>
+                <Text style={{ color: "#394336", fontWeight: "800", textAlign: "center" }} numberOfLines={4}>{selectedSearchNovel.title}</Text>
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.detailTitle, appIsDark && styles.darkPrimaryText]}>{loadedNovelDetail?.title || selectedSearchNovel.title}</Text>
+              <Text style={[styles.detailAuthor, appIsDark && styles.darkSecondaryText]}>作者：{loadedNovelDetail?.author || selectedSearchNovel.author || "未知作者"}</Text>
+              {!!loadedNovelDetail?.status && <Text style={[styles.detailAuthor, appIsDark && styles.darkSecondaryText]}>{loadedNovelDetail.status === "completed" ? "已完结" : loadedNovelDetail.status === "serializing" ? "连载中" : "状态未知"}</Text>}
+              {!!loadedNovelDetail?.wordCount && <Text style={[styles.detailAuthor, appIsDark && styles.darkSecondaryText]}>{loadedNovelDetail.wordCount.toLocaleString()} 字</Text>}
+            </View>
           </View>
-          {loadingCatalog && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={[styles.note, appIsDark && styles.darkMutedText]}>正在自动获取小说目录…</Text></View>}
+          <View style={[styles.detailSection, appIsDark && styles.darkCard]}>
+            <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText]}>小说介绍</Text>
+            <Text style={[styles.detailDescription, appIsDark && styles.darkSecondaryText]}>{loadedNovelDetail?.description || selectedSearchNovel.description || "暂未获取到小说介绍。"}</Text>
+          </View>
+          {loadingCatalog && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={[styles.note, appIsDark && styles.darkMutedText]}>正在获取作者介绍和章节目录…</Text></View>}
           {!!catalogMessage && !loadingCatalog && (
             <View style={[styles.detailSection, appIsDark && styles.darkCard]}>
               <Text style={[styles.searchFeedback, appIsDark && styles.darkMutedText]}>{catalogMessage}</Text>
               <Pressable style={[styles.onlineSearchButton, appIsDark && styles.darkAccentButton]} onPress={() => void loadSelectedNovelCatalog()}>
-                <Text style={styles.importButtonText}>重新自动获取</Text>
+                <Text style={styles.importButtonText}>重新获取详情和目录</Text>
               </Pressable>
             </View>
           )}
           {!!loadedChapters.length && (
-            <View style={{ gap: 10 }}>
-              <Pressable style={styles.catalogLoadButton} onPress={() => void openOnlineChapter(loadedChapters[0])} disabled={loadingOnlineChapter}>
-                <Text style={styles.importButtonText}>{loadingOnlineChapter ? "正在打开…" : "开始阅读"}</Text>
-              </Pressable>
-              <Pressable style={[styles.catalogLoadButton, appIsDark && styles.darkCard]} onPress={saveOnlineBookToShelf}>
-                <Text style={[styles.importButtonText, appIsDark && styles.darkPrimaryText]}>{books.some((book) => book.id === getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author)) ? "更新书架信息" : "加入本地书架"}</Text>
-              </Pressable>
-            </View>
+            <>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+                <View>
+                  <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText]}>章节目录</Text>
+                  <Text style={[styles.note, appIsDark && styles.darkMutedText]}>共 {loadedChapters.length} 章</Text>
+                </View>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <Pressable style={[styles.themeButton, chapterSortOrder === "asc" && styles.modeButtonActive]} onPress={() => setChapterSortOrder("asc")}><Text style={styles.fontButtonText}>正序</Text></Pressable>
+                  <Pressable style={[styles.themeButton, chapterSortOrder === "desc" && styles.modeButtonActive]} onPress={() => setChapterSortOrder("desc")}><Text style={styles.fontButtonText}>倒序</Text></Pressable>
+                </View>
+              </View>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Pressable style={[styles.catalogLoadButton, { flex: 1 }]} onPress={() => void openOnlineChapter(detailChapters[0])} disabled={loadingOnlineChapter}>
+                  <Text style={styles.importButtonText}>{loadingOnlineChapter ? "正在打开…" : "从第一章开始"}</Text>
+                </Pressable>
+                <Pressable style={[styles.catalogLoadButton, { flex: 1, backgroundColor: "#EEF0E9" }, appIsDark && styles.darkCard]} onPress={saveOnlineBookToShelf}>
+                  <Text style={[styles.fontButtonText]}>{books.some((book) => book.id === getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author)) ? "更新书架" : "加入书架"}</Text>
+                </Pressable>
+              </View>
+              {detailChapters.map((chapter, index) => (
+                <Pressable key={chapter.id} onPress={() => void openOnlineChapter(chapter)} disabled={loadingOnlineChapter} style={[styles.chapterRow, appIsDark && styles.darkCard]}>
+                  <Text style={[styles.chapterRowTitle, appIsDark && styles.darkPrimaryText]}>{chapter.title}</Text>
+                  <Text style={styles.chapterRowMeta}>{index + 1}</Text>
+                </Pressable>
+              ))}
+            </>
           )}
           {loadingOnlineChapter && <ActivityIndicator color="#65745D" style={{ marginVertical: 12 }} />}
         </ScrollView>
@@ -1514,6 +1784,7 @@ export default function App() {
         {readerChromeVisible && <View style={styles.readerHeader}>
           <Pressable onPress={closeReader}><Text style={styles.backText}>‹ 返回</Text></Pressable>
           <Text style={[styles.readerHeaderTitle, readerTheme === "night" && styles.nightMuted]}>正在阅读</Text>
+          {!books.some((book) => book.id === currentBook.id) && <Pressable onPress={addCurrentBookToShelf}><Text style={styles.headerAction}>加入书架</Text></Pressable>}
           {onlineReading && (
             <Pressable disabled={checkingSubscription} onPress={() => { if (currentBook) void checkOnlineSubscription(currentBook, true); }}>
               <Text style={[styles.headerAction, checkingSubscription && styles.disabledText]}>{checkingSubscription ? "检查中…" : "检查更新"}</Text>
@@ -1527,7 +1798,8 @@ export default function App() {
           <ScrollView contentContainerStyle={styles.catalogContent}>
             <Text style={[styles.catalogHeading, readerTheme === "night" && styles.nightText]}>章节目录</Text>
             <Text style={[styles.catalogSub, readerTheme === "night" && styles.nightMuted]}>{currentBook.title} · 共 {activeChapterCount} 章{onlineReading ? "" : localReading ? "（本地导入）" : "（演示）"}</Text>
-            {onlineReading ? loadedChapters.map((chapter, index) => (
+            {onlineReading && <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}><Pressable style={[styles.themeButton, chapterSortOrder === "asc" && styles.modeButtonActive]} onPress={() => setChapterSortOrder("asc")}><Text style={styles.fontButtonText}>正序</Text></Pressable><Pressable style={[styles.themeButton, chapterSortOrder === "desc" && styles.modeButtonActive]} onPress={() => setChapterSortOrder("desc")}><Text style={styles.fontButtonText}>倒序</Text></Pressable></View>}
+            {onlineReading ? [...loadedChapters].sort((a, b) => chapterSortOrder === "asc" ? a.index - b.index : b.index - a.index).map((chapter, index) => (
               <Pressable key={chapter.id} onPress={() => void openOnlineChapter(chapter)} style={[styles.chapterRow, readerTheme === "night" && styles.nightCard, index === activeChapterIndex && styles.chapterRowActive]}>
                 <Text style={[styles.chapterRowTitle, readerTheme === "night" && styles.nightText]}>{chapter.title}</Text>
                 <Text style={styles.chapterRowMeta}>{index === activeChapterIndex ? "正在阅读" : "在线章节"}</Text>
@@ -1648,70 +1920,174 @@ export default function App() {
             </View>
           </View>
         )}
-        {showSpeechSettings && !showCatalog && (
-          <View style={[styles.readerSettings, styles.speechSettings, readerTheme === "night" && styles.nightCard]}>
-            <View style={[styles.readerSettingRow, { justifyContent: "space-between", marginBottom: 10 }]}>
-              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>听书播放</Text>
-              <Pressable style={styles.fontButton} disabled={offlineModelStatus !== "installed" && !isSpeaking} onPress={speakCurrentBook}><Text style={styles.fontButtonText}>{isSpeaking ? "停止听书" : offlineModelStatus === "installed" ? "开始听书" : "模型准备中"}</Text></Pressable>
+        <Modal
+          visible={showSpeechSettings}
+          animationType="slide"
+          presentationStyle="fullScreen"
+          onRequestClose={() => setShowSpeechSettings(false)}
+        >
+          <SafeAreaView style={{ flex: 1, backgroundColor: "#F5F5F0" }}>
+            <StatusBar barStyle="dark-content" />
+            <View style={{ height: 58, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Pressable onPress={() => setShowSpeechSettings(false)}><Text style={{ color: "#68765F", fontSize: 16, fontWeight: "700" }}>收起</Text></Pressable>
+              <Text style={{ color: "#292A24", fontSize: 16, fontWeight: "800" }}>番茄式听书</Text>
+              <Text style={{ color: "#8D897F", fontSize: 11 }}>免费离线</Text>
             </View>
-            <View style={[styles.voiceOption, readerTheme === "night" && styles.nightVoiceOption, { flexDirection: "column", alignItems: "flex-start", marginBottom: 10 }]}>
-              <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>听书 · 中文离线语音</Text>
-              <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>中文男声 / 中文女声 · 本地离线合成</Text>
-              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 8 }]}>完全本地生成语音，不使用苹果系统朗读，不连接云端 AI 服务。首次下载模型后即可断网朗读。</Text>
-              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText, { marginTop: 14 }]}>离线模型</Text>
-              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 5 }]}>{offlineModelStatus === "checking" ? "正在检查本地模型…" : offlineModelStatus === "installed" ? "模型已安装 · 103 种音色可离线使用" : offlineModelStatus === "downloading" ? "正在" + (offlineModelPhase === "extracting" || offlineModelPhase === "extracting_resume_skipping" ? "解压" : "下载") + " · " + Math.round(offlineModelProgress) + "%" : offlineModelStatus === "paused" ? "下载已暂停，可继续上次任务" : offlineModelStatus === "unavailable" ? "当前构建尚未包含 Kokoro 原生引擎" : offlineModelStatus === "failed" ? "模型准备失败，可重试" : "模型未安装，正在自动准备约 147 MB 的离线文件"}</Text>
-              {(offlineModelStatus === "downloading" || offlineModelStatus === "installed" || offlineModelStatus === "paused") && <View style={{ height: 6, borderRadius: 4, backgroundColor: "#E5E6DF", overflow: "hidden", marginTop: 8 }}><View style={{ height: 6, width: (Math.round(offlineModelProgress) + "%") as any, backgroundColor: "#7D8B70" }} /></View>}
-              {!!offlineModelError && <Text style={[styles.note, { color: "#B45B4A", marginTop: 5 }]}>{offlineModelError}</Text>}
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 9 }}>
-                {(offlineModelStatus === "not-downloaded" || offlineModelStatus === "failed") && <Pressable onPress={requestOfflineModelDownload} style={styles.fontButton}><Text style={styles.fontButtonText}>{offlineModelStatus === "failed" ? "重新下载模型" : "下载离线模型"}</Text></Pressable>}
-                {offlineModelStatus === "downloading" && <Pressable onPress={() => void pauseOfflineModelDownload()} style={styles.fontButton}><Text style={styles.fontButtonText}>暂停下载</Text></Pressable>}
-                {offlineModelStatus === "paused" && <Pressable onPress={requestOfflineModelResume} style={styles.fontButton}><Text style={styles.fontButtonText}>继续下载</Text></Pressable>}
-                {offlineModelStatus === "installed" && <Pressable onPress={requestOfflineModelDelete} disabled={isSpeaking} style={[styles.fontButton, isSpeaking && styles.importButtonDisabled]}><Text style={styles.fontButtonText}>删除离线模型</Text></Pressable>}
-              </View>
-              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 6 }]}>音色试听和正文朗读都由本机模型生成，不会请求网络。</Text>
-            </View>
-            <View style={{ marginBottom: 12 }}>
-              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>选择听书声音</Text>
-              <Text style={[styles.note, readerTheme === "night" && styles.nightMuted, { marginTop: 4, marginBottom: 8 }]}>当前选择：{SPEECH_VOICES.find((voice) => voice.id === speechModelVoiceId)?.label || "中文女声"}。选择中文男声或中文女声，可先试听。</Text>
-              {isSpeaking && <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
-                <Pressable style={styles.fontButton} onPress={speechPaused ? resumeSpeech : pauseSpeech}><Text style={styles.fontButtonText}>{speechPaused ? "继续播放" : "暂停播放"}</Text></Pressable>
-                <Pressable style={styles.fontButton} onPress={stopSpeech}><Text style={styles.fontButtonText}>停止</Text></Pressable>
-              </View>}
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-                {(["中文女声", "中文男声"] as const).map((category) => (
-                  <Pressable key={category} style={[styles.themeButton, speechVoiceCategoryFilter === category && styles.modeButtonActive]} onPress={() => setSpeechVoiceCategoryFilter(category)}>
-                    <Text style={styles.fontButtonText}>{category}</Text>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 38 }}>
+              <View style={{ backgroundColor: "#873B2A", borderRadius: 24, padding: 22, marginTop: 12 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+                  {selectedBook?.onlineSummary?.coverUrl && !failedCoverUrls[selectedBook.onlineSummary.coverUrl] ? (
+                    <Image source={{ uri: selectedBook.onlineSummary.coverUrl }} style={{ width: 88, height: 112, borderRadius: 13, backgroundColor: "#F4E4DE" }} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [selectedBook.onlineSummary?.coverUrl as string]: true }))} />
+                  ) : (
+                    <View style={{ width: 88, height: 112, borderRadius: 13, backgroundColor: "#F6DED7", alignItems: "center", justifyContent: "center", padding: 8 }}>
+                      <Text numberOfLines={3} style={{ color: "#873B2A", fontSize: 15, fontWeight: "800", textAlign: "center" }}>{selectedBook?.title || "正在听书"}</Text>
+                      <View style={{ width: "75%", height: 1, backgroundColor: "#D58C79", marginTop: 10 }} />
+                      <Text style={{ color: "#A84D38", fontSize: 9, marginTop: 7 }}>番茄式听书</Text>
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: "#D0D4C9", fontSize: 11, letterSpacing: 1 }}>NOW PLAYING</Text>
+                    <Text numberOfLines={2} style={{ color: "#FFFFFF", fontSize: 19, lineHeight: 26, fontWeight: "800", marginTop: 8 }}>{selectedBook?.title || "未选择小说"}</Text>
+                    <Text style={{ color: "#D0D4C9", fontSize: 12, marginTop: 7 }}>{selectedBook?.author || "未知作者"}</Text>
+                    <Text numberOfLines={2} style={{ color: "#C7CDBE", fontSize: 11, lineHeight: 17, marginTop: 12 }}>
+                      {onlineReading ? onlineChapterTitle : localReading ? localChapters[chapterIndex]?.title || "全文" : SAMPLE_CHAPTERS[chapterIndex]?.title || "全文"}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ marginTop: 23 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ color: "#E4E7DF", fontSize: 11 }}>{isSpeaking ? speechPaused ? "已暂停" : "正在朗读" : "准备就绪"}</Text>
+                    <Text style={{ color: "#C7CDBE", fontSize: 10 }}>
+                      {speechChunkCount > 0
+                        ? "片段 " + speechChunkProgress + " / " + speechChunkCount + " · " + formatPlaybackTime(speechCurrentTime) + " / " + formatPlaybackTime(speechDuration)
+                        : "连续章节播放"}
+                    </Text>
+                  </View>
+                  <View style={{ height: 5, backgroundColor: "#B76B59", borderRadius: 5, marginTop: 10, overflow: "hidden" }}>
+                    <View
+                      style={{
+                        height: 5,
+                        width: speechChunkCount > 0
+                          ? (Math.min(100, ((Math.max(0, speechChunkProgress - 1) + (speechDuration > 0 ? Math.min(1, speechCurrentTime / speechDuration) : 0)) / speechChunkCount) * 100)) + "%" as any
+                          : "0%",
+                        backgroundColor: "#FFE0D6",
+                        borderRadius: 5,
+                      }}
+                    />
+                  </View>
+                </View>
+                <View style={{ flexDirection: "row", justifyContent: "space-around", alignItems: "center", marginTop: 25 }}>
+                  <Pressable disabled={(onlineReading ? onlineChapterIndex : chapterIndex) <= 0} onPress={() => changeChapter(-1)} style={{ alignItems: "center", padding: 8 }}>
+                    <Text style={{ color: "#FFFFFF", fontSize: 23 }}>|‹</Text>
+                    <Text style={{ color: "#D0D4C9", fontSize: 10, marginTop: 4 }}>上一章</Text>
                   </Pressable>
-                ))}
+                  <Pressable onPress={isSpeaking ? speechPaused ? resumeSpeech : pauseSpeech : speakCurrentBook} style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: "#FFE0D6", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ color: "#873B2A", fontSize: 27, fontWeight: "800" }}>{isSpeaking && !speechPaused ? "Ⅱ" : "▶"}</Text>
+                  </Pressable>
+                  <Pressable disabled={(onlineReading ? onlineChapterIndex : chapterIndex) >= activeChapterCount - 1} onPress={() => changeChapter(1)} style={{ alignItems: "center", padding: 8 }}>
+                    <Text style={{ color: "#FFFFFF", fontSize: 23 }}>›|</Text>
+                    <Text style={{ color: "#D0D4C9", fontSize: 10, marginTop: 4 }}>下一章</Text>
+                  </Pressable>
+                </View>
+                {isSpeaking && <Pressable onPress={stopSpeech} style={{ alignSelf: "center", marginTop: 14, paddingVertical: 7, paddingHorizontal: 18 }}>
+                  <Text style={{ color: "#D0D4C9", fontSize: 11 }}>停止播放</Text>
+                </Pressable>}
               </View>
-              <ScrollView style={styles.voiceList} nestedScrollEnabled>
-                {SPEECH_VOICES.filter((voice) => voice.category === speechVoiceCategoryFilter).map((voice) => {
-                  const selected = speechModelVoiceId === voice.id;
-                  return (
-                    <Pressable key={voice.id} style={[styles.voiceOption, selected && styles.voiceOptionSelected, readerTheme === "night" && styles.nightVoiceOption]} onPress={() => setSpeechModelVoiceId(voice.id)}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.voiceName, readerTheme === "night" && styles.nightText]}>{voice.label}</Text>
-                        <Text style={[styles.voiceLanguage, readerTheme === "night" && styles.nightMuted]}>speaker ID · {voice.speakerId}</Text>
-                      </View>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                        <Text style={styles.voiceSelected}>{selected ? "已选择" : "选择"}</Text>
+
+              <View style={{ backgroundColor: "#FFFFFF", borderRadius: 18, padding: 17, marginTop: 16, borderWidth: 1, borderColor: "#EEECE5" }}>
+                <Text style={{ color: "#33352D", fontSize: 14, fontWeight: "800" }}>声音选择</Text>
+                <Text style={{ color: "#8D897F", fontSize: 11, marginTop: 5 }}>当前：{SPEECH_VOICES.find((voice) => voice.id === speechModelVoiceId)?.label || "中文女声"}</Text>
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 13 }}>
+                  {(["中文女声", "中文男声"] as const).map((category) => (
+                    <Pressable key={category} style={[styles.themeButton, speechVoiceCategoryFilter === category && styles.modeButtonActive]} onPress={() => setSpeechVoiceCategoryFilter(category)}>
+                      <Text style={styles.fontButtonText}>{category}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <ScrollView style={{ maxHeight: 190, marginTop: 10 }} nestedScrollEnabled>
+                  {SPEECH_VOICES.filter((voice) => voice.category === speechVoiceCategoryFilter).map((voice) => {
+                    const selected = speechModelVoiceId === voice.id;
+                    return (
+                      <View key={voice.id} style={[styles.voiceOption, selected && styles.voiceOptionSelected]}>
+                        <Pressable style={{ flex: 1 }} onPress={() => setSpeechModelVoiceId(voice.id)}>
+                          <Text style={styles.voiceName}>{voice.label}</Text>
+                          <Text style={styles.voiceLanguage}>speaker ID · {voice.speakerId}</Text>
+                        </Pressable>
                         <Pressable style={styles.fontButton} onPress={() => { setSpeechModelVoiceId(voice.id); void previewKokoroVoice(voice.id); }}>
                           <Text style={styles.fontButtonText}>试听</Text>
                         </Pressable>
                       </View>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              <View style={{ backgroundColor: "#FFFFFF", borderRadius: 18, padding: 17, marginTop: 13, borderWidth: 1, borderColor: "#EEECE5" }}>
+                <Text style={{ color: "#33352D", fontSize: 14, fontWeight: "800" }}>播放设置</Text>
+                <Text style={{ color: "#777368", fontSize: 11, marginTop: 13 }}>朗读速度 · {speechRate.toFixed(1)}×</Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 7, marginTop: 9 }}>
+                  {[0.7, 0.85, 1, 1.15, 1.3, 1.5, 1.8, 2].map((rate) => (
+                    <Pressable key={rate} onPress={() => updateSpeechRate(rate)} style={[styles.themeButton, { flex: 1, alignItems: "center", paddingHorizontal: 0 }, speechRate === rate && styles.modeButtonActive]}>
+                      <Text style={styles.fontButtonText}>{rate}×</Text>
                     </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-            <View style={styles.readerSettingRow}>
-              <Text style={[styles.settingsLabel, readerTheme === "night" && styles.nightText]}>听书语速</Text>
-              <Pressable style={styles.fontButton} onPress={() => setSpeechRate((v) => Math.max(0.5, Math.round((v - 0.1) * 10) / 10))}><Text style={styles.fontButtonText}>−</Text></Pressable>
-              <Text style={[styles.fontSizeValue, readerTheme === "night" && styles.nightText]}>{speechRate.toFixed(1)}×</Text>
-              <Pressable style={styles.fontButton} onPress={() => setSpeechRate((v) => Math.min(2, Math.round((v + 0.1) * 10) / 10))}><Text style={styles.fontButtonText}>＋</Text></Pressable>
-            </View>
-          </View>
-        )}
+                  ))}
+                </View>
+                {isSpeaking && <Text style={{ color: "#A39D91", fontSize: 10, marginTop: 7 }}>播放中调整速度，将从下一段语音开始生效</Text>}
+                <Text style={{ color: "#777368", fontSize: 11, marginTop: 18 }}>定时关闭 · {sleepTimerLabel}</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 9 }}>
+                  {[15, 30, 60, 90].map((minutes) => (
+                    <Pressable key={minutes} onPress={() => setSpeechSleepTimer(minutes)} style={[styles.themeButton, sleepTimerLabel === minutes + " 分钟" && styles.modeButtonActive]}>
+                      <Text style={styles.fontButtonText}>{minutes} 分钟</Text>
+                    </Pressable>
+                  ))}
+                  <Pressable onPress={() => setSpeechSleepTimer(null)} style={[styles.themeButton, sleepTimerLabel === "关闭" && styles.modeButtonActive]}>
+                    <Text style={styles.fontButtonText}>关闭</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={{ backgroundColor: "#FFFFFF", borderRadius: 18, padding: 17, marginTop: 13, borderWidth: 1, borderColor: "#EEECE5" }}>
+                <Text style={{ color: "#33352D", fontSize: 14, fontWeight: "800" }}>Gemini 在线 AI 语音实验</Text>
+                <Text style={{ color: "#777368", fontSize: 11, lineHeight: 18, marginTop: 7 }}>实验型号：Gemini 3.8 Flash TTS。支持中文与双角色合成；当前仅用于试听验证，尚未替换正式听书引擎。</Text>
+                <TextInput
+                  value={geminiApiKeyDraft}
+                  onChangeText={setGeminiApiKeyDraft}
+                  placeholder="粘贴 Gemini API Key（仅本次打开期间有效）"
+                  placeholderTextColor="#A39F94"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  secureTextEntry
+                  style={{ minHeight: 44, borderWidth: 1, borderColor: "#E5E3DC", borderRadius: 10, paddingHorizontal: 12, marginTop: 11, color: "#33352D" }}
+                />
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                  <Pressable style={styles.fontButton} disabled={!geminiApiKeyDraft.trim()} onPress={() => void previewGeminiVoice("single")}><Text style={styles.fontButtonText}>中文单人试听</Text></Pressable>
+                  <Pressable style={styles.fontButton} disabled={!geminiApiKeyDraft.trim()} onPress={() => void previewGeminiVoice("dialogue")}><Text style={styles.fontButtonText}>双角色试听</Text></Pressable>
+                  <Pressable style={styles.fontButton} disabled={!geminiApiKeyDraft} onPress={() => { setGeminiApiKeyDraft(""); setGeminiTestStatus("已清除本次会话 Key"); }}><Text style={styles.fontButtonText}>清除 Key</Text></Pressable>
+                </View>
+                <Text style={{ color: "#777368", fontSize: 10, lineHeight: 16, marginTop: 10 }}>状态：{geminiTestStatus}</Text>
+                <Text style={{ color: "#A66D62", fontSize: 10, lineHeight: 16, marginTop: 6 }}>Key 仅保存在当前运行的内存中，关闭 App 后自动清除，不写入本地存储。Gemini 免费层内容可能用于改进 Google 产品，请只用测试文本；不要开启付费结算。达到免费配额后停止，不会切换付费模型。</Text>
+              </View>
+
+              <View style={{ backgroundColor: "#FFFFFF", borderRadius: 18, padding: 17, marginTop: 13, borderWidth: 1, borderColor: "#EEECE5" }}>
+                <Text style={{ color: "#33352D", fontSize: 14, fontWeight: "800" }}>离线 AI 语音引擎</Text>
+                <Text style={{ color: "#8D897F", fontSize: 11, lineHeight: 18, marginTop: 6 }}>
+                  {offlineModelStatus === "checking" ? "正在检查模型…" : offlineModelStatus === "installed" ? "Kokoro 中文模型已安装 · 支持断网朗读" : offlineModelStatus === "downloading" ? "正在" + (offlineModelPhase === "extracting" || offlineModelPhase === "extracting_resume_skipping" ? "解压" : "下载") + "模型 · " + Math.round(offlineModelProgress) + "%" : offlineModelStatus === "paused" ? "模型下载已暂停" : offlineModelStatus === "unavailable" ? "当前安装包未包含语音原生引擎" : offlineModelStatus === "failed" ? "模型准备失败" : "模型尚未安装，准备下载约 147 MB 文件"}
+                </Text>
+                {(offlineModelStatus === "downloading" || offlineModelStatus === "installed" || offlineModelStatus === "paused") && <View style={{ height: 5, backgroundColor: "#E5E6DF", borderRadius: 5, overflow: "hidden", marginTop: 9 }}>
+                  <View style={{ height: 5, width: Math.round(offlineModelProgress) + "%" as any, backgroundColor: "#7D8B70" }} />
+                </View>}
+                {!!offlineModelError && <Text style={{ color: "#B45B4A", fontSize: 11, marginTop: 7 }}>{offlineModelError}</Text>}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 11 }}>
+                  {(offlineModelStatus === "not-downloaded" || offlineModelStatus === "failed") && <Pressable onPress={requestOfflineModelDownload} style={styles.fontButton}><Text style={styles.fontButtonText}>下载离线模型</Text></Pressable>}
+                  {offlineModelStatus === "downloading" && <Pressable onPress={() => void pauseOfflineModelDownload()} style={styles.fontButton}><Text style={styles.fontButtonText}>暂停下载</Text></Pressable>}
+                  {offlineModelStatus === "paused" && <Pressable onPress={requestOfflineModelResume} style={styles.fontButton}><Text style={styles.fontButtonText}>继续下载</Text></Pressable>}
+                  {offlineModelStatus === "installed" && <Pressable onPress={requestOfflineModelDelete} disabled={isSpeaking} style={styles.fontButton}><Text style={styles.fontButtonText}>删除模型</Text></Pressable>}
+                </View>
+                <Text style={{ color: "#AAA69B", fontSize: 10, lineHeight: 16, marginTop: 10 }}>免费开源 · 本机离线生成 · 不使用苹果系统朗读 · 不连接收费云端接口</Text>
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
         {readerChromeVisible && <View style={[styles.readerBottomBar, readerTheme === "night" && styles.nightCard]}>
           <View style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, backgroundColor: readerTheme === "night" ? "#3A4038" : "#EEECE5" }}>
             <View style={{ height: 2, width: `${readingProgressPercent}%`, backgroundColor: "#7D8B70" }} />
@@ -1807,31 +2183,77 @@ export default function App() {
       {tab === "搜索" && (
         <ScrollView contentContainerStyle={styles.pageContent} keyboardShouldPersistTaps="handled">
           <View style={[styles.onlineSearchCard, appIsDark && styles.darkCard]}>
-            <TextInput
-              value={onlineQuery}
-              onChangeText={(value) => { setOnlineQuery(value); setSearchMessage(""); }}
-              placeholder="输入小说名称或关键词"
-              placeholderTextColor="#9A9A9A"
-              style={[styles.searchInput, appIsDark && styles.darkInput]}
-              returnKeyType="search"
-              onSubmitEditing={searchOnlineNovels}
-              editable={!searching}
-            />
-            <Pressable style={[styles.onlineSearchButton, searching && styles.importButtonDisabled]} onPress={searchOnlineNovels} disabled={searching}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <TextInput
+                value={onlineQuery}
+                onChangeText={(value) => { setOnlineQuery(value); setSearchMessage(""); }}
+                placeholder="输入小说名称或关键词"
+                placeholderTextColor="#9A9A9A"
+                style={[styles.searchInput, appIsDark && styles.darkInput, { flex: 1, marginBottom: 0 }]}
+                returnKeyType="search"
+                onSubmitEditing={() => { void searchOnlineNovels(); }}
+                editable={!searching}
+              />
+              {!!onlineQuery && <Pressable onPress={() => { setOnlineQuery(""); setOnlineResults([]); setSearchSummary(""); setSearchMessage(""); }} disabled={searching} style={{ paddingVertical: 10, paddingHorizontal: 3 }}>
+                <Text style={[{ color: "#65745D", fontSize: 13, fontWeight: "700" }, appIsDark && styles.darkPrimaryText]}>取消</Text>
+              </Pressable>}
+            </View>
+            <Pressable style={[styles.onlineSearchButton, searching && styles.importButtonDisabled]} onPress={() => { void searchOnlineNovels(); }} disabled={searching}>
               {searching ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.importButtonText}>搜索小说</Text>}
             </Pressable>
           </View>
+          <View style={{ marginBottom: 18 }}>
+            <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText, { marginBottom: 11 }]}>热门搜索</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
+              {HOT_SEARCH_TERMS.map((item, index) => (
+                <Pressable key={item} onPress={() => { setOnlineQuery(item); void searchOnlineNovels(item); }} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 13, paddingVertical: 9, borderRadius: 18, backgroundColor: appIsDark ? "#30362F" : "#F0F0EB", borderWidth: 1, borderColor: appIsDark ? "#41483F" : "#E8E7E0" }}>
+                  <Text style={{ color: index < 3 ? "#A66D62" : (appIsDark ? "#E8E8E0" : "#55564E"), fontSize: 11, fontWeight: "800", marginRight: 6 }}>{index + 1}</Text>
+                  <Text style={{ color: appIsDark ? "#E8E8E0" : "#55564E", fontSize: 12 }}>{item}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+          {searchHistory.length > 0 && (
+            <View style={{ marginBottom: 18 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 11 }}>
+                <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText]}>搜索历史</Text>
+                <Pressable onPress={() => Alert.alert("清空搜索历史", "确定清空最近 10 条搜索记录吗？", [{ text: "取消", style: "cancel" }, { text: "清空", style: "destructive", onPress: () => setSearchHistory([]) }])}>
+                  <Text style={styles.sourceActionText}>清空</Text>
+                </Pressable>
+              </View>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
+                {searchHistory.map((item) => (
+                  <Pressable key={item} onPress={() => { setOnlineQuery(item); void searchOnlineNovels(item); }} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 18, backgroundColor: appIsDark ? "#30362F" : "#F0F0EB", borderWidth: 1, borderColor: appIsDark ? "#41483F" : "#E8E7E0" }}>
+                    <Text style={[{ color: appIsDark ? "#E8E8E0" : "#55564E", fontSize: 12 }]}>{item}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
           {!!searchSummary && <Text style={styles.searchSummary}>{searchSummary}</Text>}
           {searching && <View style={styles.searchLoading}><ActivityIndicator color="#65745D" /><Text style={styles.note}>正在搜索，请稍候…</Text></View>}
           {!!searchMessage && <Text style={styles.searchFeedback}>{searchMessage}</Text>}
-          {onlineResults.map((item) => (
-            <Pressable key={item.id} style={[styles.onlineResultCard, appIsDark && styles.darkCard]} onPress={() => openSearchNovel(item)}>
-              <View style={styles.onlineResultInfo}>
-                <Text style={[styles.onlineResultTitle, appIsDark && styles.darkPrimaryText]}>{item.title}</Text>
-              </View>
-              <Text style={styles.resultChevron}>›</Text>
-            </Pressable>
-          ))}
+          {onlineResults.length > 0 && (
+            <View style={styles.searchResultGrid}>
+              {onlineResults.map((item) => {
+                const coverUrl = (item.coverUrl && !failedCoverUrls[item.coverUrl] ? item.coverUrl : undefined) || item.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string])?.summary.coverUrl;
+                return (
+                <Pressable key={item.id} style={styles.searchResultTile} onPress={() => openSearchNovel(item)}>
+                  {coverUrl ? (
+                    <Image source={{ uri: coverUrl }} style={styles.searchResultCover} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [coverUrl]: true }))} />
+                  ) : (
+                    <View style={[styles.searchResultCover, styles.searchResultCoverFallback]}>
+                      <Text style={styles.searchResultFallbackTitle} numberOfLines={4}>{item.title}</Text>
+                      <Text style={styles.searchResultFallbackLabel}>封面暂不可用</Text>
+                    </View>
+                  )}
+                  <Text style={[styles.searchResultTitle, appIsDark && styles.darkPrimaryText]} numberOfLines={2}>{item.title}</Text>
+                  {!!item.author && <Text style={[styles.searchResultAuthor, appIsDark && styles.darkMutedText]} numberOfLines={1}>{item.author}</Text>}
+                </Pressable>
+                );
+              })}
+            </View>
+          )}
           {!searching && onlineResults.length === 0 && !searchMessage && (
             <Text style={styles.emptyText}>输入书名开始搜索。需要先在搜索页右上角「源」中添加书源订阅。</Text>
           )}
@@ -2089,6 +2511,14 @@ const styles = StyleSheet.create({
   searchSummary: { color: "#65745D", fontSize: 12, lineHeight: 18, marginBottom: 12 },
   searchLoading: { alignItems: "center", paddingVertical: 18 },
   searchFeedback: { color: "#9A6A50", fontSize: 12, lineHeight: 19, marginBottom: 12 },
+  searchResultGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 18, marginTop: 4 },
+  searchResultTile: { width: "31.5%", marginBottom: 2 },
+  searchResultTitle: { color: "#292A24", fontSize: 12, lineHeight: 17, fontWeight: "800", minHeight: 36, marginBottom: 7 },
+  searchResultCover: { width: "100%", aspectRatio: 0.68, borderRadius: 9, backgroundColor: "#EAE9E1" },
+  searchResultCoverFallback: { alignItems: "center", justifyContent: "center", padding: 9, borderWidth: 1, borderColor: "#DDDCD2" },
+  searchResultFallbackTitle: { color: "#59614F", fontSize: 13, lineHeight: 19, fontWeight: "800", textAlign: "center" },
+  searchResultFallbackLabel: { color: "#999486", fontSize: 9, marginTop: 10 },
+  searchResultAuthor: { color: "#8D897F", fontSize: 10, marginTop: 5 },
   onlineResultCard: { backgroundColor: "#FFFFFF", borderRadius: 15, padding: 15, marginBottom: 10, borderWidth: 1, borderColor: "#EEECE5" },
   detailHeader: { height: 54, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   detailHero: { backgroundColor: "#343B32", borderRadius: 20, padding: 22, marginBottom: 18 },

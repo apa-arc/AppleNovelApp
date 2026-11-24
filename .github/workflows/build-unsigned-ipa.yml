@@ -6,6 +6,27 @@ on:
   push:
     branches:
       - main
+      - feature/tomato-style-audiobook-1.0.7
+      - release/1.0.9-search-cover-grid
+      - release/1.1.0-tomato-reader
+    tags:
+      - v1.1.1
+    paths:
+      - "app.json"
+      - "assets/icon.png.base64"
+      - "app.config.js"
+      - "package.json"
+      - "package-lock.json"
+      - "App.tsx"
+      - "src/**"
+      - "scripts/**"
+      - "eas.json"
+      - "scripts/patch-sherpa-native.js"
+      - ".github/workflows/build-unsigned-ipa.yml"
+      - ".github/workflows/publish-update.yml"
+  pull_request:
+    branches:
+      - main
     paths:
       - "app.json"
       - "assets/icon.png.base64"
@@ -14,18 +35,20 @@ on:
       - "package-lock.json"
       - "eas.json"
       - ".github/workflows/build-unsigned-ipa.yml"
+      - ".github/workflows/publish-update.yml"
   workflow_dispatch:
 
 concurrency:
   group: unsigned-ipa-${{ github.ref }}
-  cancel-in-progress: true
+  # Keep active iOS builds running; newer updates may wait in the queue.
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
   build-unsigned-ipa:
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 90
     steps:
       - name: Check out repository
@@ -55,6 +78,15 @@ jobs:
           test -s assets/icon.png
           file assets/icon.png
 
+      - name: Validate GitHub Actions workflow YAML
+        run: |
+          ruby -e '
+            require "yaml"
+            %w[.github/workflows/build-unsigned-ipa.yml .github/workflows/publish-update.yml].each do |path|
+              YAML.load_file(path)
+              puts "Valid YAML: #{path}"
+            end
+          '
       - name: Run app checks
         run: |
           npm run typecheck
@@ -84,7 +116,7 @@ jobs:
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
           APP_UPDATE_CHANNEL: production
         run: |
-          npx eas-cli@latest fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/ios-fingerprint.json"
+          npx eas-cli@27.11.0 fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/ios-fingerprint.json"
           IOS_RUNTIME_FINGERPRINT="$(node -e '
             const fs = require("fs");
             const data = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/ios-fingerprint.json", "utf8"));
@@ -98,6 +130,88 @@ jobs:
           echo "IOS_RUNTIME_FINGERPRINT=$IOS_RUNTIME_FINGERPRINT" >> "$GITHUB_ENV"
           echo "EXPO_UPDATES_FINGERPRINT_OVERRIDE=$IOS_RUNTIME_FINGERPRINT" >> "$GITHUB_ENV"
           echo "Resolved iOS runtime fingerprint: $IOS_RUNTIME_FINGERPRINT"
+          if ! [[ "$IOS_RUNTIME_FINGERPRINT" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "::error::Invalid iOS runtime fingerprint."
+            exit 1
+          fi
+          echo "Fingerprint source comparison below is the authoritative compatibility guard."
+
+
+      - name: Compare iOS runtime fingerprint with 1.1.0 baseline
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
+          APP_UPDATE_CHANNEL: production
+        run: |
+          set -euo pipefail
+          BASE_SHA=23ab2562809e03ff54ee47a270e868b9144c8d64
+          BASE_DIR="$RUNNER_TEMP/novel-1.1.0-baseline"
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git worktree add --detach "$BASE_DIR" "$BASE_SHA"
+          # Capture the current branch's resolved public Expo config as well as the baseline.
+          EAS_PROJECT_ID="$EAS_PROJECT_ID" APP_UPDATE_CHANNEL=production npx expo config --type public --json > "$RUNNER_TEMP/expo-config.json"
+          mkdir -p "$BASE_DIR/assets"
+          base64 -D -i "$BASE_DIR/assets/icon.png.base64" -o "$BASE_DIR/assets/icon.png"
+          (
+            cd "$BASE_DIR"
+            npm install
+            EAS_PROJECT_ID="$EAS_PROJECT_ID" APP_UPDATE_CHANNEL=production npx expo config --type public --json > "$RUNNER_TEMP/expo-config-1.1.0.json"
+            npx eas-cli@27.11.0 fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/ios-fingerprint-1.1.0.json"
+          )
+          node -e '
+            const fs = require("fs");
+            const read = (name) => JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/" + name, "utf8"));
+            const current = read("ios-fingerprint.json");
+            const baseline = read("ios-fingerprint-1.1.0.json");
+            // Expo includes the marketing version in expoConfig fingerprints.
+            // Compare the effective public configs after removing only that field;
+            // every other Expo config value must remain identical.
+            const stable = (value) => {
+              if (Array.isArray(value)) return value.map(stable);
+              if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
+              return value;
+            };
+            const normalizedConfig = (name) => {
+              const config = read(name);
+              delete config.version;
+              return JSON.stringify(stable(config));
+            };
+            if (normalizedConfig("expo-config.json") !== normalizedConfig("expo-config-1.1.0.json")) {
+              throw new Error("Expo public config differs from 1.1.0 beyond the app version; refusing to assume OTA compatibility.");
+            }
+            console.log("Expo public config matches 1.1.0 after excluding only the marketing version.");
+            const sources = (value) => value.sources || value.fingerprint?.sources || [];
+            const normalize = (value, label) => {
+              const list = sources(value);
+              if (!Array.isArray(list) || list.length === 0) {
+                throw new Error(label + " fingerprint has no source details; refusing to assume OTA compatibility.");
+              }
+              const entries = list.map((source) => {
+                const name = source.id || source.filePath || source.name;
+                const digest = source.hash ?? source.hex ?? null;
+                if (typeof name !== "string" || !name || typeof digest !== "string" || !digest) {
+                  throw new Error(label + " fingerprint contains a source without a stable name/hash.");
+                }
+                return [name, digest];
+              });
+              const map = new Map(entries);
+              if (map.size !== entries.length) {
+                throw new Error(label + " fingerprint contains duplicate source names.");
+              }
+              return map;
+            };
+            const before = normalize(baseline, "1.1.0 baseline");
+            const after = normalize(current, "1.1.1");
+            const names = [...new Set([...before.keys(), ...after.keys()])].sort();
+            const changed = names.filter((name) => before.get(name) !== after.get(name));
+            const unexpected = changed.filter((name) => name !== "packageJson:scripts" && name !== "expoConfig");
+            if (unexpected.length) throw new Error("Unexpected native runtime fingerprint sources changed: " + unexpected.join(", "));
+            console.log("1.1.0 runtime fingerprint:", baseline.hash || baseline.fingerprint?.hash);
+            console.log("1.1.1 runtime fingerprint:", current.hash || current.fingerprint?.hash);
+            console.log("Fingerprint source count:", before.size, "->", after.size);
+            console.log("Changed fingerprint sources:", JSON.stringify(changed.map((name) => ({ name, baseline: before.get(name), current: after.get(name) })), null, 2));
+            if (changed.includes("expoConfig")) console.log("Accepted expoConfig change only after normalized public Expo config matched with version excluded.");
+          '
 
 
       - name: Generate iOS native project
@@ -170,41 +284,35 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Read app version
+      - name: Read and validate app version
         id: app-version
-        run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
-
-      - name: Publish IPA to GitHub Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.app-version.outputs.version }}-build.${{ github.run_number }}
-          name: AppleNovelApp v${{ steps.app-version.outputs.version }}
-          body: |
-            本版本由 GitHub Actions 自动构建。
-
-            - 文件：未签名 iOS IPA（需自行签名后安装）
-            - OTA 更新通道：production
-            - 提交：${{ github.sha }}
-          prerelease: true
-          draft: false
-          files: AppleNovelApp-unsigned.ipa
-          fail_on_unmatched_files: true
-          overwrite_files: true
-          generate_release_notes: true
-
-      - name: Verify Release asset matches the built IPA
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APP_VERSION: ${{ steps.app-version.outputs.version }}
         run: |
-          set -euo pipefail
-          TAG="v${APP_VERSION}-build.${GITHUB_RUN_NUMBER}"
-          LOCAL_SHA="sha256:$(/usr/bin/shasum -a 256 AppleNovelApp-unsigned.ipa | awk '{print $1}')"
-          REMOTE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq '.assets[] | select(.name == "AppleNovelApp-unsigned.ipa") | .digest')"
-          if [ -z "$REMOTE_SHA" ] || [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
-            echo "::error::Release IPA asset is missing or its SHA256 does not match the verified build."
-            echo "Local: $LOCAL_SHA"
-            echo "Release: $REMOTE_SHA"
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          APP_VERSION="$(node -p 'require("./app.json").expo.version')"
+          if [ "$PACKAGE_VERSION" != "$APP_VERSION" ]; then
+            echo "::error::package.json and app.json versions must match."
             exit 1
           fi
-          echo "Verified Release asset checksum: $REMOTE_SHA"
+          VERSION="$PACKAGE_VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF" = "refs/tags/v1.1.1" ] && [ "$VERSION" != "1.1.1" ]; then
+            echo "::error::The v1.1.1 release tag requires package.json and app.json version 1.1.1."
+            exit 1
+          fi
+
+      - name: Publish version record to GitHub Releases
+        if: github.ref == 'refs/tags/v1.1.1'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.1.1
+          name: AppleNovelApp v1.1.1
+          body: |
+            AppleNovelApp 1.1.1 正式版。
+
+            - 应用更新：通过 production OTA 通道（仅限原生运行环境兼容的安装版本）
+            - 不提供需要用户重新签名安装的 IPA
+            - iOS 构建产物仅保留在 Actions 内部验收 Artifact
+            - 提交：${{ github.sha }}
+          prerelease: false
+          draft: false
+          generate_release_notes: true
