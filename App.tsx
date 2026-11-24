@@ -1713,17 +1713,22 @@ export default function App() {
           presentationStyle="fullScreen"
           onRequestClose={() => setShowSpeechSettings(false)}
         >
-          <SafeAreaView style={{ flex: 1, backgroundColor: "#F5F5F0" }}>
-            <StatusBar barStyle="dark-content" />
+          <SafeAreaView style={{ flex: 1, backgroundColor: "#171717" }}>
+            <StatusBar barStyle="light-content" />
             <View style={{ height: 58, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Pressable onPress={() => setShowSpeechSettings(false)}><Text style={{ color: "#68765F", fontSize: 16, fontWeight: "700" }}>收起</Text></Pressable>
-              <Text style={{ color: "#292A24", fontSize: 16, fontWeight: "800" }}>听书</Text>
-              <Text style={{ color: "#8D897F", fontSize: 11 }}>仅试听</Text>
+              <Pressable onPress={() => setShowSpeechSettings(false)}><Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "700" }}>收起</Text></Pressable>
+              <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>听书</Text>
+              <Text style={{ color: "#B9B9B9", fontSize: 11 }}>自动分配角色</Text>
             </View>
             <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 38 }}>
-              <View style={{ backgroundColor: "#FFFFFF", borderRadius: 18, padding: 20, marginTop: 16, borderWidth: 1, borderColor: "#EEECE5" }}>
-                <Text style={{ color: "#33352D", fontSize: 15, fontWeight: "800" }}>沉浸式有声阅读</Text>
-                <Text style={{ color: "#777368", fontSize: 12, lineHeight: 19, marginTop: 8 }}>自动区分旁白与带有明确说话人提示的角色对白。首次使用通过系统安全提示配置一次 Key，之后保存在本机钥匙串。</Text>
+              <View style={{ backgroundColor: "#242424", borderRadius: 22, padding: 20, marginTop: 16, borderWidth: 1, borderColor: "#383838" }}>
+                <View style={{ height: 190, borderRadius: 16, backgroundColor: "#B83F35", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+                  <Text style={{ color: "#FFFFFF", fontSize: 52, fontWeight: "300" }}>♫</Text>
+                  <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "800", marginTop: 8 }} numberOfLines={2}>{selectedBook?.title || "私人小说"}</Text>
+                  <Text style={{ color: "#F6D7D3", fontSize: 11, marginTop: 6 }}>{onlineChapterTitle || localChapters[chapterIndex]?.title || SAMPLE_CHAPTERS[chapterIndex]?.title || "有声阅读"}</Text>
+                </View>
+                <Text style={{ color: "#FFFFFF", fontSize: 17, fontWeight: "800" }}>沉浸式有声阅读</Text>
+                <Text style={{ color: "#C5C5C5", fontSize: 12, lineHeight: 19, marginTop: 8 }}>自动区分旁白与带有明确说话人提示的角色对白。首次使用通过系统安全提示配置一次 Key，之后保存在本机钥匙串。</Text>
                 <Pressable style={[styles.fontButton, { marginTop: 14 }]} onPress={configureGeminiKey}><Text style={styles.fontButtonText}>{geminiKeyReady ? "重新配置语音服务" : "安全配置语音服务"}</Text></Pressable>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                   <Pressable style={styles.fontButton} disabled={!geminiKeyReady || isSpeaking} onPress={() => void previewGeminiVoice("single")}><Text style={styles.fontButtonText}>旁白试听</Text></Pressable>
@@ -1736,10 +1741,10 @@ export default function App() {
                   <Pressable style={styles.fontButton} onPress={speechPaused ? resumeSpeech : pauseSpeech}><Text style={styles.fontButtonText}>{speechPaused ? "继续试听" : "暂停试听"}</Text></Pressable>
                   <Pressable style={styles.fontButton} onPress={stopSpeech}><Text style={styles.fontButtonText}>停止试听</Text></Pressable>
                 </View>}
-                <Text style={{ color: "#777368", fontSize: 11, lineHeight: 17, marginTop: 12 }}>状态：{geminiTestStatus}</Text>
-                <Text style={{ color: "#A66D62", fontSize: 10, lineHeight: 16, marginTop: 8 }}>API Key 存储于本机 iOS 钥匙串，不会写入 GitHub 源码。Gemini 免费层并非永久免费，达到免费配额后停止；不要启用付费结算。</Text>
+                <Text style={{ color: "#C5C5C5", fontSize: 11, lineHeight: 17, marginTop: 12 }}>状态：{geminiTestStatus}</Text>
+                <Text style={{ color: "#D58A82", fontSize: 10, lineHeight: 16, marginTop: 8 }}>API Key 存储于本机 iOS 钥匙串，不会写入 GitHub 源码。Gemini 免费层并非永久免费，达到免费配额后停止；不要启用付费结算。</Text>
               </View>
-              <Text style={{ color: "#8D897F", fontSize: 11, lineHeight: 18, marginTop: 16 }}>旧离线语音引擎已移除；当前只保留手动在线试听实验，正式章节朗读引擎暂不提供。</Text>
+              <Text style={{ color: "#A8A8A8", fontSize: 11, lineHeight: 18, marginTop: 16 }}>章节朗读会自动识别带有说话人提示的对白，并按人物名称稳定分配不同音色。为保持声音一致，人物名称相同会复用同一音色。</Text>
             </ScrollView>
           </SafeAreaView>
         </Modal>
