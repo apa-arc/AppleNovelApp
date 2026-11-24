@@ -18,7 +18,7 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   horizontalPadding: 27,
 };
 
-/** Normalize persisted settings; legacy cloud TTS fields are intentionally ignored. */
+/** Normalize persisted settings; legacy speech-engine fields are intentionally ignored. */
 export function normalizeReaderSettings(value: unknown): ReaderSettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { ...DEFAULT_READER_SETTINGS };

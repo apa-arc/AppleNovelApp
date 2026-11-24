@@ -428,6 +428,17 @@ export default function App() {
     });
   }, [readerFontSize, readerTheme, readerMode, readerLineSpacing, readerParagraphSpacing, readerHorizontalPadding, isLoaded]);
 
+  useEffect(() => {
+    if (!isLoaded) return;
+    void AsyncStorage.removeItem("@private_novel/speech_audio_cache_v1").catch(() => undefined);
+    const legacySpeechCacheDirectory = FileSystem.cacheDirectory
+      ? FileSystem.cacheDirectory + "speech-audio-cache/"
+      : null;
+    if (legacySpeechCacheDirectory) {
+      void FileSystem.deleteAsync(legacySpeechCacheDirectory, { idempotent: true }).catch(() => undefined);
+    }
+  }, [isLoaded]);
+
   useEffect(() => () => {
     speechRunIdRef.current += 1;
     speechPlaybackRef.current?.stop();
