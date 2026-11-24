@@ -187,9 +187,9 @@ if (!fs.existsSync(imageSizeUtilsPath)) {
 }
 {
   const before = "const toUTF8String = (input, start = 0, end = input.length) => decoder.decode(input.slice(start, end));";
-  const after = "const toUTF8String = (input, start = 0, end = input.length) => {\\n  const bytes = input instanceof ArrayBuffer\\n    ? new Uint8Array(input)\\n    : ArrayBuffer.isView(input)\\n      ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength)\\n      : Uint8Array.from(input);\\n  return decoder.decode(bytes.subarray(start, end));\\n};";
+  const after = "const toUTF8String = (input, start = 0, end = input.length) => {\n  const bytes = input instanceof ArrayBuffer\n    ? new Uint8Array(input)\n    : ArrayBuffer.isView(input)\n      ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength)\n      : Uint8Array.from(input);\n  return decoder.decode(bytes.subarray(start, end));\n};";
   const viewBefore = "const getView = (input, offset) => new DataView(input.buffer, input.byteOffset + offset);";
-  const viewAfter = "const getView = (input, offset) => {\\n  // Metro may pass Uint8Array-compatible data backed by a non-ArrayBuffer.\\n  // DataView requires an actual ArrayBuffer, so copy only in that case.\\n  const bytes = input.buffer instanceof ArrayBuffer ? input : Uint8Array.from(input);\\n  return new DataView(bytes.buffer, bytes.byteOffset + offset);\\n};";
+  const viewAfter = "const getView = (input, offset) => {\n  // Metro may pass Uint8Array-compatible data backed by a non-ArrayBuffer.\n  // DataView requires an actual ArrayBuffer, so copy only in that case.\n  const bytes = input.buffer instanceof ArrayBuffer ? input : Uint8Array.from(input);\n  return new DataView(bytes.buffer, bytes.byteOffset + offset);\n};";
   const content = fs.readFileSync(imageSizeUtilsPath, "utf8");
   let patched = content;
   if (!patched.includes(after)) {
@@ -198,7 +198,7 @@ if (!fs.existsSync(imageSizeUtilsPath)) {
       throw new Error("Expected one unpatched image-size UTF-8 decoder block, found " + matches);
     }
     patched = patched.replace(before, after);
-    process.stdout.write("Patched image-size byte input normalization for Metro compatibility\\n");
+    process.stdout.write("Patched image-size byte input normalization for Metro compatibility\n");
   }
   if (!patched.includes(viewAfter)) {
     const matches = patched.split(viewBefore).length - 1;
@@ -206,7 +206,7 @@ if (!fs.existsSync(imageSizeUtilsPath)) {
       throw new Error("Expected one unpatched image-size DataView block, found " + matches);
     }
     patched = patched.replace(viewBefore, viewAfter);
-    process.stdout.write("Patched image-size DataView backing buffer for Metro compatibility\\n");
+    process.stdout.write("Patched image-size DataView backing buffer for Metro compatibility\n");
   }
   if (patched !== content) fs.writeFileSync(imageSizeUtilsPath, patched, "utf8");
 }
