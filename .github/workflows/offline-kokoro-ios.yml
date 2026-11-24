@@ -2,8 +2,8 @@ name: Offline Kokoro iOS native smoke test
 
 concurrency:
   group: offline-kokoro-${{ github.event.pull_request.number || github.ref }}
-  # Keep active iOS simulator checks running; newer updates may wait in the queue.
-  cancel-in-progress: false
+  # A newer commit on the same PR supersedes a stuck simulator attempt.
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -61,6 +61,7 @@ jobs:
       - name: Build iOS Simulator app without signing
         run: |
           xcodebuild \
+            -quiet \
             -workspace ios/app.xcworkspace \
             -scheme app \
             -sdk iphonesimulator \
@@ -69,6 +70,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
       - name: Launch simulator and verify SherpaOnnx TurboModule registration
+        timeout-minutes: 10
         run: |
           APP_PATH="$(find build/ios/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' -print -quit)"
           DEVICE_ID="$(xcrun simctl list devices available | awk -F'[()]' '/iPhone/ && !seen++ {print $2; exit}')"
@@ -78,9 +80,23 @@ jobs:
           fi
           xcrun simctl boot "$DEVICE_ID" || true
           xcrun simctl bootstatus "$DEVICE_ID" -b
+          # Debug React Native apps need Metro; without it the app cannot load App.tsx.
+          CI=1 npx expo start --dev-client --localhost --port 8081 > /tmp/expo-metro.log 2>&1 &
+          METRO_PID=$!
+          READY=0
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8081/status >/dev/null; then READY=1; break; fi
+            sleep 2
+          done
+          if [ "$READY" -ne 1 ]; then
+            cat /tmp/expo-metro.log
+            kill "$METRO_PID" || true
+            echo "::error::Expo Metro did not become ready for the simulator smoke test."
+            exit 1
+          fi
           xcrun simctl install "$DEVICE_ID" "$APP_PATH"
           xcrun simctl launch "$DEVICE_ID" com.apaarc.applenovelapp
-          sleep 15
+          sleep 20
           LOG="$(xcrun simctl spawn "$DEVICE_ID" log show --style compact --last 2m --predicate 'eventMessage CONTAINS "KOKORO_NATIVE_READY" OR eventMessage CONTAINS "KOKORO_NATIVE_UNAVAILABLE"')"
           echo "$LOG"
           if ! echo "$LOG" | grep -q "KOKORO_NATIVE_READY"; then
