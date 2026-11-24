@@ -97,9 +97,14 @@ jobs:
           xcrun simctl install "$DEVICE_ID" "$APP_PATH"
           xcrun simctl launch "$DEVICE_ID" com.apaarc.applenovelapp
           sleep 20
-          LOG="$(xcrun simctl spawn "$DEVICE_ID" log show --style compact --last 2m --predicate 'eventMessage CONTAINS "KOKORO_NATIVE_READY" OR eventMessage CONTAINS "KOKORO_NATIVE_UNAVAILABLE"')"
+          # Exclude the macOS "log" process: its own diagnostic event includes
+          # the predicate text and can otherwise create a false-positive match.
+          LOG="$(xcrun simctl spawn "$DEVICE_ID" log show --style compact --last 2m --predicate 'process != "log" AND eventMessage CONTAINS "KOKORO_NATIVE_READY"')"
           echo "$LOG"
-          if ! echo "$LOG" | grep -q "KOKORO_NATIVE_READY"; then
-            echo "::error::SherpaOnnx TurboModule did not report a successful native registration check."
+          if ! printf '%s\n' "$LOG" | grep -Fq '[KOKORO_NATIVE_READY]'; then
+            echo "::error::SherpaOnnx TurboModule did not emit its app-process ready marker."
+            echo "Expo Metro log:"
+            tail -n 100 /tmp/expo-metro.log || true
             exit 1
           fi
+          echo "Verified SherpaOnnx TurboModule ready marker from the app process."
