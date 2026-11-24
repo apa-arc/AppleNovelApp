@@ -9,7 +9,8 @@ on:
         type: choice
         options:
           - "1.1.2"
-        default: "1.1.2"
+          - "1.1.3"
+        default: "1.1.3"
 
 concurrency:
   group: unsigned-ipa-${{ github.ref }}
@@ -32,7 +33,7 @@ jobs:
           RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$RELEASE_VERSION" = "1.1.2"
+          test "$RELEASE_VERSION" = "1.1.3"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -207,19 +208,21 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish 1.1.2 formal GitHub Release
-        if: github.event_name == 'workflow_dispatch' && inputs.release_version == '1.1.2'
+        if: github.event_name == 'workflow_dispatch' && inputs.release_version == '1.1.3'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.2
+          tag_name: v1.1.3
           target_commitish: main
-          name: AppleNovelApp v1.1.2
+          name: AppleNovelApp v1.1.3
           files: AppleNovelApp-unsigned.ipa
           fail_on_unmatched_files: true
           body: |
-            AppleNovelApp 1.1.2 正式版。
+            AppleNovelApp 1.1.3 正式版。
 
-            - 保留 10 个正文源与第 11 个独立别名源
-            - 删除 Kokoro / Sherpa-ONNX 离线语音引擎及相关依赖、服务端和界面入口
+            - 书架调整为 3×3 九本布局，并以海报角标安静提示新章节
+            - 书架顶部搜索入口统一搜索本地藏书与全部在线书源
+            - Gemini 听书界面改造，API Key 使用 iOS 钥匙串本地保存
+            - 章节对白按识别到的角色名分配稳定音色，旁白使用独立音色
             - IPA 为未签名构建产物，需要使用个人自签工具签名后安装
             - Production OTA 通过独立工作流发布，并按 fingerprint runtime 校验兼容性
             - 构建提交：${{ github.sha }}
