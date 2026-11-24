@@ -107,6 +107,7 @@ export default function App() {
   const [appearanceMode, setAppearanceMode] = useState<"light" | "dark">("light");
   const appIsDark = appearanceMode === "dark";
   const [shelfView, setShelfView] = useState<"list" | "grid">("grid");
+  const autoSubscriptionCheckRef = useRef(false);
   const [query, setQuery] = useState("");
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
@@ -329,7 +330,8 @@ export default function App() {
           }
         }
         const savedShelfView = await AsyncStorage.getItem(SHELF_VIEW_STORAGE_KEY);
-        if (savedShelfView === "grid" || savedShelfView === "list") setShelfView(savedShelfView);
+        setShelfView("grid");
+        if (savedShelfView !== "grid") void AsyncStorage.setItem(SHELF_VIEW_STORAGE_KEY, "grid").catch(() => undefined);
         const savedAppearance = await AsyncStorage.getItem(APPEARANCE_STORAGE_KEY);
         setAppearanceMode(savedAppearance === "dark" ? "dark" : "light");
         const savedSearchHistory = await AsyncStorage.getItem(SEARCH_HISTORY_STORAGE_KEY);
@@ -1028,6 +1030,13 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (!isLoaded || sources.length === 0 || autoSubscriptionCheckRef.current) return;
+    autoSubscriptionCheckRef.current = true;
+    const subscribed = books.filter((book) => !!book.onlineSourceId && !!book.onlineSummary && !!book.onlineChapters?.length);
+    void (async () => { for (const book of subscribed) await checkOnlineSubscription(book, false); })();
+  }, [isLoaded, sources.length]);
+
   const recordReading = (book: Book, chapterTitle: string, chapterIndexValue: number, progress: number) => {
     setReadingHistory((current) => upsertReadingHistory(current, {
       bookId: book.id, title: book.title, author: book.author, chapterTitle,
@@ -1714,6 +1723,22 @@ export default function App() {
 
       {tab === "搜索" && (
         <ScrollView contentContainerStyle={styles.pageContent} keyboardShouldPersistTaps="handled">
+          {!!onlineQuery.trim() && (
+            <View style={{ marginBottom: 18 }}>
+              <Text style={[styles.sourceTitle, appIsDark && styles.darkPrimaryText, { marginBottom: 10 }]}>书架内匹配</Text>
+              {books.filter((book) => (book.title + book.author).toLocaleLowerCase().includes(onlineQuery.trim().toLocaleLowerCase())).length === 0
+                ? <Text style={[styles.note, appIsDark && styles.darkMutedText]}>书架中没有匹配项，下面继续搜索全部书源。</Text>
+                : books.filter((book) => (book.title + book.author).toLocaleLowerCase().includes(onlineQuery.trim().toLocaleLowerCase())).map((book) => (
+                  <Pressable key={book.id} onPress={() => void openBook(book)} style={[styles.historyRow, appIsDark && styles.darkCard]}>
+                    <View style={styles.historyInfo}>
+                      <Text style={[styles.bookTitle, appIsDark && styles.darkPrimaryText]}>{book.title}</Text>
+                      <Text style={[styles.bookAuthor, appIsDark && styles.darkSecondaryText]}>{book.author} · 书架藏书</Text>
+                    </View>
+                    <Text style={styles.chevron}>›</Text>
+                  </Pressable>
+                ))}
+            </View>
+          )}
           <View style={[styles.onlineSearchCard, appIsDark && styles.darkCard]}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <TextInput
