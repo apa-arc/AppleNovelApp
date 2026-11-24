@@ -17,6 +17,7 @@ import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
 import { playSpeechAudio, type SpeechAudioPlayback } from "./src/wav-audio-playback";
 import { synthesizeGeminiTTS } from "./src/gemini-tts-client";
+import { splitSpeechDialogue } from "./src/speech-dialogue";
 import {
   AppState,
   SafeAreaView,
@@ -86,6 +87,35 @@ const SAMPLE_CHAPTERS: Chapter[] = [
 
 function getSourceClient(_source: NovelSource) {
   return undefined;
+}
+
+function concatenateWavAudio(chunks: Uint8Array[]): Uint8Array {
+  if (!chunks.length) throw new Error("没有可播放的音频片段。");
+  const read = (bytes: Uint8Array) => {
+    if (String.fromCharCode(...bytes.slice(0, 4)) !== "RIFF" || String.fromCharCode(...bytes.slice(8, 12)) !== "WAVE") throw new Error("语音服务返回了无效 WAV 数据。");
+    let offset = 12; let format: Uint8Array | null = null; let audio: Uint8Array | null = null;
+    while (offset + 8 <= bytes.length) {
+      const id = String.fromCharCode(...bytes.slice(offset, offset + 4));
+      const size = new DataView(bytes.buffer, bytes.byteOffset + offset + 4, 4).getUint32(0, true);
+      const start = offset + 8;
+      if (start + size > bytes.length) throw new Error("WAV 音频块长度不完整。");
+      if (id === "fmt ") format = bytes.slice(start, start + size);
+      if (id === "data") audio = bytes.slice(start, start + size);
+      offset = start + size + (size % 2);
+    }
+    if (!format || !audio) throw new Error("WAV 音频缺少格式或数据块。");
+    return { format, audio };
+  };
+  const parsed = chunks.map(read); const firstFormat = parsed[0].format;
+  if (parsed.some((part) => part.format.length !== firstFormat.length || part.format.some((value, index) => value !== firstFormat[index]))) throw new Error("不同语音片段的音频格式不一致，无法合并。");
+  const audioLength = parsed.reduce((sum, part) => sum + part.audio.length, 0);
+  const output = new Uint8Array(12 + 8 + firstFormat.length + 8 + audioLength);
+  const view = new DataView(output.buffer);
+  output.set([82,73,70,70], 0); view.setUint32(4, output.length - 8, true); output.set([87,65,86,69], 8);
+  output.set([102,109,116,32], 12); view.setUint32(16, firstFormat.length, true); output.set(firstFormat, 20);
+  const dataHeader = 20 + firstFormat.length; output.set([100,97,116,97], dataHeader); view.setUint32(dataHeader + 4, audioLength, true);
+  let cursor = dataHeader + 8; for (const part of parsed) { output.set(part.audio, cursor); cursor += part.audio.length; }
+  return output;
 }
 
 function getOnlineBookId(title: string, author: string): string {
@@ -1250,6 +1280,45 @@ export default function App() {
     }
   };
 
+  const startGeminiChapter = async () => {
+    const apiKey = geminiApiKeyDraft.trim();
+    if (!apiKey) { Alert.alert("尚未配置语音", "请先安全配置 Gemini 语音服务。"); return; }
+    const chapterText = onlineReading ? onlineChapterContent : localReading ? (localChapters[chapterIndex]?.content || "") : SAMPLE_CHAPTERS[chapterIndex]?.content || "";
+    if (!chapterText.trim()) { Alert.alert("没有可朗读的正文", "当前章节内容为空。"); return; }
+    stopSpeech(); const runId = ++speechRunIdRef.current; setIsSpeaking(true); setSpeechPaused(false); speechPausedRef.current = false;
+    try {
+      const segments = splitSpeechDialogue(chapterText);
+      const voiceNames = ["Puck", "Charon", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"];
+      const voiceFor = (name: string) => { let hash = 0; for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0; return voiceNames[hash % voiceNames.length]; };
+      const runs: Array<{ role: string; voiceName: string; text: string }> = [];
+      for (const segment of segments) {
+        const role = segment.kind === "narration" ? "旁白" : (segment.speakerName || "未识别角色");
+        const voiceName = role === "旁白" ? "Kore" : voiceFor(role);
+        const previous = runs[runs.length - 1];
+        if (previous && previous.role === role) previous.text += "\n" + segment.text;
+        else runs.push({ role, voiceName, text: segment.text });
+      }
+      if (runs.length > 60) throw new Error("本章角色切换过于频繁，已停止合成以避免产生过多 API 请求。");
+      const audio: Uint8Array[] = [];
+      for (let index = 0; index < runs.length; index++) {
+        if (runId !== speechRunIdRef.current) return;
+        const run = runs[index];
+        setGeminiTestStatus("正在合成 " + run.role + "（" + (index + 1) + "/" + runs.length + "）…");
+        audio.push(await synthesizeGeminiTTS({ apiKey, voiceName: run.voiceName, parts: [{ text: run.text, style: run.role === "旁白" ? "warm, expressive Chinese audiobook narration" : "natural Chinese character dialogue, expressive and consistent" }] }));
+      }
+      if (runId !== speechRunIdRef.current) return;
+      const wav = concatenateWavAudio(audio);
+      const playback = await playSpeechAudio(wav, "wav", { title: selectedBook?.title || "章节朗读", artist: "Gemini 多角色听书" });
+      speechPlaybackRef.current = playback; if (speechPausedRef.current) playback.pause();
+      await playback.finished;
+      if (runId === speechRunIdRef.current) setGeminiTestStatus("本章朗读完成");
+    } catch (error) {
+      if (runId === speechRunIdRef.current) { const message = error instanceof Error ? error.message : "章节语音合成失败。"; setGeminiTestStatus(message); Alert.alert("听书失败", message); }
+    } finally {
+      if (runId === speechRunIdRef.current) { speechPlaybackRef.current = null; setIsSpeaking(false); setSpeechPaused(false); speechPausedRef.current = false; }
+    }
+  };
+
   const saveReadingPosition = (bookId: string, nextChapterIndex: number) => {
     const chapters = localReading ? localChapters : SAMPLE_CHAPTERS;
     const chapterCount = Math.max(1, chapters.length);
@@ -1628,6 +1697,7 @@ export default function App() {
                 <Pressable style={[styles.fontButton, { marginTop: 14 }]} onPress={configureGeminiKey}><Text style={styles.fontButtonText}>{geminiKeyReady ? "重新配置语音服务" : "安全配置语音服务"}</Text></Pressable>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                   <Pressable style={styles.fontButton} disabled={!geminiKeyReady || isSpeaking} onPress={() => void previewGeminiVoice("single")}><Text style={styles.fontButtonText}>旁白试听</Text></Pressable>
+                  <Pressable style={[styles.fontButton, { backgroundColor: "#C94B43" }]} disabled={!geminiKeyReady || isSpeaking} onPress={() => void startGeminiChapter()}><Text style={[styles.fontButtonText, { color: "#FFFFFF" }]}>朗读本章</Text></Pressable>
                   <Pressable style={styles.fontButton} disabled={!geminiKeyReady || isSpeaking} onPress={() => void previewGeminiVoice("dialogue")}><Text style={styles.fontButtonText}>双角色试听</Text></Pressable>
                   <Pressable style={styles.fontButton} disabled={!geminiKeyReady} onPress={() => { stopSpeech(); void SecureStore.deleteItemAsync("private_novel_gemini_api_key"); setGeminiApiKeyDraft(""); setGeminiKeyReady(false); setGeminiTestStatus("已从本机钥匙串清除 Key"); }}><Text style={styles.fontButtonText}>清除 Key</Text></Pressable>
                 </View>
