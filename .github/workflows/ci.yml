@@ -30,42 +30,7 @@ jobs:
       - name: Expo project diagnostics
         run: npx expo-doctor
       - name: Dependency security audit
-        run: |
-          npm audit --audit-level=moderate --json > /tmp/npm-audit.json || true
-          node <<'NODE'
-          const fs = require('node:fs');
-          const report = JSON.parse(fs.readFileSync('/tmp/npm-audit.json', 'utf8'));
-          const vulnerabilities = report.vulnerabilities || {};
-          const allowedAdvisories = new Set([
-            'GHSA-5p2g-fcmc-qvqq',
-            'GHSA-w3rx-r6r6-pgpr',
-          ]);
-          // These advisories currently have no published patched image-size release.
-          // Permit only dependency chains that resolve exclusively to these two IDs.
-          // New or unrelated vulnerabilities continue to fail the CI gate.
-          function onlyKnownImageSizeAdvisory(name, visiting = new Set()) {
-            const item = vulnerabilities[name];
-            if (!item) return false;
-            if (visiting.has(name)) return true;
-            const next = new Set(visiting);
-            next.add(name);
-            return item.via.length > 0 && item.via.every((entry) => {
-              if (typeof entry === 'string') return onlyKnownImageSizeAdvisory(entry, next);
-              return allowedAdvisories.has(entry.source);
-            });
-          }
-          const unexpected = Object.entries(vulnerabilities)
-            .filter(([name, item]) => item.severity === 'critical' ||
-              ['high', 'moderate'].includes(item.severity) && !onlyKnownImageSizeAdvisory(name))
-            .map(([name, item]) => ({ name, severity: item.severity, via: item.via }));
-          if (unexpected.length) {
-            console.error('Unexpected dependency vulnerabilities:', JSON.stringify(unexpected, null, 2));
-            process.exit(1);
-          }
-          const accepted = Object.keys(vulnerabilities);
-          console.log('No unexpected dependency vulnerabilities.');
-          if (accepted.length) console.log('Scoped, unpatched Metro/image-size advisory chain:', accepted.join(', '));
-          NODE
+        run: npm audit --audit-level=moderate
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
