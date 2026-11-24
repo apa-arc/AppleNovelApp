@@ -61,7 +61,7 @@
   },
   "overrides": {
     "postcss": "8.5.33",
-    "image-size": "2.1.0",
+    "image-size": "1.2.1",
     "glob": "14.0.6",
     "minimatch": "11.0.9",
     "@babel/parser": "7.29.14",
