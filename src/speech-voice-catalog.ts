@@ -48,7 +48,11 @@ export const SPEECH_VOICES: SpeechVoice[] = SPEECH_SPEAKER_NAMES.map((speakerNam
   return {
     id: `${SPEECH_MODEL.id}:speaker-${speakerId}`,
     modelId: SPEECH_MODEL.id,
-    label: `${category} · ${speakerName}`,
+    label: category === "中文女声"
+      ? `女声 ${String(speakerId - 2).padStart(2, "0")}`
+      : category === "中文男声"
+        ? `男声 ${String(speakerId - 57).padStart(2, "0")}`
+        : `${category} · ${speakerName}`,
     speakerName,
     category,
     language: "zh-en",
