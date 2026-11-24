@@ -7,8 +7,6 @@ export type ReaderSettings = {
   lineSpacing: number;
   paragraphSpacing: number;
   horizontalPadding: number;
-  speechModelVoiceId: string;
-  speechRate: number;
 };
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
@@ -18,8 +16,6 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   lineSpacing: 1.9,
   paragraphSpacing: 22,
   horizontalPadding: 27,
-  speechModelVoiceId: "kokoro-multi-lang-v1_1:speaker-3",
-  speechRate: 0.95,
 };
 
 /** Normalize persisted settings; legacy cloud TTS fields are intentionally ignored. */
@@ -45,7 +41,5 @@ export function normalizeReaderSettings(value: unknown): ReaderSettings {
     lineSpacing: bounded("lineSpacing", DEFAULT_READER_SETTINGS.lineSpacing, 1.4, 2.4, 1),
     paragraphSpacing: bounded("paragraphSpacing", DEFAULT_READER_SETTINGS.paragraphSpacing, 8, 32),
     horizontalPadding: bounded("horizontalPadding", DEFAULT_READER_SETTINGS.horizontalPadding, 16, 40),
-    speechModelVoiceId: typeof candidate.speechModelVoiceId === "string" && /^kokoro-multi-lang-v1_1:speaker-(?:[0-9]|[1-9][0-9]|10[0-2])$/.test(candidate.speechModelVoiceId) ? candidate.speechModelVoiceId : DEFAULT_READER_SETTINGS.speechModelVoiceId,
-    speechRate: bounded("speechRate", DEFAULT_READER_SETTINGS.speechRate, 0.5, 2, 2),
   };
 }

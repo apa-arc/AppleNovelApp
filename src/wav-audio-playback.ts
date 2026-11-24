@@ -11,14 +11,13 @@ export type SpeechAudioMetadata = {
   onProgress?: (progress: SpeechAudioProgress) => void;
 };
 
-export type WavAudioPlayback = {
+export type SpeechAudioPlayback = {
   finished: Promise<void>;
   pause: () => void;
   resume: () => void;
   stop: () => void;
 };
 
-export type SpeechAudioPlayback = WavAudioPlayback;
 
 /** Play provider-produced audio bytes while keeping background and lock-screen controls. */
 export async function playSpeechAudio(
@@ -108,10 +107,3 @@ export async function playSpeechAudio(
   };
 }
 
-/** Backward-compatible WAV entry point for the existing Kokoro engine. */
-export function playWavAudio(
-  bytes: Uint8Array,
-  metadata: SpeechAudioMetadata
-): Promise<WavAudioPlayback> {
-  return playSpeechAudio(bytes, "wav", metadata);
-}

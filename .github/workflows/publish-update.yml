@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Check out repository
@@ -94,26 +94,6 @@ jobs:
             }
             console.log("Verified active production channel -> production branch.");
           '
-      - name: Verify iOS runtime fingerprint before publishing
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
-          APP_UPDATE_CHANNEL: production
-        run: |
-          set -euo pipefail
-          npx eas-cli@27.11.0 fingerprint:generate --platform ios --json --non-interactive > "$RUNNER_TEMP/prepublish-ios-fingerprint.json"
-          node -e '
-            const fs = require("fs");
-            const result = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/prepublish-ios-fingerprint.json", "utf8"));
-            const actual = result.hash || result.fingerprint?.hash;
-            const expected = "7805c46b77b76a0cce34bdf7c95c8385425325be";
-            if (actual !== expected) {
-              console.error("Production OTA blocked: native runtime fingerprint changed.", JSON.stringify({ expected, actual }));
-              process.exit(1);
-            }
-            console.log("Verified expected 1.1.1 iOS runtime fingerprint:", actual);
-          '
-
       - name: Publish iOS Expo Update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -154,6 +134,55 @@ jobs:
             console.log("Verified OTA runtime fingerprint:", published);
           '
 
+      - name: Publish compatibility OTA for existing v1.1.1 installs
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
+          APP_UPDATE_CHANNEL: production
+          APP_RUNTIME_VERSION_OVERRIDE: 7805c46b77b76a0cce34bdf7c95c8385425325be
+          UPDATE_MESSAGE: Compatibility update for existing v1.1.1 installations
+        run: |
+          set -euo pipefail
+          cp app.config.js app.config.original.cjs
+          restore_config() {
+            mv app.config.original.cjs app.config.js
+          }
+          trap restore_config EXIT
+          cat > app.config.js <<'EOF'
+          const originalConfig = require("./app.config.original.cjs");
+          module.exports = (context) => ({
+            ...originalConfig(context),
+            runtimeVersion: process.env.APP_RUNTIME_VERSION_OVERRIDE,
+          });
+          EOF
+          npx expo config --type public --json > "$RUNNER_TEMP/v111-expo-config.json"
+          node -e '
+            const fs = require("fs");
+            const config = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/v111-expo-config.json", "utf8"));
+            if (config.runtimeVersion !== process.env.APP_RUNTIME_VERSION_OVERRIDE) throw new Error("v1.1.1 compatibility runtime override was not applied.");
+            if (config.updates?.requestHeaders?.["expo-channel-name"] !== "production") throw new Error("v1.1.1 compatibility update is not targeting production.");
+            console.log("Verified v1.1.1 compatibility runtime:", config.runtimeVersion);
+          '
+          npx eas-cli@27.11.0 update --channel production --message "$UPDATE_MESSAGE" --platform ios --non-interactive 2>&1 | tee "$RUNNER_TEMP/v111-eas-update.log"
+          V111_UPDATE_ID="$(sed -nE 's/^iOS update ID[[:space:]]+([[:xdigit:]-]+).*$/\1/p' "$RUNNER_TEMP/v111-eas-update.log" | tail -n 1)"
+          if [ -z "$V111_UPDATE_ID" ]; then
+            echo "::error::Could not read the v1.1.1 compatibility iOS update ID."
+            exit 1
+          fi
+          echo "Published compatibility update for runtime $APP_RUNTIME_VERSION_OVERRIDE: $V111_UPDATE_ID"
+          export V111_UPDATE_ID
+          npx eas-cli@27.11.0 update:view "$V111_UPDATE_ID" --json > "$RUNNER_TEMP/v111-update-view.json"
+          node -e '
+            const fs = require("fs");
+            const updates = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/v111-update-view.json", "utf8"));
+            const update = updates.find((item) => item.id === process.env.V111_UPDATE_ID);
+            const expected = process.env.APP_RUNTIME_VERSION_OVERRIDE;
+            if (!update || update.runtimeVersion !== expected || update.platform !== "IOS" || update.branch !== "production") {
+              console.error("v1.1.1 compatibility OTA target mismatch:", JSON.stringify({ update, expected }));
+              process.exit(1);
+            }
+            console.log("Verified v1.1.1 compatibility OTA:", update.id, "runtime", update.runtimeVersion, "branch", update.branch);
+          '
       - name: Publish compatibility OTA for existing v1.1.0 installs
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
