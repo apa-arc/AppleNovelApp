@@ -1,0 +1,18 @@
+name: Runner allocation smoke test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-runner-smoke-test:
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Confirm hosted macOS runner allocation
+        run: |
+          echo "MACOS_RUNNER_ALLOCATED"
+          uname -a
+          sw_vers
