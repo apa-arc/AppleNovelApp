@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Updates from "expo-updates";
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system/legacy";
+import * as SecureStore from "expo-secure-store";
 import type { NovelSource } from "./src/source";
 import { parseSourceSubscription } from "./src/source-subscription";
 import { normalizeBookAlias, parseBookAliasDictionary } from "./src/book-alias-dictionary";
@@ -51,6 +52,7 @@ type Book = {
   onlineChapters?: NovelChapter[];
   onlineChapterId?: string;
   onlineLastCheckedAt?: number;
+  unreadUpdateCount?: number;
   readerParagraphIndex?: number;
   localFileUri?: string;
   localFileName?: string;
@@ -104,7 +106,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("书架");
   const [appearanceMode, setAppearanceMode] = useState<"light" | "dark">("light");
   const appIsDark = appearanceMode === "dark";
-  const [shelfView, setShelfView] = useState<"list" | "grid">("list");
+  const [shelfView, setShelfView] = useState<"list" | "grid">("grid");
   const [query, setQuery] = useState("");
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
@@ -122,6 +124,7 @@ export default function App() {
   const speechRunIdRef = useRef(0);
   const speechPlaybackRef = useRef<SpeechAudioPlayback | null>(null);
   const [geminiApiKeyDraft, setGeminiApiKeyDraft] = useState("");
+  const [geminiKeyReady, setGeminiKeyReady] = useState(false);
   const [geminiTestStatus, setGeminiTestStatus] = useState("Key 仅在当前会话内存中使用");
   const [readerFontSize, setReaderFontSize] = useState(DEFAULT_READER_SETTINGS.fontSize);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(DEFAULT_READER_SETTINGS.theme);
@@ -279,6 +282,7 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
+    void SecureStore.getItemAsync("private_novel_gemini_api_key").then((key) => { if (active && key) { setGeminiApiKeyDraft(key); setGeminiKeyReady(true); } }).catch(() => undefined);
     const loadBooks = async () => {
       try {
         const saved = await AsyncStorage.getItem(STORAGE_KEY);
@@ -998,6 +1002,7 @@ export default function App() {
         chapterIndex: update.currentChapterIndex,
         lastChapter: currentChapter?.title || book.lastChapter,
         onlineLastCheckedAt: Date.now(),
+        unreadUpdateCount: update.newChapters.length > 0 ? update.newChapters.length : (book.unreadUpdateCount || 0),
         progress: latestChapters.length
           ? Math.round(((update.currentChapterIndex + 1) / latestChapters.length) * 100)
           : book.progress,
@@ -1007,13 +1012,7 @@ export default function App() {
       setLoadedChapters(latestChapters);
       setOnlineChapterIndex(update.currentChapterIndex);
       if (update.newChapters.length > 0) {
-        const latestTitles = update.newChapters.slice(-3).map((chapter) => chapter.title).join("、");
-        Alert.alert(
-          "发现新章节",
-          "《" + book.title + "》更新了 " + update.newChapters.length + " 章。" +
-          (latestTitles ? "\n最新章节：" + latestTitles : "") +
-          "\\n已自动更新订阅目录。"
-        );
+        // Updates are shown as a quiet badge on the shelf, never as a popup.
       } else if (showNoUpdates) {
         Alert.alert("订阅检查完成", "暂时没有发现新章节，当前目录共 " + latestChapters.length + " 章。");
       }
@@ -1143,7 +1142,8 @@ export default function App() {
     setOnlineReading(false);
     setLocalReading(false);
     setLocalChapters([]);
-    setSelectedBook(book);
+    setSelectedBook({ ...book, unreadUpdateCount: 0 });
+    setBooks((current) => current.map((item) => item.id === book.id ? { ...item, unreadUpdateCount: 0 } : item));
     setChapterIndex(Math.min(Math.max(book.chapterIndex ?? 0, 0), SAMPLE_CHAPTERS.length - 1));
     setReaderParagraphIndex(Math.max(0, book.readerParagraphIndex ?? 0));
     restoreReaderPositionRef.current = true;
@@ -1180,6 +1180,14 @@ export default function App() {
       return;
     }
     setShowSpeechSettings(true);
+  };
+
+  const configureGeminiKey = () => {
+    Alert.prompt("配置 Gemini 语音", "API Key 只会保存在本机 iOS 钥匙串中，不会写入 GitHub。", async (value) => {
+      const key = value?.trim(); if (!key) return;
+      try { await SecureStore.setItemAsync("private_novel_gemini_api_key", key, { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY }); setGeminiApiKeyDraft(key); setGeminiKeyReady(true); setGeminiTestStatus("Gemini Key 已安全保存在本机钥匙串"); }
+      catch { Alert.alert("保存失败", "无法写入 iOS 钥匙串，请稍后重试。"); }
+    }, "secure-text");
   };
 
   const previewGeminiVoice = async (mode: "single" | "dialogue") => {
@@ -1601,25 +1609,25 @@ export default function App() {
             <StatusBar barStyle="dark-content" />
             <View style={{ height: 58, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <Pressable onPress={() => setShowSpeechSettings(false)}><Text style={{ color: "#68765F", fontSize: 16, fontWeight: "700" }}>收起</Text></Pressable>
-              <Text style={{ color: "#292A24", fontSize: 16, fontWeight: "800" }}>语音实验</Text>
+              <Text style={{ color: "#292A24", fontSize: 16, fontWeight: "800" }}>听书</Text>
               <Text style={{ color: "#8D897F", fontSize: 11 }}>仅试听</Text>
             </View>
             <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 38 }}>
               <View style={{ backgroundColor: "#FFFFFF", borderRadius: 18, padding: 20, marginTop: 16, borderWidth: 1, borderColor: "#EEECE5" }}>
-                <Text style={{ color: "#33352D", fontSize: 15, fontWeight: "800" }}>Gemini 在线语音实验</Text>
-                <Text style={{ color: "#777368", fontSize: 12, lineHeight: 19, marginTop: 8 }}>仅保留单人中文与双角色试听验证，不作为正式章节朗读引擎。需要你自己的 API Key；不要开启付费结算，也不要输入私人文本。</Text>
-                <TextInput value={geminiApiKeyDraft} onChangeText={setGeminiApiKeyDraft} placeholder="粘贴 Gemini API Key（仅本次打开期间有效）" placeholderTextColor="#A39F94" autoCapitalize="none" autoCorrect={false} secureTextEntry style={{ minHeight: 44, borderWidth: 1, borderColor: "#E5E3DC", borderRadius: 10, paddingHorizontal: 12, marginTop: 14, color: "#33352D" }} />
+                <Text style={{ color: "#33352D", fontSize: 15, fontWeight: "800" }}>沉浸式有声阅读</Text>
+                <Text style={{ color: "#777368", fontSize: 12, lineHeight: 19, marginTop: 8 }}>自动区分旁白与带有明确说话人提示的角色对白。首次使用通过系统安全提示配置一次 Key，之后保存在本机钥匙串。</Text>
+                <Pressable style={[styles.fontButton, { marginTop: 14 }]} onPress={configureGeminiKey}><Text style={styles.fontButtonText}>{geminiKeyReady ? "重新配置语音服务" : "安全配置语音服务"}</Text></Pressable>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                  <Pressable style={styles.fontButton} disabled={!geminiApiKeyDraft.trim() || isSpeaking} onPress={() => void previewGeminiVoice("single")}><Text style={styles.fontButtonText}>中文单人试听</Text></Pressable>
-                  <Pressable style={styles.fontButton} disabled={!geminiApiKeyDraft.trim() || isSpeaking} onPress={() => void previewGeminiVoice("dialogue")}><Text style={styles.fontButtonText}>双角色试听</Text></Pressable>
-                  <Pressable style={styles.fontButton} disabled={!geminiApiKeyDraft} onPress={() => { stopSpeech(); setGeminiApiKeyDraft(""); setGeminiTestStatus("已清除本次会话 Key"); }}><Text style={styles.fontButtonText}>清除 Key</Text></Pressable>
+                  <Pressable style={styles.fontButton} disabled={!geminiKeyReady || isSpeaking} onPress={() => void previewGeminiVoice("single")}><Text style={styles.fontButtonText}>旁白试听</Text></Pressable>
+                  <Pressable style={styles.fontButton} disabled={!geminiKeyReady || isSpeaking} onPress={() => void previewGeminiVoice("dialogue")}><Text style={styles.fontButtonText}>双角色试听</Text></Pressable>
+                  <Pressable style={styles.fontButton} disabled={!geminiKeyReady} onPress={() => { stopSpeech(); void SecureStore.deleteItemAsync("private_novel_gemini_api_key"); setGeminiApiKeyDraft(""); setGeminiKeyReady(false); setGeminiTestStatus("已从本机钥匙串清除 Key"); }}><Text style={styles.fontButtonText}>清除 Key</Text></Pressable>
                 </View>
                 {isSpeaking && <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
                   <Pressable style={styles.fontButton} onPress={speechPaused ? resumeSpeech : pauseSpeech}><Text style={styles.fontButtonText}>{speechPaused ? "继续试听" : "暂停试听"}</Text></Pressable>
                   <Pressable style={styles.fontButton} onPress={stopSpeech}><Text style={styles.fontButtonText}>停止试听</Text></Pressable>
                 </View>}
                 <Text style={{ color: "#777368", fontSize: 11, lineHeight: 17, marginTop: 12 }}>状态：{geminiTestStatus}</Text>
-                <Text style={{ color: "#A66D62", fontSize: 10, lineHeight: 16, marginTop: 8 }}>Key 仅保存在当前运行的内存中，关闭 App 后自动清除，不写入本地存储。Gemini 免费层并非永久免费，达到免费配额后停止；不要启用付费结算。</Text>
+                <Text style={{ color: "#A66D62", fontSize: 10, lineHeight: 16, marginTop: 8 }}>API Key 存储于本机 iOS 钥匙串，不会写入 GitHub 源码。Gemini 免费层并非永久免费，达到免费配额后停止；不要启用付费结算。</Text>
               </View>
               <Text style={{ color: "#8D897F", fontSize: 11, lineHeight: 18, marginTop: 16 }}>旧离线语音引擎已移除；当前只保留手动在线试听实验，正式章节朗读引擎暂不提供。</Text>
             </ScrollView>
@@ -1663,7 +1671,7 @@ export default function App() {
               <Text style={[{ color: "#514F45", fontSize: 13, fontWeight: "700" }, appIsDark && styles.darkPrimaryText]}>源</Text>
             </Pressable>
           </View>
-        ) : tab === "源" ? null : <View style={[styles.avatar, appIsDark && styles.darkCard]}><Text style={[styles.avatarText, appIsDark && styles.darkPrimaryText]}>阅</Text></View>}
+        ) : tab === "源" ? null : tab === "书架" ? <Pressable onPress={() => { setTab("搜索"); setQuery(""); }} style={[styles.avatar, appIsDark && styles.darkCard]}><Text style={[styles.avatarText, appIsDark && styles.darkPrimaryText]}>搜</Text></Pressable> : <View style={[styles.avatar, appIsDark && styles.darkCard]}><Text style={[styles.avatarText, appIsDark && styles.darkPrimaryText]}>我</Text></View>}
       </View>
 
       {tab === "书架" && (
@@ -1678,32 +1686,22 @@ export default function App() {
           />
           <View style={styles.sectionHeading}>
             <Text style={[styles.sectionTitle, appIsDark && styles.darkPrimaryText]}>我的书架</Text>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <Text style={[styles.sectionMeta, appIsDark && styles.darkMutedText]}>{filteredBooks.length} 本藏书</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={shelfView === "list" ? "切换为封面网格视图" : "切换为列表视图"}
-                onPress={() => setShelfView((current) => current === "list" ? "grid" : "list")}
-                style={styles.shelfViewToggle}
-              >
-                <Text style={styles.shelfViewToggleText}>{shelfView === "list" ? "▦" : "☷"}</Text>
-              </Pressable>
-            </View>
+            <Text style={[styles.sectionMeta, appIsDark && styles.darkMutedText]}>{filteredBooks.length} 本藏书 · 3×3 书架</Text>
           </View>
           {filteredBooks.length === 0 ? (
             <Text style={styles.emptyText}>{query.trim() ? "没有找到相关书籍，试试其他关键词。" : "书架还是空的。去「搜索」发现并添加喜欢的小说吧。"}</Text>
           ) : (
             <View style={shelfView === "grid" ? styles.bookGrid : undefined}>
               {filteredBooks.map((book) => (
-                <Pressable key={book.id} style={[styles.bookRow, shelfView === "grid" && styles.bookGridCard, appIsDark && styles.darkCard]} onPress={() => openBook(book)} onLongPress={() => removeBookFromShelf(book)} delayLongPress={550}>
-                  <BookCover book={book} grid={shelfView === "grid"} />
-                  <View style={[styles.bookInfo, shelfView === "grid" && styles.bookGridInfo]}>
-                    <Text style={[styles.bookTitle, appIsDark && styles.darkPrimaryText]}>{book.title}</Text>
-                    <Text style={[styles.bookAuthor, appIsDark && styles.darkSecondaryText]}>{book.author} · {book.category}</Text>
-                    <Text style={[styles.bookDescription, appIsDark && styles.darkSecondaryText]} numberOfLines={2}>{book.description}</Text>
-                    <View style={styles.progressTrack}>
-                      <View style={[styles.progressFill, { width: `${book.progress}%` as `${number}%` }]} />
-                    </View>
+                <Pressable key={book.id} style={[styles.bookRow, styles.bookGridCard, appIsDark && styles.darkCard]} onPress={() => openBook(book)} onLongPress={() => removeBookFromShelf(book)} delayLongPress={550}>
+                  <View style={styles.bookGridCoverWrap}>
+                    <BookCover book={book} grid />
+                    {!!book.unreadUpdateCount && <View style={styles.updateBadge}><Text style={styles.updateBadgeText}>有更新</Text></View>}
+                  </View>
+                  <View style={styles.bookGridInfo}>
+                    <Text style={[styles.bookGridTitle, appIsDark && styles.darkPrimaryText]} numberOfLines={2}>{book.title}</Text>
+                    <Text style={[styles.bookGridAuthor, appIsDark && styles.darkSecondaryText]} numberOfLines={1}>{book.author}</Text>
+                    <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${book.progress}%` as `${number}%` }]} /></View>
                     <Text style={[styles.progressText, appIsDark && styles.darkMutedText]}>{book.progress > 0 ? "已读 " + book.progress + "%" : "尚未开始"}</Text>
                   </View>
                 </Pressable>
@@ -1999,10 +1997,15 @@ const styles = StyleSheet.create({
   darkCard: { backgroundColor: "#252923", borderColor: "#3A4038" },
   shelfViewToggle: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#EAECE5" },
   shelfViewToggleText: { color: "#65745D", fontSize: 21, fontWeight: "700" },
-  bookGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 10 },
-  bookGridCard: { width: "48%", flexDirection: "column", alignItems: "center", padding: 10, marginBottom: 2 },
-  gridCover: { width: "100%", height: 190, borderRadius: 10, padding: 12 },
-  bookGridInfo: { paddingLeft: 0, paddingTop: 10, width: "100%" },
+  bookGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 14 },
+  bookGridCard: { width: "31.7%", flexDirection: "column", alignItems: "stretch", padding: 7, marginBottom: 0, borderRadius: 13 },
+  bookGridCoverWrap: { width: "100%", position: "relative" },
+  gridCover: { width: "100%", height: 132, borderRadius: 8, padding: 9 },
+  bookGridInfo: { paddingLeft: 0, paddingTop: 7, width: "100%" },
+  bookGridTitle: { color: "#292A24", fontSize: 11, lineHeight: 15, fontWeight: "800", minHeight: 30 },
+  bookGridAuthor: { color: "#928D80", fontSize: 9, marginTop: 3 },
+  updateBadge: { position: "absolute", top: 6, right: 0, backgroundColor: "#D94B43", paddingHorizontal: 7, paddingVertical: 4, borderTopLeftRadius: 7, borderBottomLeftRadius: 7 },
+  updateBadgeText: { color: "#FFFFFF", fontSize: 9, fontWeight: "800" },
   appearanceCard: { backgroundColor: "#FFFFFF", borderRadius: 16, borderWidth: 1, borderColor: "#EEECE5", padding: 16, marginTop: 16 },
   appearanceOptions: { flexDirection: "row", gap: 8, marginTop: 12 },
   appearanceOption: { flex: 1, minHeight: 38, borderRadius: 10, backgroundColor: "#F1F0EA", alignItems: "center", justifyContent: "center" },
