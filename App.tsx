@@ -1282,6 +1282,34 @@ export default function App() {
     }
   };
 
+  const previewGeminiEnsemble = async () => {
+    const apiKey = geminiApiKeyDraft.trim();
+    if (!apiKey) { Alert.alert("尚未配置语音", "请先安全配置 Gemini 语音服务。"); return; }
+    stopSpeech(); const runId = ++speechRunIdRef.current; setIsSpeaking(true); setSpeechPaused(false); speechPausedRef.current = false;
+    try {
+      const samples = [
+        { role: "旁白", voiceName: "Kore", text: "夜色渐深，山谷中的风声渐渐停了下来。" },
+        { role: "少年", voiceName: "Puck", text: "你真的决定一个人进去吗？" },
+        { role: "少女", voiceName: "Aoede", text: "我已经想好了，不用再劝我。" },
+        { role: "长者", voiceName: "Charon", text: "既然如此，就带上这枚护身符吧。" },
+      ];
+      const clips: Uint8Array[] = [];
+      for (let index = 0; index < samples.length; index++) {
+        if (runId !== speechRunIdRef.current) return;
+        const sample = samples[index]; setGeminiTestStatus("正在试听 " + sample.role + "（" + (index + 1) + "/" + samples.length + "）…");
+        clips.push(await synthesizeGeminiTTS({ apiKey, voiceName: sample.voiceName, parts: [{ text: sample.text, style: sample.role === "旁白" ? "warm Chinese audiobook narration" : "distinct expressive Chinese character voice" }] }));
+      }
+      if (runId !== speechRunIdRef.current) return;
+      const playback = await playSpeechAudio(concatenateWavAudio(clips), "wav", { title: "多角色试听", artist: "Gemini 多角色听书" });
+      speechPlaybackRef.current = playback; if (speechPausedRef.current) playback.pause(); await playback.finished;
+      if (runId === speechRunIdRef.current) setGeminiTestStatus("多角色试听完成");
+    } catch (error) {
+      if (runId === speechRunIdRef.current) { const message = error instanceof Error ? error.message : "多角色试听失败。"; setGeminiTestStatus(message); Alert.alert("多角色试听失败", message); }
+    } finally {
+      if (runId === speechRunIdRef.current) { speechPlaybackRef.current = null; setIsSpeaking(false); setSpeechPaused(false); speechPausedRef.current = false; }
+    }
+  };
+
   const startGeminiChapter = async () => {
     const apiKey = geminiApiKeyDraft.trim();
     if (!apiKey) { Alert.alert("尚未配置语音", "请先安全配置 Gemini 语音服务。"); return; }
@@ -1701,6 +1729,7 @@ export default function App() {
                   <Pressable style={styles.fontButton} disabled={!geminiKeyReady || isSpeaking} onPress={() => void previewGeminiVoice("single")}><Text style={styles.fontButtonText}>旁白试听</Text></Pressable>
                   <Pressable style={[styles.fontButton, { backgroundColor: "#C94B43" }]} disabled={!geminiKeyReady || isSpeaking} onPress={() => void startGeminiChapter()}><Text style={[styles.fontButtonText, { color: "#FFFFFF" }]}>朗读本章</Text></Pressable>
                   <Pressable style={styles.fontButton} disabled={!geminiKeyReady || isSpeaking} onPress={() => void previewGeminiVoice("dialogue")}><Text style={styles.fontButtonText}>双角色试听</Text></Pressable>
+                  <Pressable style={styles.fontButton} disabled={!geminiKeyReady || isSpeaking} onPress={() => void previewGeminiEnsemble()}><Text style={styles.fontButtonText}>多角色试听</Text></Pressable>
                   <Pressable style={styles.fontButton} disabled={!geminiKeyReady} onPress={() => { stopSpeech(); void SecureStore.deleteItemAsync("private_novel_gemini_api_key"); setGeminiApiKeyDraft(""); setGeminiKeyReady(false); setGeminiTestStatus("已从本机钥匙串清除 Key"); }}><Text style={styles.fontButtonText}>清除 Key</Text></Pressable>
                 </View>
                 {isSpeaking && <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
