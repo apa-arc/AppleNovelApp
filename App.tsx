@@ -5,6 +5,7 @@ import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system/legacy";
 import type { NovelSource } from "./src/source";
 import { parseSourceSubscription } from "./src/source-subscription";
+import { normalizeBookAlias, parseBookAliasDictionary } from "./src/book-alias-dictionary";
 import { searchNovelSource } from "./src/source-search";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
@@ -676,6 +677,9 @@ export default function App() {
       const subscription = parseSourceSubscription(raw);
       const importedAliases: Record<string, string> = {};
       let aliasRecordCount = 0;
+      let aliasCount = 0;
+      let aliasConflictCount = 0;
+      const ambiguousAliases = new Set<string>();
       for (const aliasSource of subscription.aliasSources) {
         const aliasController = new AbortController();
         const aliasTimeout = setTimeout(() => aliasController.abort(), 15000);
@@ -693,23 +697,22 @@ export default function App() {
         if (aliasLength > 1024 * 1024) throw new Error("别名库文件超过 1 MB 限制。");
         const aliasRaw = await aliasResponse.text();
         if (aliasRaw.length > 1024 * 1024) throw new Error("别名库文件超过 1 MB 限制。");
-        const aliasPayload: unknown = JSON.parse(aliasRaw);
-        if (!aliasPayload || typeof aliasPayload !== "object" || Array.isArray(aliasPayload)) throw new Error("别名库格式错误。");
-        const aliasObject = aliasPayload as { schemaVersion?: unknown; records?: unknown; recordCount?: unknown };
-        if (aliasObject.schemaVersion !== 1 || !Array.isArray(aliasObject.records) || aliasObject.records.length > 20000) throw new Error("别名库结构不受支持。");
-        if (typeof aliasObject.recordCount === "number" && aliasObject.recordCount !== aliasObject.records.length) throw new Error("别名库记录数量校验失败。");
-        for (const record of aliasObject.records) {
-          if (!record || typeof record !== "object" || Array.isArray(record)) continue;
-          const item = record as { aliases?: unknown; title?: unknown };
-          if (typeof item.title !== "string" || !item.title.trim() || item.title.length > 200 || !Array.isArray(item.aliases)) continue;
-          for (const alias of item.aliases) {
-            if (typeof alias !== "string" || !alias.trim() || alias.length > 120) continue;
-            const key = alias.trim().toLocaleLowerCase().replace(/\s+/g, "");
-            if (key === "__proto__" || key === "prototype" || key === "constructor") continue;
-            importedAliases[key] = item.title.trim();
+        const parsedDictionary = parseBookAliasDictionary(aliasRaw);
+        for (const [key, title] of Object.entries(parsedDictionary.aliases)) {
+          if (importedAliases[key] && importedAliases[key] !== title) {
+            delete importedAliases[key];
+            ambiguousAliases.add(key);
+          } else if (!ambiguousAliases.has(key)) {
+            importedAliases[key] = title;
           }
         }
-        aliasRecordCount += aliasObject.records.length;
+        for (const key of parsedDictionary.conflicts) {
+          delete importedAliases[key];
+          ambiguousAliases.add(key);
+        }
+        aliasRecordCount += parsedDictionary.recordCount;
+        aliasCount += parsedDictionary.aliasCount;
+        aliasConflictCount += parsedDictionary.conflictCount;
       }
       if (subscription.compatible.length === 0 && subscription.aliasSources.length === 0) {
         setBookAliasMap({});
@@ -763,7 +766,8 @@ export default function App() {
       }
       setSources(next);
       setBookAliasMap(importedAliases);
-      setSubscriptionUrlMessage(subscription.name + (action === "add" ? " 添加完成：" : " 更新完成：") + "正文源新增 " + added + "，更新 " + updated + "，移除已下架 " + removed + "，重复跳过 " + skipped + "；别名源 " + subscription.aliasSources.length + " 个，别名记录 " + aliasRecordCount + " 条；不兼容 " + subscription.unsupported.length + "。");
+      const totalAliasConflicts = aliasConflictCount + ambiguousAliases.size;
+      setSubscriptionUrlMessage(subscription.name + (action === "add" ? " 添加完成：" : " 更新完成：") + "正文源新增 " + added + "，更新 " + updated + "，移除已下架 " + removed + "，重复跳过 " + skipped + "；别名源 " + subscription.aliasSources.length + " 个，别名记录 " + aliasRecordCount + " 条，别名条目 " + aliasCount + " 条，可用映射 " + Object.keys(importedAliases).length + " 条，冲突 " + totalAliasConflicts + " 条；不兼容 " + subscription.unsupported.length + "。");
     } catch (error) {
       setSubscriptionUrlMessage(error instanceof Error ? error.message : "订阅导入失败，请检查地址和网络。");
     } finally {
@@ -792,7 +796,7 @@ export default function App() {
       return;
     }
     setSearchHistory((current) => [keyword, ...current.filter((item) => item.toLocaleLowerCase() !== keyword.toLocaleLowerCase())].slice(0, 10));
-    const aliasKey = keyword.toLocaleLowerCase().replace(/\s+/g, "");
+    const aliasKey = normalizeBookAlias(keyword);
     const resolvedKeyword = bookAliasMap[aliasKey] || keyword;
     const enabledSources = sources.filter((source) => source.enabled);
     if (enabledSources.length === 0) {
