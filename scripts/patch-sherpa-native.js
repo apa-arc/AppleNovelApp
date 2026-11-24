@@ -180,3 +180,21 @@ replaceExactlyOnce(
             RCTLogError(@"%@", errorMsg);`,
   "surface native Kokoro generation failure"
 );
+
+const imageSizeUtilsPath = path.resolve("node_modules/image-size/dist/cjs/types/utils.js");
+if (!fs.existsSync(imageSizeUtilsPath)) {
+  throw new Error("image-size utility patch target is missing: " + imageSizeUtilsPath);
+}
+{
+  const before = "const toUTF8String = (input, start = 0, end = input.length) => decoder.decode(input.slice(start, end));";
+  const after = "const toUTF8String = (input, start = 0, end = input.length) => {\n  const bytes = input instanceof ArrayBuffer\n    ? new Uint8Array(input)\n    : ArrayBuffer.isView(input)\n      ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength)\n      : Uint8Array.from(input);\n  return decoder.decode(bytes.subarray(start, end));\n};";
+  const content = fs.readFileSync(imageSizeUtilsPath, "utf8");
+  if (!content.includes(after)) {
+    const matches = content.split(before).length - 1;
+    if (matches !== 1) {
+      throw new Error("Expected one unpatched image-size UTF-8 decoder block, found " + matches);
+    }
+    fs.writeFileSync(imageSizeUtilsPath, content.replace(before, after), "utf8");
+    process.stdout.write("Patched image-size byte input normalization for Metro compatibility\n");
+  }
+}
