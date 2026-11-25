@@ -54,3 +54,14 @@ test("recognizes additional common JSON cover field names and nested image objec
   assert.equal(page.items[1].coverUrl, "https://img.cdn.example/two.jpg");
   assert.equal(page.items[2].coverUrl, "https://img.cdn.example/three.jpg");
 });
+
+test("finds nested cover metadata and skips placeholder URLs before trying another field", () => {
+  const page = parseJsonSearchResults(JSON.stringify({ data: [
+    { title: "嵌套封面", author: "作者", url: "/book/nested", bookInfo: { coverImage: { url: "//img.cdn.example/nested.jpg" } } },
+    { title: "占位后真实封面", author: "作者", url: "/book/fallback", cover: "blank.png", bookCoverImg: "/images/real-cover.jpg" },
+    { title: "无有效封面", author: "作者", url: "/book/empty", cover: "data:image/gif;base64,AAAA", poster: "https://img.cdn.example/no-cover.png" }
+  ] }), source, "封面", "https://books.example/search");
+  assert.equal(page.items[0].coverUrl, "https://img.cdn.example/nested.jpg");
+  assert.equal(page.items[1].coverUrl, "https://books.example/images/real-cover.jpg");
+  assert.equal(page.items[2].coverUrl, undefined);
+});
