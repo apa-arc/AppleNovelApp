@@ -607,7 +607,7 @@ export default function App() {
       if (length > 2 * 1024 * 1024) throw new Error("订阅文件超过 2 MB 限制。");
       const raw = await response.text();
       if (raw.length > 2 * 1024 * 1024) throw new Error("订阅文件超过 2 MB 限制。");
-      const subscription = parseSourceSubscription(raw);
+      const subscription = parseSourceSubscription(raw, "external-json:" + url.host + url.pathname);
       const importedAliases: Record<string, string> = {};
       let aliasRecordCount = 0;
       let aliasCount = 0;
@@ -1767,7 +1767,7 @@ export default function App() {
                   ) : (
                     <View style={[styles.searchResultCover, styles.searchResultCoverFallback]}>
                       <Text style={styles.searchResultFallbackTitle} numberOfLines={4}>{item.title}</Text>
-                      <Text style={styles.searchResultFallbackLabel}>封面暂不可用</Text>
+                      <Text style={styles.searchResultFallbackLabel}>小说封面</Text>
                     </View>
                   )}
                   <Text style={[styles.searchResultTitle, appIsDark && styles.darkPrimaryText]} numberOfLines={2}>{item.title}</Text>
