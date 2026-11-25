@@ -197,7 +197,7 @@ test("supports TXT subscriptions containing one JSON source per line", () => {
     chapterListUrl: "https://books.example/toc/{bookUrl}",
     chapterUrl: "https://books.example/content/{chapterUrl}"
   };
-  const result = parseSourceSubscription("# source list\\n" + JSON.stringify(source) + "\\n");
+  const result = parseSourceSubscription("# source list\n" + JSON.stringify(source) + "\n");
   assert.equal(result.compatible.length, 1);
   assert.equal(result.compatible[0].name, "TXT JSON 源");
 });
