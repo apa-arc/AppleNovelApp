@@ -1,9 +1,10 @@
 export type ReaderTheme = "paper" | "green" | "gray" | "night";
+export type PageTurnMode = "left-right" | "vertical-scroll" | "simulation" | "cover" | "none";
 
 export type ReaderSettings = {
   fontSize: number;
   theme: ReaderTheme;
-  readingMode: "scroll" | "tap";
+  pageTurnMode: PageTurnMode;
   lineSpacing: number;
   paragraphSpacing: number;
   horizontalPadding: number;
@@ -12,7 +13,7 @@ export type ReaderSettings = {
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   fontSize: 18,
   theme: "paper",
-  readingMode: "scroll",
+  pageTurnMode: "vertical-scroll",
   lineSpacing: 1.9,
   paragraphSpacing: 22,
   horizontalPadding: 27,
@@ -37,7 +38,7 @@ export function normalizeReaderSettings(value: unknown): ReaderSettings {
   return {
     fontSize: bounded("fontSize", DEFAULT_READER_SETTINGS.fontSize, 14, 28),
     theme,
-    readingMode: candidate.readingMode === "tap" ? "tap" : "scroll",
+    pageTurnMode: candidate.pageTurnMode === "left-right" || candidate.pageTurnMode === "simulation" || candidate.pageTurnMode === "cover" || candidate.pageTurnMode === "none" ? candidate.pageTurnMode : candidate.pageTurnMode === "vertical-scroll" || candidate.readingMode === "scroll" || candidate.readingMode === undefined ? "vertical-scroll" : "left-right",
     lineSpacing: bounded("lineSpacing", DEFAULT_READER_SETTINGS.lineSpacing, 1.4, 2.4, 1),
     paragraphSpacing: bounded("paragraphSpacing", DEFAULT_READER_SETTINGS.paragraphSpacing, 8, 32),
     horizontalPadding: bounded("horizontalPadding", DEFAULT_READER_SETTINGS.horizontalPadding, 16, 40),
