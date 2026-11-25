@@ -11,7 +11,8 @@ on:
           - "1.1.2"
           - "1.1.3"
           - "1.1.4"
-        default: "1.1.4"
+          - "1.1.5"
+        default: "1.1.5"
 
 concurrency:
   group: unsigned-ipa-${{ github.ref }}
@@ -29,12 +30,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Restrict formal release to main
+      - name: Restrict release builds to their version branch
         env:
           RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
-          test "$GITHUB_REF" = "refs/heads/main"
-          test "$RELEASE_VERSION" = "1.1.4"
+          if [ "$RELEASE_VERSION" = "1.1.4" ]; then
+            test "$GITHUB_REF" = "refs/heads/main"
+          elif [ "$RELEASE_VERSION" = "1.1.5" ]; then
+            test "$GITHUB_REF" = "refs/heads/release/1.1.5"
+          else
+            echo "::error::Only the protected 1.1.4 formal release and 1.1.5 candidate build are supported."
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -116,7 +123,7 @@ jobs:
             echo "::error::Invalid iOS runtime fingerprint."
             exit 1
           fi
-          echo "This fingerprint will be embedded in the 1.1.4 IPA and used by the Production OTA workflow."
+          echo "This fingerprint will be embedded in the version-matched IPA; production OTA remains a separate, manually authorized workflow."
 
 
 
