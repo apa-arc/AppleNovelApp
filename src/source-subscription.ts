@@ -78,7 +78,7 @@ export function parseSourceSubscription(raw: string, subscriptionIdHint?: string
   let payload: unknown;
   try { payload = JSON.parse(raw); }
   catch {
-    const lines = raw.split(/\\r?\\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#") && !line.startsWith("//"));
+    const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#") && !line.startsWith("//"));
     if (!lines.length) throw new Error("订阅 JSON/TXT 内容为空。");
     try { payload = lines.map((line) => JSON.parse(line)); }
     catch { throw new Error("订阅格式无法识别。TXT 暂支持逐行 JSON 书源；纯网址列表和脚本订阅暂不自动执行。"); }
@@ -87,7 +87,7 @@ export function parseSourceSubscription(raw: string, subscriptionIdHint?: string
       typeof payload.subscriptionId !== "string" || !Array.isArray(payload.sources)) {
     const external = parseExternalSourceBundle(payload, subscriptionIdHint);
     if (external) return external;
-    throw new Error("无法识别订阅格式。支持本软件清单、单个/批量 JSON 书源；脚本型规则暂不执行。");
+    throw new Error("不是受支持的订阅格式。支持本软件清单、单个/批量 JSON 书源；脚本型规则暂不执行。");
   }
   if (payload.sources.length > 500) throw new Error("订阅书源数量超过 500 个限制。");
   const ids = new Set<string>();
