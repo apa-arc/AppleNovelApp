@@ -187,3 +187,17 @@ test("recognizes Legado-style rule sources without executing their rule DSL", ()
   assert.equal(result.unsupported.length, 1);
   assert.match(result.unsupported[0].reason, /专属规则表达式尚未适配/);
 });
+
+
+test("supports TXT subscriptions containing one JSON source per line", () => {
+  const source = {
+    name: "TXT JSON 源", baseUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={keyword}",
+    bookUrl: "https://books.example/book/{bookUrl}",
+    chapterListUrl: "https://books.example/toc/{bookUrl}",
+    chapterUrl: "https://books.example/content/{chapterUrl}"
+  };
+  const result = parseSourceSubscription("# source list\\n" + JSON.stringify(source) + "\\n");
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.compatible[0].name, "TXT JSON 源");
+});
