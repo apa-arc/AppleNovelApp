@@ -9,7 +9,8 @@ test("ranks exact, prefix and partial title matches", () => {
   const items = [{title:"斗罗大陆外传"},{title:"斗罗大陆"},{title:"武魂斗罗大陆"},{title:"斗罗大陆之武魂"}];
   const ranked = rankNovelSearchResults(items, "斗罗大陆");
   assert.equal(ranked[0].title, "斗罗大陆");
-  assert.ok(scoreNovelSearchMatch(ranked[1], "斗罗大陆") > scoreNovelSearchMatch(ranked[2], "斗罗大陆"));
+  assert.equal(scoreNovelSearchMatch(ranked[0], "斗罗大陆"), 1000);
+  assert.ok(scoreNovelSearchMatch({ title: "斗罗大陆外传" }, "斗罗大陆") > scoreNovelSearchMatch({ title: "武魂斗罗大陆" }, "斗罗大陆"));
 });
 test("fuzzy matching handles a small title typo", () => {
   assert.ok(scoreNovelSearchMatch({title:"斗罗大陆"}, "斗罗大路") > 0);
