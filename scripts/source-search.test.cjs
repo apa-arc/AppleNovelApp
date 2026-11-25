@@ -65,3 +65,15 @@ test("finds nested cover metadata and skips placeholder URLs before trying anoth
   assert.equal(page.items[1].coverUrl, "https://books.example/images/real-cover.jpg");
   assert.equal(page.items[2].coverUrl, undefined);
 });
+
+
+test("recognizes legacy cover path and small/medium image field names", () => {
+  const page = parseJsonSearchResults(JSON.stringify({ data: [
+    { title: "旧版封面路径", author: "作者", url: "/book/path", coverPath: "/covers/path.jpg" },
+    { title: "小图字段", author: "作者", url: "/book/small", cover_small: "//img.cdn.example/small.jpg" },
+    { title: "中图字段", author: "作者", url: "/book/medium", coverMedium: { href: "https://img.cdn.example/medium.jpg" } }
+  ] }), source, "封面", "https://books.example/search");
+  assert.equal(page.items[0].coverUrl, "https://books.example/covers/path.jpg");
+  assert.equal(page.items[1].coverUrl, "https://img.cdn.example/small.jpg");
+  assert.equal(page.items[2].coverUrl, "https://img.cdn.example/medium.jpg");
+});
