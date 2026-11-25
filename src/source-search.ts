@@ -12,8 +12,10 @@ const COVER_KEYS = [
   "cover", "coverUrl", "cover_url", "coverImage", "cover_image", "coverImg", "cover_img",
   "coverImageUrl", "cover_image_url", "coverImgUrl", "cover_img_url", "coverUri", "cover_uri",
   "bookCover", "book_cover", "bookCoverUrl", "book_cover_url", "bookCoverImg", "book_cover_img",
-  "bookCoverImage", "book_cover_image", "coverPic", "cover_pic", "coverLarge", "cover_large",
-  "coverBig", "cover_big", "largeCover", "large_cover", "originalCover", "original_cover",
+  "bookCoverImage", "book_cover_image", "coverPath", "cover_path", "coverSrc", "cover_src",
+  "coverSmall", "cover_small", "coverMedium", "cover_medium", "coverThumb", "cover_thumb",
+  "coverPic", "cover_pic", "coverLarge", "cover_large", "coverBig", "cover_big",
+  "largeCover", "large_cover", "originalCover", "original_cover",
   "pic", "picUrl", "pic_url", "picURL", "image", "imageUrl", "image_url", "img", "imgUrl",
   "img_url", "imgurl", "imgSrc", "img_src", "thumbnail", "thumb", "thumbUrl", "thumb_url",
   "thumbnailUrl", "thumbnail_url", "poster", "posterUrl", "poster_url", "verticalCover", "vertical_cover",
@@ -97,7 +99,7 @@ function findCoverUrl(record: JsonRecord, responseUrl: string, depth = 0): strin
         if (resolved) return resolved;
       } else if (candidate && typeof candidate === "object") {
         const nested = candidate as JsonRecord;
-        for (const nestedKey of ["url", "src", "original", "large", "path", "imageUrl", "image_url", "file", "value"]) {
+        for (const nestedKey of ["url", "src", "original", "large", "path", "imageUrl", "image_url", "file", "value", "href", "uri"]) {
           const raw = nested[nestedKey];
           if (typeof raw === "string") {
             const resolved = resolveCoverImageUrl(raw, responseUrl);
