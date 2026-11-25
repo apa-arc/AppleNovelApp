@@ -153,10 +153,10 @@ export function buildSearchRequestUrl(searchUrl: string, keyword: string): strin
 }
 
 /** JSON-only MVP adapter; it never executes source-provided JavaScript. */
-export async function searchNovelSource(source: NovelSource, keyword: string, client: SourceHttpClient = createSourceHttpClient(source)): Promise<NovelSearchPage> {
+export async function searchNovelSource(source: NovelSource, keyword: string, client: SourceHttpClient = createSourceHttpClient(source), signal?: AbortSignal): Promise<NovelSearchPage> {
   const cleanKeyword = keyword.trim();
   if (!cleanKeyword) throw new Error("请输入小说名称。");
-  const response = await client.get("searchUrl", buildSearchRequestUrl(source.searchUrl, cleanKeyword));
+  const response = await client.get("searchUrl", buildSearchRequestUrl(source.searchUrl, cleanKeyword), signal);
   if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
     if (!source.htmlRules?.search) throw new Error("该书源返回 HTML，但没有配置 CSS 搜索规则。");
     return parseHtmlSearchResults(response.body, source.id, source.name, cleanKeyword, response.url, source.htmlRules.search);
