@@ -27,3 +27,10 @@ test("HTML search automatically extracts lazy cover images when a source has no 
   assert.equal(page.items[0].coverUrl, "https://img.cdn.example/real-cover.jpg");
   assert.equal(page.items[1].coverUrl, "https://img.cdn.example/second.jpg");
 });
+
+test("HTML search recognizes additional lazy image attributes before placeholder src", () => {
+  const html = '<ul><li class="book"><a class="title" href="/book/1">懒加载封面</a><img src="placeholder.gif" data-actualsrc="//img.cdn.example/actual.jpg"></li><li class="book"><a class="title" href="/book/2">第二本</a><img src="blank.png" data-ks-lazyload="http://img.cdn.example/ks.jpg"></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "s1", "源", "封面", "https://books.example/search", { itemSelector: "li.book", titleSelector: "a.title", urlSelector: "a.title" });
+  assert.equal(page.items[0].coverUrl, "https://img.cdn.example/actual.jpg");
+  assert.equal(page.items[1].coverUrl, "https://img.cdn.example/ks.jpg");
+});
