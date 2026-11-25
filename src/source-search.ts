@@ -19,6 +19,9 @@ const COVER_KEYS = [
   "pic", "picUrl", "pic_url", "picURL", "image", "imageUrl", "image_url", "img", "imgUrl",
   "img_url", "imgurl", "imgSrc", "img_src", "thumbnail", "thumb", "thumbUrl", "thumb_url",
   "thumbnailUrl", "thumbnail_url", "poster", "posterUrl", "poster_url", "verticalCover", "vertical_cover",
+  "coverImagePath", "cover_image_path", "bookCoverPath", "book_cover_path", "imagePath", "image_path",
+  "imgPath", "img_path", "picPath", "pic_path", "coverLink", "cover_link", "originalUrl", "original_url",
+  "coverUrlList", "cover_url_list", "imageList", "image_list",
 ];
 const LIST_KEYS = ["data", "list", "books", "results", "items", "records"];
 
@@ -99,7 +102,7 @@ function findCoverUrl(record: JsonRecord, responseUrl: string, depth = 0): strin
         if (resolved) return resolved;
       } else if (candidate && typeof candidate === "object") {
         const nested = candidate as JsonRecord;
-        for (const nestedKey of ["url", "src", "original", "large", "path", "imageUrl", "image_url", "file", "value", "href", "uri"]) {
+        for (const nestedKey of ["url", "src", "original", "large", "path", "imageUrl", "image_url", "file", "value", "href", "uri", "srcUrl", "fileUrl", "originalUrl", "thumbnailUrl", "coverUrl"]) {
           const raw = nested[nestedKey];
           if (typeof raw === "string") {
             const resolved = resolveCoverImageUrl(raw, responseUrl);
@@ -110,7 +113,7 @@ function findCoverUrl(record: JsonRecord, responseUrl: string, depth = 0): strin
     }
   }
   if (depth >= 3) return undefined;
-  for (const key of ["book", "bookInfo", "book_info", "info", "data", "detail", "result", "item", "images", "imageInfo", "image_info", "coverInfo", "cover_info", "picInfo", "pic_info", "media"]) {
+  for (const key of ["book", "bookInfo", "book_info", "info", "data", "detail", "result", "item", "images", "image", "img", "picture", "imageInfo", "image_info", "coverInfo", "cover_info", "picInfo", "pic_info", "media"]) {
     const nested = record[key];
     if (nested && typeof nested === "object" && !Array.isArray(nested)) {
       const found = findCoverUrl(nested as JsonRecord, responseUrl, depth + 1);
