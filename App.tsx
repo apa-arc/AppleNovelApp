@@ -380,6 +380,58 @@ export default function App() {
     });
   }, [books, isLoaded]);
 
+  // Repair missing or broken covers for previously saved online books.
+  // Each distinct failure set is attempted once to avoid retry loops.
+  const coverRecoveryAttemptsRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (!isLoaded || !sources.length || !books.length) return;
+    let active = true;
+    const recover = async () => {
+      const needsRecovery = books.filter((book) => {
+        if (!book.onlineSourceId && !book.onlineSummary) return false;
+        const urls = [...new Set([book.coverUrl, ...(book.coverCandidates || []), book.onlineSummary?.coverUrl].filter((url): url is string => !!url))];
+        if (urls.some((url) => !failedCoverUrls[url])) return false;
+        const attemptKey = book.id + ":" + urls.filter((url) => failedCoverUrls[url]).sort().join("|");
+        if (coverRecoveryAttemptsRef.current.has(attemptKey)) return false;
+        coverRecoveryAttemptsRef.current.add(attemptKey);
+        return true;
+      }).slice(0, 3);
+      for (const book of needsRecovery) {
+        if (!active) return;
+        const orderedSources = [
+          ...sources.filter((source) => source.enabled && source.id === book.onlineSourceId),
+          ...sources.filter((source) => source.enabled && source.id !== book.onlineSourceId),
+        ].slice(0, 3);
+        if (!orderedSources.length) continue;
+        const pages = await Promise.allSettled(orderedSources.map((source) =>
+          searchNovelSource(source, book.title, undefined, undefined)
+        ));
+        if (!active) return;
+        const targetTitle = normalizeNovelTitle(book.title);
+        const candidates = pages.flatMap((result) => result.status === "fulfilled" ? result.value.items : [])
+          .filter((item) => normalizeNovelTitle(item.title) === targetTitle && !!item.coverUrl)
+          .sort((a, b) => {
+            const authorA = normalizeNovelTitle(a.author) === normalizeNovelTitle(book.author) ? 1 : 0;
+            const authorB = normalizeNovelTitle(b.author) === normalizeNovelTitle(book.author) ? 1 : 0;
+            return authorB - authorA;
+          });
+        const recoveredUrls = [...new Set(candidates.map((item) => item.coverUrl).filter((url): url is string => !!url))];
+        if (!recoveredUrls.length) continue;
+        setBooks((current) => current.map((savedBook) => {
+          if (savedBook.id !== book.id) return savedBook;
+          const merged = [...new Set([...(savedBook.coverCandidates || []), ...recoveredUrls])];
+          return {
+            ...savedBook,
+            coverCandidates: merged,
+            coverUrl: savedBook.coverUrl || recoveredUrls[0],
+          };
+        }));
+      }
+    };
+    void recover();
+    return () => { active = false; };
+  }, [books, failedCoverUrls, isLoaded, sources]);
+
   useEffect(() => {
     if (!isLoaded) return;
     AsyncStorage.setItem(SUBSCRIPTION_URLS_STORAGE_KEY, JSON.stringify({ url: subscriptionUrl })).catch(() => {
