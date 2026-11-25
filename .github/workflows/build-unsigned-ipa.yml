@@ -10,7 +10,8 @@ on:
         options:
           - "1.1.2"
           - "1.1.3"
-        default: "1.1.3"
+          - "1.1.4"
+        default: "1.1.4"
 
 concurrency:
   group: unsigned-ipa-${{ github.ref }}
@@ -33,7 +34,7 @@ jobs:
           RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$RELEASE_VERSION" = "1.1.3"
+          test "$RELEASE_VERSION" = "1.1.4"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -115,7 +116,7 @@ jobs:
             echo "::error::Invalid iOS runtime fingerprint."
             exit 1
           fi
-          echo "This fingerprint will be embedded in the 1.1.2 IPA and used by the Production OTA workflow."
+          echo "This fingerprint will be embedded in the 1.1.4 IPA and used by the Production OTA workflow."
 
 
 
@@ -207,19 +208,19 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Publish 1.1.3 formal GitHub Release
-        if: github.event_name == 'workflow_dispatch' && inputs.release_version == '1.1.3'
+      - name: Publish 1.1.4 formal GitHub Release
+        if: github.event_name == 'workflow_dispatch' && inputs.release_version == '1.1.4'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.3
+          tag_name: v1.1.4
           target_commitish: main
-          name: AppleNovelApp v1.1.3
+          name: AppleNovelApp v1.1.4
           files: AppleNovelApp-unsigned.ipa
           fail_on_unmatched_files: true
           body: |
-            AppleNovelApp 1.1.3 正式版。
+            AppleNovelApp 1.1.4 正式版。
 
-            - 书架调整为 3×3 九本布局，并以海报角标安静提示新章节
+            - 修复在线书源封面提取，书架优先展示真实小说海报，加载失败时显示文字封面兜底
             - 书架顶部搜索入口统一搜索本地藏书与全部在线书源
             - Gemini 听书界面改造，API Key 使用 iOS 钥匙串本地保存
             - 章节对白按识别到的角色名分配稳定音色，旁白使用独立音色
