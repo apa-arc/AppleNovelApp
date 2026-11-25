@@ -198,7 +198,6 @@ export default function App() {
   const [appUpdateCheckedAt, setAppUpdateCheckedAt] = useState<number | null>(null);
   const [appUpdateDismissed, setAppUpdateDismissed] = useState(false);
   const appUpdateOperationRef = useRef(false);
-  const lastAutomaticUpdateCheckRef = useRef(0);
 
   const checkForAppUpdate = async (silent = false) => {
     if (__DEV__) {
@@ -239,7 +238,6 @@ export default function App() {
         setAppUpdateStatus("当前已是最新版本");
       }
     } catch {
-      lastAutomaticUpdateCheckRef.current = 0;
       setAppUpdateStatus("更新检查或后台下载失败，当前版本仍可继续使用。回到前台后会再次尝试。");
     } finally {
       appUpdateOperationRef.current = false;
@@ -277,22 +275,6 @@ export default function App() {
       setAppUpdateStatus("暂时无法重启应用，请关闭后重新打开");
     }
   };
-
-  useEffect(() => {
-    if (!isLoaded || __DEV__ || !Updates.isEnabled) return;
-    const checkIfDue = () => {
-      // Check on launch and when returning to the foreground, at most once
-      // every six hours. This avoids repeated requests while the app is active.
-      if (Date.now() - lastAutomaticUpdateCheckRef.current < 6 * 60 * 60 * 1000) return;
-      lastAutomaticUpdateCheckRef.current = Date.now();
-      void checkForAppUpdate(true);
-    };
-    checkIfDue();
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") checkIfDue();
-    });
-    return () => subscription.remove();
-  }, [isLoaded]);
 
   useEffect(() => {
     let active = true;
