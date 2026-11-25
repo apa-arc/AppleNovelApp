@@ -13,6 +13,7 @@ import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type Nove
 import { compareChapterUpdates } from "./src/subscription";
 import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type ReaderSettings, type ReaderTheme } from "./src/reader-settings";
 import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } from "./src/reading-progress";
+import { getOrFetchChapterContent, prefetchNextChapters } from "./src/chapter-cache";
 import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
 import { playSpeechAudio, type SpeechAudioPlayback } from "./src/wav-audio-playback";
@@ -953,7 +954,10 @@ export default function App() {
     setLoadingOnlineChapter(true);
     setCatalogMessage("");
     try {
-      const result = await fetchNovelChapterContent(source, chapter, getSourceClient(source));
+      const novelCacheId = selectedSearchNovel.id;
+      const fetchChapter = (target: NovelChapter) => fetchNovelChapterContent(source, target, getSourceClient(source));
+      const result = await getOrFetchChapterContent(novelCacheId, chapter.id, () => fetchChapter(chapter));
+      void prefetchNextChapters(novelCacheId, loadedChapters, chapter.index, fetchChapter, 5);
       setOnlineChapterIndex(chapter.index);
       setReaderParagraphIndex(0);
       restoreReaderPositionRef.current = true;
@@ -1179,7 +1183,10 @@ export default function App() {
         return;
       }
       try {
-        const result = await fetchNovelChapterContent(source, targetChapter, getSourceClient(source));
+        const novelCacheId = getOnlineBookId(book.title, book.author);
+        const fetchChapter = (target: NovelChapter) => fetchNovelChapterContent(source, target, getSourceClient(source));
+        const result = await getOrFetchChapterContent(novelCacheId, targetChapter.id, () => fetchChapter(targetChapter));
+        void prefetchNextChapters(novelCacheId, chapters, targetChapter.index, fetchChapter, 5);
         setOnlineChapterIndex(targetChapter.index);
         const savedParagraph = refreshedBook?.onlineChapterId === targetChapter.id ? (refreshedBook.readerParagraphIndex ?? 0) : 0;
         setReaderParagraphIndex(savedParagraph);
