@@ -174,63 +174,7 @@ jobs:
           test -s "$IPA_PATH"
           /usr/bin/unzip -tq "$IPA_PATH"
           IPA_ENTRIES="$(/usr/bin/unzip -Z1 "$IPA_PATH")"
-          echo "$IPA_ENTRIES" | grep -Eq '^Payload/[^/]+[.]app/Info[.]plist
-          FINAL_EXPO_PLIST="$RUNNER_TEMP/ipa/Payload/$(basename "$APP_PATH")/Expo.plist"
-          FINAL_CHANNEL="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRequestHeaders:expo-channel-name' "$FINAL_EXPO_PLIST")"
-          test "$FINAL_CHANNEL" = "production"
-          IPA_SHA256="$(/usr/bin/shasum -a 256 "$IPA_PATH" | awk '{print $1}')"
-          IPA_SIZE="$(/usr/bin/stat -f%z "$IPA_PATH")"
-          echo "Verified IPA: $IPA_SIZE bytes; SHA256=$IPA_SHA256; OTA channel=$FINAL_CHANNEL"
-
-      - name: Upload unsigned IPA artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: AppleNovelApp-unsigned-IPA
-          path: AppleNovelApp-unsigned.ipa
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Read and validate app version
-        id: app-version
-        env:
-          RELEASE_VERSION: ${{ inputs.release_version }}
-        run: |
-          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
-          APP_VERSION="$(node -p 'require("./app.json").expo.version')"
-          if [ "$PACKAGE_VERSION" != "$APP_VERSION" ]; then
-            echo "::error::package.json and app.json versions must match."
-            exit 1
-          fi
-          VERSION="$PACKAGE_VERSION"
-          if [ "$VERSION" != "$RELEASE_VERSION" ]; then
-            echo "::error::Requested release version does not match package.json/app.json."
-            exit 1
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Publish 1.1.4 formal GitHub Release
-        if: github.event_name == 'workflow_dispatch' && inputs.release_version == '1.1.4'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.1.4
-          target_commitish: main
-          name: AppleNovelApp v1.1.4
-          files: AppleNovelApp-unsigned.ipa
-          fail_on_unmatched_files: true
-          body: |
-            AppleNovelApp 1.1.4 正式版（封面/海报显示修复）。
-
-            - 书架调整为 3×3 九本布局，并以海报角标安静提示新章节
-            - 书架顶部搜索入口统一搜索本地藏书与全部在线书源
-            - Gemini 听书界面改造，API Key 使用 iOS 钥匙串本地保存
-            - 章节对白按识别到的角色名分配稳定音色，旁白使用独立音色
-            - IPA 为未签名构建产物，需要使用个人自签工具签名后安装
-            - Production OTA 通过独立工作流发布，并按 fingerprint runtime 校验兼容性
-            - 构建提交：${{ github.sha }}
-          prerelease: false
-          draft: false
-          generate_release_notes: true
-
+          echo "$IPA_ENTRIES" | grep -Eq '^Payload/[^/]+[.]app/Info[.]plist$'
           FINAL_EXPO_PLIST="$RUNNER_TEMP/ipa/Payload/$(basename "$APP_PATH")/Expo.plist"
           FINAL_CHANNEL="$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRequestHeaders:expo-channel-name' "$FINAL_EXPO_PLIST")"
           test "$FINAL_CHANNEL" = "production"
