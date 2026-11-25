@@ -64,6 +64,16 @@ export function htmlNodeText(n:Node):string{const walk=(x:Node):string=>x.childr
 function attr(n:Node,name:string):string{return n.attrs[name.toLowerCase()]||"";}
 function textAt(n:Node,selector?:string,attribute?:string):string{const x=selector?selectHtmlNodes(n,selector)[0]:undefined;return x?(attribute?attr(x,attribute):htmlNodeText(x)):"";}
 function safeUrl(v:string,base:string):string{try{const origin=new URL(base).origin,u=new URL(v,base);return u.protocol==="https:"&&!u.username&&!u.password&&u.origin===origin?u.toString():"";}catch{return"";}}
+function bestSrcsetCandidate(value:string):string {
+ const candidates=value.split(",").map((entry)=>entry.trim()).map((entry)=> {
+  const parts=entry.split(/\\s+/),url=parts[0]||"",descriptor=parts[1]||"";
+  const number=Number.parseFloat(descriptor);
+  const score=descriptor.endsWith("w")&&Number.isFinite(number)?number:descriptor.endsWith("x")&&Number.isFinite(number)?number*1000:0;
+  return {url,score};
+ }).filter((entry)=>!!entry.url);
+ candidates.sort((a,b)=>b.score-a.score);
+ return candidates[0]?.url||"";
+}
 function safeCoverUrl(v:string,base:string):string{try{const u=new URL(v,base);if((u.protocol!=="https:"&&u.protocol!=="http:")||u.username||u.password)return"";if(u.protocol==="http:")u.protocol="https:";return u.toString();}catch{return"";}}
 
 export type HtmlSearchRules={itemSelector:string;titleSelector:string;urlSelector:string;authorSelector?:string;descriptionSelector?:string;urlAttribute?:string;coverSelector?:string;coverAttribute?:string};
