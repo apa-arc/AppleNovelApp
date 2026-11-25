@@ -224,3 +224,40 @@ test("maps basic Legado class/id/tag selectors into the app HTML rule format", (
   assert.equal(result.compatible[0].htmlRules.content.contentSelector, "#content");
   assert.equal(result.compatible[0].htmlRules.detail.titleSelector, "#title");
 });
+
+
+test("maps Legado attribute suffixes on compound CSS selectors", () => {
+  const source = {
+    bookSourceName: "复合选择器源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    bookInfoUrl: "https://books.example/book/{bookUrl}",
+    tocUrl: "https://books.example/toc/{bookUrl}",
+    contentUrl: "https://books.example/content/{chapterUrl}",
+    ruleSearch: {
+      bookList: "class.result",
+      name: "a.book-title@text",
+      bookUrl: "a.book-title@href",
+      author: "span.author-name@text",
+      coverUrl: "img.cover@src"
+    },
+    ruleToc: {
+      chapterList: "class.chapter-list a.chapter",
+      chapterName: "a.chapter@text",
+      chapterUrl: "a.chapter@href"
+    },
+    ruleContent: { content: "div.reader-content@text" }
+  };
+  const result = parseSourceSubscription(JSON.stringify(source));
+  assert.equal(result.compatible.length, 1);
+  const rules = result.compatible[0].htmlRules;
+  assert.equal(rules.search.titleSelector, "a.book-title");
+  assert.equal(rules.search.urlSelector, "a.book-title");
+  assert.equal(rules.search.urlAttribute, "href");
+  assert.equal(rules.search.authorSelector, "span.author-name");
+  assert.equal(rules.search.coverSelector, "img.cover");
+  assert.equal(rules.search.coverAttribute, "src");
+  assert.equal(rules.chapters.itemSelector, ".chapter-list a.chapter");
+  assert.equal(rules.chapters.urlAttribute, "href");
+  assert.equal(rules.content.contentSelector, "div.reader-content");
+});
