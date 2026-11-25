@@ -4,19 +4,19 @@ const { DEFAULT_READER_SETTINGS, normalizeReaderSettings } = require("../.test-b
 
 test("reader settings use stable defaults", () => {
   assert.deepEqual(DEFAULT_READER_SETTINGS, {
-    fontSize: 18, theme: "paper", readingMode: "scroll", lineSpacing: 1.9, paragraphSpacing: 22, horizontalPadding: 27,
+    fontSize: 18, theme: "paper", pageTurnMode: "vertical-scroll", lineSpacing: 1.9, paragraphSpacing: 22, horizontalPadding: 27,
   });
 });
 
 test("reader settings preserve valid user preferences", () => {
-  assert.deepEqual(normalizeReaderSettings({ fontSize: 24, theme: "night", readingMode: "tap", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32 }), {
-    fontSize: 24, theme: "night", readingMode: "tap", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32,
+  assert.deepEqual(normalizeReaderSettings({ fontSize: 24, theme: "night", pageTurnMode: "left-right", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32 }), {
+    fontSize: 24, theme: "night", pageTurnMode: "left-right", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32,
   });
 });
 
 test("reader settings clamp numeric values and reject unknown choices", () => {
-  assert.deepEqual(normalizeReaderSettings({ fontSize: 99, theme: "neon", readingMode: "unknown", lineSpacing: 9, paragraphSpacing: 100, horizontalPadding: 2 }), {
-    fontSize: 28, theme: "paper", readingMode: "scroll", lineSpacing: 2.4, paragraphSpacing: 32, horizontalPadding: 16,
+  assert.deepEqual(normalizeReaderSettings({ fontSize: 99, theme: "neon", pageTurnMode: "unknown", lineSpacing: 9, paragraphSpacing: 100, horizontalPadding: 2 }), {
+    fontSize: 28, theme: "paper", pageTurnMode: "vertical-scroll", lineSpacing: 2.4, paragraphSpacing: 32, horizontalPadding: 16,
   });
   assert.equal(normalizeReaderSettings({ fontSize: 5, theme: "green", lineSpacing: 1.43 }).fontSize, 14);
   assert.equal(normalizeReaderSettings({ lineSpacing: 1.43 }).lineSpacing, 1.4);
@@ -32,7 +32,7 @@ test("reader settings recover safely from malformed storage values", () => {
 
 test("older saved preferences remain compatible with new layout options", () => {
   const normalized = normalizeReaderSettings({ fontSize: 20, theme: "paper" });
-  assert.equal(normalized.readingMode, "scroll");
+  assert.equal(normalized.pageTurnMode, "vertical-scroll");
   assert.equal(normalized.lineSpacing, DEFAULT_READER_SETTINGS.lineSpacing);
   assert.equal(normalized.paragraphSpacing, DEFAULT_READER_SETTINGS.paragraphSpacing);
   assert.equal(normalized.horizontalPadding, DEFAULT_READER_SETTINGS.horizontalPadding);
@@ -46,3 +46,5 @@ test("legacy Kokoro and cloud TTS preferences are ignored and never persisted", 
   assert.equal(Object.hasOwn(normalized, "speechModelVoiceId"), false);
   assert.equal(Object.hasOwn(normalized, "speechRate"), false);
 });
+
+test("all five page-turn modes are persisted and legacy tap maps to horizontal swipe", () => { for (const pageTurnMode of ["left-right", "vertical-scroll", "simulation", "cover", "none"]) assert.equal(normalizeReaderSettings({ pageTurnMode }).pageTurnMode, pageTurnMode); assert.equal(normalizeReaderSettings({ readingMode: "tap" }).pageTurnMode, "left-right"); });

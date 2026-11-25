@@ -1,6 +1,6 @@
 {
   "name": "apple-novel-app",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
@@ -13,40 +13,33 @@
     "test:reading-progress": "tsc src/reading-progress.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/reading-progress.test.cjs",
     "test:reader-settings": "tsc src/reader-settings.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/reader-settings.test.cjs",
     "test:novel-model": "tsc src/novel.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/novel-model.test.cjs",
-    "test": "npm run test:source-runtime && npm run test:local-book && npm run test:reading-progress && npm run test:reading-history && npm run test:reader-settings && npm run test:novel-model && npm run test:source-search && npm run test:source-catalog && npm run test:subscription && npm run test:source-subscription && npm run test:book-alias-dictionary && npm run test:speech-engine && npm run test:fish-audio-client && npm run test:speech-dialogue && npm run test:source-pipeline && npm run test:mock-source && npm run test:html-source && npm run test:html-source-pipeline && npm run test:speech-audio-library && npm run test:fish-audio-reader && npm run test:gemini-tts-client",
+    "test": "npm run test:source-runtime && npm run test:local-book && npm run test:reading-progress && npm run test:chapter-cache && npm run test:reading-history && npm run test:reader-settings && npm run test:novel-model && npm run test:source-search && npm run test:source-catalog && npm run test:subscription && npm run test:source-subscription && npm run test:book-alias-dictionary && npm run test:source-pipeline && npm run test:mock-source && npm run test:html-source && npm run test:html-source-pipeline",
     "test:source-search": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/source-search.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-search.test.cjs",
     "test:source-catalog": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/source-catalog.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-catalog.test.cjs",
     "test:subscription": "tsc src/novel.ts src/subscription.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/subscription.test.cjs",
     "test:source-subscription": "tsc src/source.ts src/source-subscription.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-subscription.test.cjs",
     "test:reading-history": "tsc src/reading-history.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/reading-history.test.cjs",
-    "test:speech-engine": "tsc src/speech-engine.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/speech-engine.test.cjs",
     "test:local-book": "tsc src/local-book.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/local-book.test.cjs",
     "test:source-pipeline": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/source-search.ts src/source-catalog.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/source-pipeline.test.cjs",
     "test:mock-source": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/source-search.ts src/source-catalog.ts src/mock-source.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/mock-source.test.cjs",
     "test:html-source": "tsc src/source.ts src/novel.ts src/html-source-parser.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/html-source-parser.test.cjs",
     "test:html-source-pipeline": "tsc src/source.ts src/source-runtime.ts src/novel.ts src/html-source-parser.ts src/source-search.ts src/source-catalog.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/html-source-pipeline.test.cjs",
-    "test:app": "npm run test:local-book && npm run test:reading-progress && npm run test:reading-history && npm run test:reader-settings && npm run test:novel-model && npm run test:speech-engine && npm run test:fish-audio-client && npm run test:speech-dialogue && npm run test:source-runtime && npm run test:source-search && npm run test:source-catalog && npm run test:source-subscription && npm run test:book-alias-dictionary && npm run test:subscription && npm run test:source-pipeline && npm run test:mock-source && npm run test:html-source && npm run test:html-source-pipeline && npm run test:speech-audio-library && npm run test:fish-audio-reader && npm run test:gemini-tts-client",
-    "test:speech-audio-library": "tsc src/speech-audio-library.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/speech-audio-library.test.cjs",
-    "test:fish-audio-client": "tsc src/fish-audio-client.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/fish-audio-client.test.cjs",
-    "test:speech-dialogue": "tsc src/speech-dialogue.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/speech-dialogue.test.cjs",
-    "test:fish-audio-reader": "tsc src/speech-engine.ts src/speech-dialogue.ts src/fish-audio-client.ts src/fish-audio-reader.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/fish-audio-reader.test.cjs",
-    "test:gemini-tts-client": "tsc src/gemini-tts-client.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/gemini-tts-client.test.cjs",
-    "test:book-alias-dictionary": "tsc src/book-alias-dictionary.ts --target ES2020 --module commonjs --moduleResolution node --lib ES2020,DOM --skipLibCheck --strict --outDir .test-build && node --test scripts/book-alias-dictionary.test.cjs"
+    "test:app": "npm run test:local-book && npm run test:reading-progress && npm run test:chapter-cache && npm run test:reading-history && npm run test:reader-settings && npm run test:novel-model && npm run test:source-runtime && npm run test:source-search && npm run test:source-catalog && npm run test:source-subscription && npm run test:book-alias-dictionary && npm run test:subscription && npm run test:source-pipeline && npm run test:mock-source && npm run test:html-source && npm run test:html-source-pipeline",
+    "test:book-alias-dictionary": "tsc src/book-alias-dictionary.ts --target ES2020 --module commonjs --moduleResolution node --lib ES2020,DOM --skipLibCheck --strict --outDir .test-build && node --test scripts/book-alias-dictionary.test.cjs",
+    "test:chapter-cache": "tsc src/novel.ts src/chapter-cache.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/chapter-cache.test.cjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
     "base64-arraybuffer": "^1.0.2",
     "expo": "~54.0.0",
     "expo-asset": "~12.0.14",
-    "expo-audio": "~1.1.1",
     "expo-constants": "~18.0.14",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.24",
     "expo-status-bar": "~3.0.8",
     "expo-updates": "~29.0.20",
     "react": "19.1.0",
-    "react-native": "0.81.5",
-    "expo-secure-store": "~15.0.7"
+    "react-native": "0.81.5"
   },
   "devDependencies": {
     "@types/react": "~19.1.10",

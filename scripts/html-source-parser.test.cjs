@@ -34,3 +34,12 @@ test("HTML search recognizes additional lazy image attributes before placeholder
   assert.equal(page.items[0].coverUrl, "https://img.cdn.example/actual.jpg");
   assert.equal(page.items[1].coverUrl, "https://img.cdn.example/ks.jpg");
 });
+
+test("HTML search extracts picture sources, background covers and newer lazy attributes while skipping placeholders", () => {
+  const html = '<ul><li class="book"><a class="title" href="/book/1">Picture</a><img src="placeholder.gif" data-book-cover="//cdn.example/picture.jpg"><picture><source srcset="//cdn.example/picture-2.jpg 2x"></picture></li><li class="book"><a class="title" href="/book/2">Background</a><div class="cover" style="background-image:url(\'//cdn.example/bg.jpg\')"></div></li><li class="book"><a class="title" href="/book/3">Later image</a><img src="blank.png"><img data-src="//cdn.example/later.jpg"></li><li class="book"><a class="title" href="/book/4">Placeholder</a><img src="blank.png"></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "s1", "源", "封面", "https://books.example/search", { itemSelector: "li.book", titleSelector: "a.title", urlSelector: "a.title" });
+  assert.equal(page.items[0].coverUrl, "https://cdn.example/picture.jpg");
+  assert.equal(page.items[1].coverUrl, "https://cdn.example/bg.jpg");
+  assert.equal(page.items[2].coverUrl, "https://cdn.example/later.jpg");
+  assert.equal(page.items[3].coverUrl, undefined);
+});

@@ -2,7 +2,7 @@
   "expo": {
     "name": "私人小说",
     "slug": "xiaoshuo",
-    "version": "1.1.4",
+    "version": "1.1.5",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "scheme": "applenovelapp",
@@ -10,12 +10,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.apaarc.applenovelapp",
-      "buildNumber": "4",
-      "infoPlist": {
-        "UIBackgroundModes": [
-          "audio"
-        ]
-      }
+      "buildNumber": "5",
+      "infoPlist": {}
     },
     "android": {
       "package": "com.apaarc.applenovelapp"
@@ -25,23 +21,13 @@
     },
     "updates": {
       "enabled": true,
-      "checkAutomatically": "ON_LOAD",
+      "checkAutomatically": "NEVER",
       "fallbackToCacheTimeout": 0,
       "url": "https://u.expo.dev/b4d937a0-68db-426d-8114-c4b41cc1d9d4",
       "requestHeaders": {
         "expo-channel-name": "production"
       }
     },
-    "plugins": [
-      [
-        "expo-audio",
-        {
-          "microphonePermission": false,
-          "recordAudioAndroid": false,
-          "enableBackgroundPlayback": true
-        }
-      ]
-    ],
     "extra": {
       "eas": {
         "projectId": "b4d937a0-68db-426d-8114-c4b41cc1d9d4"

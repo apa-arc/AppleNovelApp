@@ -10,10 +10,15 @@ const DESCRIPTION_KEYS = ["description", "desc", "intro", "summary", "content"];
 const URL_KEYS = ["url", "bookUrl", "book_url", "link", "detailUrl", "detail_url"];
 const COVER_KEYS = [
   "cover", "coverUrl", "cover_url", "coverImage", "cover_image", "coverImg", "cover_img",
-  "coverImageUrl", "cover_image_url", "bookCover", "book_cover", "bookCoverUrl", "book_cover_url",
-  "pic", "picUrl", "pic_url", "picURL", "image", "imageUrl", "image_url", "img", "imgUrl",
-  "img_url", "imgurl", "thumbnail", "thumb", "thumbUrl", "thumb_url", "coverPath", "cover_path",
+  "coverImageUrl", "cover_image_url", "coverImgUrl", "cover_img_url", "coverUri", "cover_uri",
+  "bookCover", "book_cover", "bookCoverUrl", "book_cover_url", "bookCoverImg", "book_cover_img",
+  "bookCoverImage", "book_cover_image", "coverPath", "cover_path", "coverSrc", "cover_src",
+  "coverSmall", "cover_small", "coverMedium", "cover_medium", "coverThumb", "cover_thumb",
+  "coverPic", "cover_pic", "coverLarge", "cover_large", "coverBig", "cover_big",
   "largeCover", "large_cover", "originalCover", "original_cover",
+  "pic", "picUrl", "pic_url", "picURL", "image", "imageUrl", "image_url", "img", "imgUrl",
+  "img_url", "imgurl", "imgSrc", "img_src", "thumbnail", "thumb", "thumbUrl", "thumb_url",
+  "thumbnailUrl", "thumbnail_url", "poster", "posterUrl", "poster_url", "verticalCover", "vertical_cover",
 ];
 const LIST_KEYS = ["data", "list", "books", "results", "items", "records"];
 
@@ -73,13 +78,46 @@ function resolvePublicResultUrl(value: string, responseUrl: string): string {
 export function resolveCoverImageUrl(value: string, responseUrl: string): string | undefined {
   if (!value.trim()) return undefined;
   try {
-    const resolved = new URL(value.trim(), responseUrl);
+    const clean = value.trim();
+    if (/^(data:|blob:|javascript:|about:)/i.test(clean) || /(placeholder|blank|no[-_]?cover|default[-_]?cover|loading|spacer|no[-_]?image)/i.test(clean)) return undefined;
+    const resolved = new URL(clean, responseUrl);
     if ((resolved.protocol !== "https:" && resolved.protocol !== "http:") || resolved.username || resolved.password) return undefined;
     if (resolved.protocol === "http:") resolved.protocol = "https:";
     return resolved.toString();
   } catch {
     return undefined;
   }
+}
+
+function findCoverUrl(record: JsonRecord, responseUrl: string, depth = 0): string | undefined {
+  for (const key of COVER_KEYS) {
+    const value = record[key];
+    const candidates: unknown[] = Array.isArray(value) ? value : [value];
+    for (const candidate of candidates) {
+      if (typeof candidate === "string") {
+        const resolved = resolveCoverImageUrl(candidate, responseUrl);
+        if (resolved) return resolved;
+      } else if (candidate && typeof candidate === "object") {
+        const nested = candidate as JsonRecord;
+        for (const nestedKey of ["url", "src", "original", "large", "path", "imageUrl", "image_url", "file", "value", "href", "uri"]) {
+          const raw = nested[nestedKey];
+          if (typeof raw === "string") {
+            const resolved = resolveCoverImageUrl(raw, responseUrl);
+            if (resolved) return resolved;
+          }
+        }
+      }
+    }
+  }
+  if (depth >= 3) return undefined;
+  for (const key of ["book", "bookInfo", "book_info", "info", "data", "detail", "result", "item", "images", "imageInfo", "image_info", "coverInfo", "cover_info", "picInfo", "pic_info", "media"]) {
+    const nested = record[key];
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      const found = findCoverUrl(nested as JsonRecord, responseUrl, depth + 1);
+      if (found) return found;
+    }
+  }
+  return undefined;
 }
 
 export function parseJsonSearchResults(body: string, source: NovelSource, keyword: string, responseUrl: string): NovelSearchPage {
@@ -97,11 +135,11 @@ export function parseJsonSearchResults(body: string, source: NovelSource, keywor
     const rawUrl = firstString(record, URL_KEYS);
     const bookUrl = resolvePublicResultUrl(rawUrl, responseUrl);
     if (!title || !bookUrl) return;
-    const cover = firstString(record, COVER_KEYS);
+    const coverUrl = findCoverUrl(record, responseUrl);
     items.push({
       id: source.id + ":" + index + ":" + bookUrl, sourceId: source.id, sourceName: source.name,
       title, author, description: firstString(record, DESCRIPTION_KEYS), bookUrl,
-      ...(cover ? { coverUrl: resolveCoverImageUrl(cover, responseUrl) } : {}),
+      ...(coverUrl ? { coverUrl } : {}),
     });
   });
   return { keyword, sourceId: source.id, items, hasMore: false };
