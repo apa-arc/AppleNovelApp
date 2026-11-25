@@ -35,9 +35,9 @@ jobs:
           if [ "$RELEASE_VERSION" = "1.1.4" ]; then
             test "$GITHUB_REF" = "refs/heads/main"
           elif [ "$RELEASE_VERSION" = "1.1.5" ]; then
-            test "$GITHUB_REF" = "refs/heads/release/1.1.5"
+            test "$GITHUB_REF" = "refs/heads/main"
           else
-            echo "::error::Only the protected 1.1.4 formal release and 1.1.5 candidate build are supported."
+            echo "::error::Only protected formal releases from main are supported."
             exit 1
           fi
 
@@ -213,22 +213,23 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Publish 1.1.4 formal GitHub Release
-        if: github.event_name == 'workflow_dispatch' && inputs.release_version == '1.1.4'
+      - name: Publish formal GitHub Release
+        if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.4
+          tag_name: v${{ steps.app-version.outputs.version }}
           target_commitish: main
-          name: AppleNovelApp v1.1.4
+          name: AppleNovelApp v${{ steps.app-version.outputs.version }}
           files: AppleNovelApp-unsigned.ipa
           fail_on_unmatched_files: true
           body: |
-            AppleNovelApp 1.1.4 正式版（封面/海报显示修复）。
+            AppleNovelApp ${{ steps.app-version.outputs.version }} 正式版。
 
-            - 书架调整为 3×3 九本布局，并以海报角标安静提示新章节
-            - 书架顶部搜索入口统一搜索本地藏书与全部在线书源
-            - Gemini 听书界面改造，API Key 使用 iOS 钥匙串本地保存
-            - 章节对白按识别到的角色名分配稳定音色，旁白使用独立音色
+            - 书架支持 3×3 网格与列表切换
+            - 阅读器支持五种翻页方式，阅读中心点击显示/隐藏菜单
+            - 移除听书模块，保留普通阅读功能
+            - 优化章节缓存与后续五章预取
+            - 增强书源封面字段识别与封面候选回退
             - IPA 为未签名构建产物，需要使用个人自签工具签名后安装
             - Production OTA 通过独立工作流发布，并按 fingerprint runtime 校验兼容性
             - 构建提交：${{ github.sha }}
