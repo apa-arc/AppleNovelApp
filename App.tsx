@@ -358,7 +358,7 @@ export default function App() {
           const settings = normalizeReaderSettings(JSON.parse(savedReaderSettings));
           setReaderFontSize(settings.fontSize);
           setReaderTheme(settings.theme);
-          setReaderMode(settings.readingMode);
+          setReaderMode(settings.pageTurnMode);
           setReaderLineSpacing(settings.lineSpacing);
           setReaderParagraphSpacing(settings.paragraphSpacing);
           setReaderHorizontalPadding(settings.horizontalPadding);
