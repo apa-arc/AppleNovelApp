@@ -35,9 +35,15 @@ function legadoSelector(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const raw = value.trim();
   if (!raw || raw.length > 300 || /@(?:js|json|xpath|regex)/i.test(raw)) return undefined;
-  const match = raw.match(/^(class|id|tag)\.([\w-]+)(?:@(?:text|href|src|content))?$/i);
-  if (match) return match[1].toLowerCase() === "class" ? "." + match[2] : match[1].toLowerCase() === "id" ? "#" + match[2] : match[2];
-  return /^[\w-]+(?:[.#][\w-]+)?$/.test(raw) ? raw : undefined;
+  // Legado appends @text/@href/@src to a selector. The attribute is mapped
+  // separately, so remove it before converting the selector itself.
+  const selector = raw.replace(/@(text|href|src|content)$/i, "");
+  const normalized = selector
+    .replace(/(^|[\\s>])class\\.([\\w-]+)/gi, "$1.$2")
+    .replace(/(^|[\\s>])id\\.([\\w-]+)/gi, "$1#$2")
+    .replace(/(^|[\\s>])tag\\.([\\w-]+)/gi, "$1$2");
+  if (!normalized || /@|(?:^|[\\s>])(?:class|id|tag)\\./i.test(normalized)) return undefined;
+  return /^[\\w#.*\\s>,\\[\\]="'$^~|=:-]+$/.test(normalized) ? normalized : undefined;
 }
 function legadoAttribute(value: unknown, fallback: string): string {
   if (typeof value !== "string") return fallback;
