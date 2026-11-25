@@ -172,6 +172,7 @@ export default function App() {
   const [searching, setSearching] = useState(false);
   const [searchSourceMetrics, setSearchSourceMetrics] = useState<Record<string, SearchPerformanceMetric>>({});
   const searchRequestIdRef = useRef(0);
+  const searchRequestControllerRef = useRef<AbortController | null>(null);
   const [searchLogs, setSearchLogs] = useState<SearchLogEntry[]>([]);
   const [showSearchLogs, setShowSearchLogs] = useState(false);
   const [searchLogFilter, setSearchLogFilter] = useState<"成功" | "失败">("成功");
@@ -728,6 +729,9 @@ export default function App() {
       return;
     }
     const requestId = ++searchRequestIdRef.current;
+    searchRequestControllerRef.current?.abort();
+    const requestController = new AbortController();
+    searchRequestControllerRef.current = requestController;
     setSearchHistory((current) => [keyword, ...current.filter((item) => item.toLocaleLowerCase() !== keyword.toLocaleLowerCase())].slice(0, 10));
     const aliasKey = normalizeBookAlias(keyword);
     const resolvedKeyword = bookAliasMap[aliasKey] || keyword;
@@ -737,6 +741,7 @@ export default function App() {
       setOnlineResults([]);
       setSearchSummary("");
       setSearching(false);
+      searchRequestControllerRef.current = null;
       return;
     }
     const prioritizedSources = rankSourcesByPerformance(enabledSources, searchSourceMetrics);
@@ -768,7 +773,7 @@ export default function App() {
 
     await runSearchPool(
       prioritizedSources,
-      async (source) => searchNovelSource(source, resolvedKeyword, getSourceClient(source)),
+      async (source) => searchNovelSource(source, resolvedKeyword, getSourceClient(source), requestController.signal),
       (outcome) => {
         if (requestId !== searchRequestIdRef.current) return;
         completed += 1;
@@ -800,6 +805,7 @@ export default function App() {
 
     if (requestId !== searchRequestIdRef.current) return;
     setSearching(false);
+    searchRequestControllerRef.current = null;
     const success = prioritizedSources.length - failed;
     const groupedResults = rankNovelSearchResults([...groups.values()].map((group) => ({
       ...group,
