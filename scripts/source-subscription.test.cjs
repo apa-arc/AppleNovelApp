@@ -155,3 +155,35 @@ test("recognizes the live 11-entry subscription alias source as compatible", () 
   assert.equal(result.aliasSources[0].dataUrl, "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/aliases/book-aliases.json");
   assert.equal(result.unsupported.some((entry) => entry.id === "book-alias-dictionary"), false);
 });
+
+
+test("imports standalone and array-form JSON sources with common field aliases", () => {
+  const source = {
+    bookSourceName: "外部 JSON 源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    bookInfoUrl: "https://books.example/book/{{bookUrl}}",
+    tocUrl: "https://books.example/toc/{{bookUrl}}",
+    contentUrl: "https://books.example/content/{{chapterUrl}}"
+  };
+  const single = parseSourceSubscription(JSON.stringify(source));
+  assert.equal(single.compatible.length, 1);
+  assert.equal(single.compatible[0].name, "外部 JSON 源");
+  assert.equal(single.compatible[0].searchUrl, "https://books.example/search?q={keyword}");
+  const batch = parseSourceSubscription(JSON.stringify([source, { ...source, bookSourceName: "第二个源", bookSourceUrl: "https://other.example/" }]));
+  assert.equal(batch.compatible.length, 2);
+});
+
+test("recognizes Legado-style rule sources without executing their rule DSL", () => {
+  const result = parseSourceSubscription(JSON.stringify([{
+    bookSourceName: "阅读规则源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    ruleSearch: { bookList: "class.result", name: "a@text" },
+    ruleToc: { chapterList: "class.chapter a" },
+    ruleContent: { content: "id.content" }
+  }]));
+  assert.equal(result.compatible.length, 0);
+  assert.equal(result.unsupported.length, 1);
+  assert.match(result.unsupported[0].reason, /专属规则表达式尚未适配/);
+});
