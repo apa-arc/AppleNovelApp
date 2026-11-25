@@ -723,15 +723,17 @@ export default function App() {
 
   const searchOnlineNovels = async (searchTerm = onlineQuery) => {
     const keyword = searchTerm.trim();
-    if (!keyword) {
-      setSearchMessage("先输入小说名称再搜索。");
-      setOnlineResults([]);
-      return;
-    }
     const requestId = ++searchRequestIdRef.current;
     searchRequestControllerRef.current?.abort();
     const requestController = new AbortController();
     searchRequestControllerRef.current = requestController;
+    if (!keyword) {
+      setSearchMessage("先输入小说名称再搜索。");
+      setOnlineResults([]);
+      setSearching(false);
+      searchRequestControllerRef.current = null;
+      return;
+    }
     setSearchHistory((current) => [keyword, ...current.filter((item) => item.toLocaleLowerCase() !== keyword.toLocaleLowerCase())].slice(0, 10));
     const aliasKey = normalizeBookAlias(keyword);
     const resolvedKeyword = bookAliasMap[aliasKey] || keyword;
