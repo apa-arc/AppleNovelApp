@@ -1475,7 +1475,7 @@ export default function App() {
                 const nextOffset = deltaX < 0
                   ? Math.min(readerMaxScrollOffset, readerScrollOffset + readerViewportHeight * 0.88)
                   : Math.max(0, readerScrollOffset - readerViewportHeight * 0.88);
-                turnReaderPage(nextOffset, deltaX < 0 ? 1 : -1);
+                turnReaderPage(nextOffset, deltaX < 0 ? -1 : 1);
                 return;
               }
               if (elapsed >= 280 || moved >= 14) return;
@@ -1490,7 +1490,7 @@ export default function App() {
                   : pageX > screenWidth * 0.72
                     ? Math.min(readerMaxScrollOffset, readerScrollOffset + readerViewportHeight * 0.88)
                     : readerScrollOffset;
-                if (nextOffset !== readerScrollOffset) turnReaderPage(nextOffset, pageX > screenWidth * 0.72 ? 1 : -1);
+                if (nextOffset !== readerScrollOffset) turnReaderPage(nextOffset, pageX > screenWidth * 0.72 ? -1 : 1);
               }
             }}
             contentContainerStyle={[styles.readerContent, { paddingHorizontal: readerHorizontalPadding }]}
