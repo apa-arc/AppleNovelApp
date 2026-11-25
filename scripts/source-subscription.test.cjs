@@ -201,3 +201,26 @@ test("supports TXT subscriptions containing one JSON source per line", () => {
   assert.equal(result.compatible.length, 1);
   assert.equal(result.compatible[0].name, "TXT JSON 源");
 });
+
+test("maps basic Legado class/id/tag selectors into the app HTML rule format", () => {
+  const source = {
+    bookSourceName: "静态规则源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    bookInfoUrl: "https://books.example/book/{bookUrl}",
+    tocUrl: "https://books.example/toc/{bookUrl}",
+    contentUrl: "https://books.example/content/{chapterUrl}",
+    ruleSearch: { bookList: "class.book", name: "tag.a@text", bookUrl: "tag.a@href", author: "class.author@text", coverUrl: "tag.img@src" },
+    ruleToc: { chapterList: "class.chapter", chapterName: "tag.a@text", chapterUrl: "tag.a@href" },
+    ruleContent: { content: "id.content" },
+    ruleBookInfo: { name: "id.title", author: "class.author", intro: "class.intro" }
+  };
+  const result = parseSourceSubscription(JSON.stringify([source]));
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.compatible[0].htmlRules.search.itemSelector, ".book");
+  assert.equal(result.compatible[0].htmlRules.search.titleSelector, "a");
+  assert.equal(result.compatible[0].htmlRules.search.coverSelector, "img");
+  assert.equal(result.compatible[0].htmlRules.chapters.itemSelector, ".chapter");
+  assert.equal(result.compatible[0].htmlRules.content.contentSelector, "#content");
+  assert.equal(result.compatible[0].htmlRules.detail.titleSelector, "#title");
+});
