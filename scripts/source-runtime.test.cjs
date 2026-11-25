@@ -115,3 +115,14 @@ test("source parser preserves URL template tokens for native source adapters", (
   assert.equal(parsed.chapterListUrl, value.chapterListUrl);
   assert.equal(parsed.chapterUrl, value.chapterUrl);
 });
+
+
+test("caller abort signal cancels an in-flight source request", async () => {
+  const controller = new AbortController();
+  const client = createSourceHttpClient(source(), async (_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+  }));
+  const pending = client.get("searchUrl", undefined, controller.signal);
+  controller.abort();
+  await assert.rejects(pending, (error) => error instanceof SourceHttpError && error.code === "cancelled");
+});
