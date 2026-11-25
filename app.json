@@ -11,11 +11,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.apaarc.applenovelapp",
       "buildNumber": "4",
-      "infoPlist": {
-        "UIBackgroundModes": [
-          "audio"
-        ]
-      }
+      "infoPlist": {}
     },
     "android": {
       "package": "com.apaarc.applenovelapp"
@@ -32,16 +28,6 @@
         "expo-channel-name": "production"
       }
     },
-    "plugins": [
-      [
-        "expo-audio",
-        {
-          "microphonePermission": false,
-          "recordAudioAndroid": false,
-          "enableBackgroundPlayback": true
-        }
-      ]
-    ],
     "extra": {
       "eas": {
         "projectId": "b4d937a0-68db-426d-8114-c4b41cc1d9d4"
