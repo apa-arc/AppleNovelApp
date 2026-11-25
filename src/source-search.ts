@@ -8,7 +8,13 @@ const TITLE_KEYS = ["title", "name", "bookName", "book_name", "novelName", "nove
 const AUTHOR_KEYS = ["author", "authorName", "author_name", "writer"];
 const DESCRIPTION_KEYS = ["description", "desc", "intro", "summary", "content"];
 const URL_KEYS = ["url", "bookUrl", "book_url", "link", "detailUrl", "detail_url"];
-const COVER_KEYS = ["cover", "coverUrl", "cover_url", "coverImage", "cover_image", "bookCover", "book_cover", "pic", "picUrl", "pic_url", "image", "img", "imgUrl", "img_url", "thumbnail", "thumb"];
+const COVER_KEYS = [
+  "cover", "coverUrl", "cover_url", "coverImage", "cover_image", "coverImg", "cover_img",
+  "coverImageUrl", "cover_image_url", "bookCover", "book_cover", "bookCoverUrl", "book_cover_url",
+  "pic", "picUrl", "pic_url", "picURL", "image", "imageUrl", "image_url", "img", "imgUrl",
+  "img_url", "imgurl", "thumbnail", "thumb", "thumbUrl", "thumb_url", "coverPath", "cover_path",
+  "largeCover", "large_cover", "originalCover", "original_cover",
+];
 const LIST_KEYS = ["data", "list", "books", "results", "items", "records"];
 
 function firstString(record: JsonRecord, keys: string[]): string {

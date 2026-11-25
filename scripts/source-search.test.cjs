@@ -43,3 +43,14 @@ test("accepts external CDN cover URLs and upgrades legacy HTTP image links", () 
   assert.equal(resolveCoverImageUrl("//img.cdn.example/cover2.jpg", "https://books.example/search"), "https://img.cdn.example/cover2.jpg");
   assert.equal(resolveCoverImageUrl("javascript:alert(1)", "https://books.example/search"), undefined);
 });
+
+test("recognizes additional common JSON cover field names and nested image objects", () => {
+  const page = parseJsonSearchResults(JSON.stringify({ data: [
+    { title: "封面字段一", author: "作者", url: "/book/1", cover_image_url: "https://img.cdn.example/one.jpg" },
+    { title: "封面字段二", author: "作者", url: "/book/2", bookCoverUrl: { src: "//img.cdn.example/two.jpg" } },
+    { title: "封面字段三", author: "作者", url: "/book/3", image_url: "http://img.cdn.example/three.jpg" }
+  ] }), source, "封面", "https://books.example/search");
+  assert.equal(page.items[0].coverUrl, "https://img.cdn.example/one.jpg");
+  assert.equal(page.items[1].coverUrl, "https://img.cdn.example/two.jpg");
+  assert.equal(page.items[2].coverUrl, "https://img.cdn.example/three.jpg");
+});

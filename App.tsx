@@ -45,6 +45,7 @@ type Book = {
   category: string;
   progress: number;
   color: string;
+  coverUrl?: string;
   lastChapter?: string;
   chapterIndex?: number;
   onlineSourceId?: string;
@@ -122,9 +123,25 @@ function getOnlineBookId(title: string, author: string): string {
   return "online:" + normalizeNovelTitle(title) + "::" + normalizeNovelTitle(author);
 }
 
-function BookCover({ book, grid = false }: { book: Book; grid?: boolean }) {
+function BookCover({ book, grid = false, failedCoverUrls, onCoverError }: {
+  book: Book;
+  grid?: boolean;
+  failedCoverUrls?: Record<string, boolean>;
+  onCoverError?: (url: string) => void;
+}) {
+  const coverUrl = book.coverUrl || book.onlineSummary?.coverUrl;
+  if (coverUrl && !failedCoverUrls?.[coverUrl]) {
+    return (
+      <Image
+        source={{ uri: coverUrl }}
+        style={[styles.cover, grid && styles.gridCover]}
+        resizeMode="cover"
+        onError={() => onCoverError?.(coverUrl)}
+      />
+    );
+  }
   return (
-    <View style={[styles.cover, grid && styles.gridCover, { backgroundColor: book.color }]}>
+    <View style={[styles.cover, grid && styles.gridCover, { backgroundColor: book.color || "#E5E9DF" }]}>
       <Text style={styles.coverTitle} numberOfLines={3}>{book.title}</Text>
       <View style={styles.coverRule} />
       <Text style={styles.coverAuthor}>{book.author}</Text>
@@ -891,6 +908,7 @@ export default function App() {
         category: option.summary.category || "网络小说",
         progress: existing?.progress ?? 0,
         color: "#E5E9DF",
+        coverUrl: selectedSearchNovel.coverUrl || option.summary.coverUrl || existing?.coverUrl || existing?.onlineSummary?.coverUrl,
         lastChapter: existing?.lastChapter || "尚未开始",
         chapterIndex: existing?.chapterIndex ?? 0,
         onlineSourceId: source.id,
@@ -1810,7 +1828,12 @@ export default function App() {
               {filteredBooks.map((book) => (
                 <Pressable key={book.id} style={[styles.bookRow, styles.bookGridCard, appIsDark && styles.darkCard]} onPress={() => openBook(book)} onLongPress={() => removeBookFromShelf(book)} delayLongPress={550}>
                   <View style={styles.bookGridCoverWrap}>
-                    <BookCover book={book} grid />
+                    <BookCover
+                      book={book}
+                      grid
+                      failedCoverUrls={failedCoverUrls}
+                      onCoverError={(url) => setFailedCoverUrls((current) => ({ ...current, [url]: true }))}
+                    />
                     {!!book.unreadUpdateCount && <View style={styles.updateBadge}><Text style={styles.updateBadgeText}>有更新</Text></View>}
                   </View>
                   <View style={styles.bookGridInfo}>
