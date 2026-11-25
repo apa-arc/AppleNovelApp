@@ -31,6 +31,8 @@ import {
   Modal,
   Share,
   Image,
+  Animated,
+  Easing,
 } from "react-native";
 
 type Tab = "书架" | "搜索" | "源" | "我的";
@@ -145,6 +147,7 @@ export default function App() {
   const [readerContentHeight, setReaderContentHeight] = useState(0);
   const [readerViewportHeight, setReaderViewportHeight] = useState(0);
   const readerScrollRef = useRef<ScrollView | null>(null);
+  const pageTurnProgress = useRef(new Animated.Value(0)).current;
   const restoreReaderPositionRef = useRef(false);
   const [sources, setSources] = useState<NovelSource[]>([]);
   const [sourceFilter, setSourceFilter] = useState<"全部" | "成功源" | "失败源">("全部");
@@ -1373,6 +1376,39 @@ export default function App() {
     const readingProgressPercent = Math.min(100, Math.max(0, Math.round(((activeChapterIndex + (readingParagraphs.length > 1 ? readerParagraphIndex / (readingParagraphs.length - 1) : 0)) / Math.max(1, activeChapterCount)) * 100)));
     const readerScrollOffset = getReadingScrollOffset(readerParagraphIndex, readingParagraphs.length, Math.max(0, readerContentHeight - readerViewportHeight));
     const readerMaxScrollOffset = Math.max(0, readerContentHeight - readerViewportHeight);
+    const turnReaderPage = (nextOffset: number, direction: number) => {
+      const targetOffset = Math.max(0, Math.min(readerMaxScrollOffset, nextOffset));
+      if (readerMode !== "simulation" && readerMode !== "cover") {
+        readerScrollRef.current?.scrollTo({ y: targetOffset, animated: readerMode !== "none" });
+        return;
+      }
+      pageTurnProgress.stopAnimation();
+      pageTurnProgress.setValue(0);
+      Animated.timing(pageTurnProgress, {
+        toValue: direction,
+        duration: readerMode === "simulation" ? 260 : 210,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (!finished) return;
+        readerScrollRef.current?.scrollTo({ y: targetOffset, animated: false });
+        pageTurnProgress.setValue(-direction);
+        Animated.timing(pageTurnProgress, {
+          toValue: 0,
+          duration: readerMode === "simulation" ? 260 : 210,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }).start();
+      });
+    };
+    const pageTurnTranslateX = pageTurnProgress.interpolate({
+      inputRange: [-1, 0, 1],
+      outputRange: [-Dimensions.get("window").width, 0, Dimensions.get("window").width],
+    });
+    const pageTurnRotateY = pageTurnProgress.interpolate({
+      inputRange: [-1, 0, 1],
+      outputRange: ["-8deg", "0deg", "8deg"],
+    });
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: readerBackground }]}>
         <StatusBar barStyle={readerTheme === "night" ? "light-content" : "dark-content"} />
@@ -1408,6 +1444,15 @@ export default function App() {
             {!onlineReading && !localReading && <Text style={[styles.catalogDisclaimer, readerTheme === "night" && styles.nightMuted]}>当前为内置演示目录。</Text>}
           </ScrollView>
         ) : (
+          <Animated.View
+            style={[
+              { flex: 1 },
+              readerMode === "cover" && { transform: [{ translateX: pageTurnTranslateX }] },
+              readerMode === "simulation" && {
+                transform: [{ perspective: 1200 }, { translateX: pageTurnTranslateX }, { rotateY: pageTurnRotateY }],
+              },
+            ]}
+          >
           <ScrollView
             ref={readerScrollRef}
             scrollEnabled={readerMode === "vertical-scroll"}
@@ -1430,7 +1475,7 @@ export default function App() {
                 const nextOffset = deltaX < 0
                   ? Math.min(readerMaxScrollOffset, readerScrollOffset + readerViewportHeight * 0.88)
                   : Math.max(0, readerScrollOffset - readerViewportHeight * 0.88);
-                readerScrollRef.current?.scrollTo({ y: nextOffset, animated: readerMode !== "none" });
+                turnReaderPage(nextOffset, deltaX < 0 ? 1 : -1);
                 return;
               }
               if (elapsed >= 280 || moved >= 14) return;
@@ -1445,7 +1490,7 @@ export default function App() {
                   : pageX > screenWidth * 0.72
                     ? Math.min(readerMaxScrollOffset, readerScrollOffset + readerViewportHeight * 0.88)
                     : readerScrollOffset;
-                readerScrollRef.current?.scrollTo({ y: nextOffset, animated: readerMode !== "none" });
+                if (nextOffset !== readerScrollOffset) turnReaderPage(nextOffset, pageX > screenWidth * 0.72 ? 1 : -1);
               }
             }}
             contentContainerStyle={[styles.readerContent, { paddingHorizontal: readerHorizontalPadding }]}
@@ -1481,6 +1526,7 @@ export default function App() {
               <Text style={[styles.muted, readerTheme === "night" && styles.nightMuted]}>已读 {currentBook.progress}%</Text>
             </View>
           </ScrollView>
+          </Animated.View>
         )}
         {showReaderSettings && !showCatalog && (
           <View style={[styles.readerSettings, readerTheme === "night" && styles.nightCard]}>
