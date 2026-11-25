@@ -377,8 +377,7 @@ export default function App() {
           }
         }
         const savedShelfView = await AsyncStorage.getItem(SHELF_VIEW_STORAGE_KEY);
-        setShelfView("grid");
-        if (savedShelfView !== "grid") void AsyncStorage.setItem(SHELF_VIEW_STORAGE_KEY, "grid").catch(() => undefined);
+        if (active) setShelfView(savedShelfView === "list" ? "list" : "grid");
         const savedAppearance = await AsyncStorage.getItem(APPEARANCE_STORAGE_KEY);
         setAppearanceMode(savedAppearance === "dark" ? "dark" : "light");
         const savedSearchHistory = await AsyncStorage.getItem(SEARCH_HISTORY_STORAGE_KEY);
@@ -1819,26 +1818,36 @@ export default function App() {
           />
           <View style={styles.sectionHeading}>
             <Text style={[styles.sectionTitle, appIsDark && styles.darkPrimaryText]}>我的书架</Text>
-            <Text style={[styles.sectionMeta, appIsDark && styles.darkMutedText]}>{filteredBooks.length} 本藏书 · 3×3 书架</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={[styles.sectionMeta, appIsDark && styles.darkMutedText]}>{filteredBooks.length} 本藏书</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel={shelfView === "grid" ? "切换为列表模式" : "切换为三列网格模式"} onPress={() => {
+                const nextView = shelfView === "grid" ? "list" : "grid";
+                setShelfView(nextView);
+                void AsyncStorage.setItem(SHELF_VIEW_STORAGE_KEY, nextView).catch(() => undefined);
+              }} style={[styles.themeButton, { paddingVertical: 7, paddingHorizontal: 10 }, appIsDark && styles.darkCard]}>
+                <Text style={[styles.fontButtonText, appIsDark && styles.darkPrimaryText]}>{shelfView === "grid" ? "列表" : "3×3"}</Text>
+              </Pressable>
+            </View>
           </View>
           {filteredBooks.length === 0 ? (
             <Text style={styles.emptyText}>{query.trim() ? "没有找到相关书籍，试试其他关键词。" : "书架还是空的。去「搜索」发现并添加喜欢的小说吧。"}</Text>
           ) : (
             <View style={shelfView === "grid" ? styles.bookGrid : undefined}>
               {filteredBooks.map((book) => (
-                <Pressable key={book.id} style={[styles.bookRow, styles.bookGridCard, appIsDark && styles.darkCard]} onPress={() => openBook(book)} onLongPress={() => removeBookFromShelf(book)} delayLongPress={550}>
-                  <View style={styles.bookGridCoverWrap}>
+                <Pressable key={book.id} style={[styles.bookRow, shelfView === "grid" ? styles.bookGridCard : undefined, appIsDark && styles.darkCard]} onPress={() => openBook(book)} onLongPress={() => removeBookFromShelf(book)} delayLongPress={550}>
+                  <View style={shelfView === "grid" ? styles.bookGridCoverWrap : { position: "relative" }}>
                     <BookCover
                       book={book}
-                      grid
+                      grid={shelfView === "grid"}
                       failedCoverUrls={failedCoverUrls}
                       onCoverError={(url) => setFailedCoverUrls((current) => ({ ...current, [url]: true }))}
                     />
                     {!!book.unreadUpdateCount && <View style={styles.updateBadge}><Text style={styles.updateBadgeText}>有更新</Text></View>}
                   </View>
-                  <View style={styles.bookGridInfo}>
-                    <Text style={[styles.bookGridTitle, appIsDark && styles.darkPrimaryText]} numberOfLines={2}>{book.title}</Text>
-                    <Text style={[styles.bookGridAuthor, appIsDark && styles.darkSecondaryText]} numberOfLines={1}>{book.author}</Text>
+                  <View style={shelfView === "grid" ? styles.bookGridInfo : styles.bookInfo}>
+                    <Text style={[shelfView === "grid" ? styles.bookGridTitle : styles.bookTitle, appIsDark && styles.darkPrimaryText]} numberOfLines={2}>{book.title}</Text>
+                    <Text style={[shelfView === "grid" ? styles.bookGridAuthor : styles.bookAuthor, appIsDark && styles.darkSecondaryText]} numberOfLines={1}>{book.author}</Text>
+                    {shelfView === "list" && !!book.description && <Text style={[styles.bookDescription, appIsDark && styles.darkMutedText]} numberOfLines={2}>{book.description}</Text>}
                     <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${book.progress}%` as `${number}%` }]} /></View>
                     <Text style={[styles.progressText, appIsDark && styles.darkMutedText]}>{book.progress > 0 ? "已读 " + book.progress + "%" : "尚未开始"}</Text>
                   </View>
