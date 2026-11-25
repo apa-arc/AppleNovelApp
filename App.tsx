@@ -1528,9 +1528,6 @@ export default function App() {
           <Pressable disabled={activeChapterIndex === 0 || showCatalog || loadingOnlineChapter} onPress={() => changeChapter(-1)} style={styles.chapterNavButton}>
             <Text style={[styles.chapterNavText, (activeChapterIndex === 0 || showCatalog || loadingOnlineChapter) && styles.disabledText]}>上一章</Text>
           </Pressable>
-          <Pressable onPress={() => setShowReaderSettings((value) => !value)} style={styles.playerButton}>
-            <Text style={styles.playerAction}>阅读设置</Text>
-          </Pressable>
           <Pressable disabled={activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter} onPress={() => changeChapter(1)} style={styles.chapterNavButton}>
             <Text style={[styles.chapterNavText, (activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter) && styles.disabledText]}>下一章</Text>
           </Pressable>
