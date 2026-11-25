@@ -31,6 +31,53 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 
+function legadoSelector(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const raw = value.trim();
+  if (!raw || raw.length > 300 || /@(?:js|json|xpath|regex)/i.test(raw)) return undefined;
+  const match = raw.match(/^(class|id|tag)\.([\w-]+)(?:@(?:text|href|src|content))?$/i);
+  if (match) return match[1].toLowerCase() === "class" ? "." + match[2] : match[1].toLowerCase() === "id" ? "#" + match[2] : match[2];
+  return /^[\w-]+(?:[.#][\w-]+)?$/.test(raw) ? raw : undefined;
+}
+function legadoAttribute(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  return value.match(/@(text|href|src|content)$/i)?.[1].toLowerCase() || fallback;
+}
+function mapLegadoRules(raw: Record<string, unknown>): Record<string, unknown> | undefined {
+  const search = isRecord(raw.ruleSearch) ? raw.ruleSearch : {};
+  const toc = isRecord(raw.ruleToc) ? raw.ruleToc : {};
+  const content = isRecord(raw.ruleContent) ? raw.ruleContent : {};
+  const detail = isRecord(raw.ruleBookInfo) ? raw.ruleBookInfo : {};
+  const itemSelector = legadoSelector(search.bookList);
+  const titleSelector = legadoSelector(search.name);
+  const urlSelector = legadoSelector(search.bookUrl);
+  const chapterItem = legadoSelector(toc.chapterList);
+  const chapterTitle = legadoSelector(toc.chapterName);
+  const chapterUrl = legadoSelector(toc.chapterUrl);
+  const contentSelector = legadoSelector(content.content);
+  if (!itemSelector || !titleSelector || !urlSelector || !chapterItem || !chapterTitle || !chapterUrl || !contentSelector) return undefined;
+  const mapped: Record<string, unknown> = {
+    search: {
+      itemSelector, titleSelector, urlSelector,
+      urlAttribute: legadoAttribute(search.bookUrl, "href"),
+      ...(legadoSelector(search.author) ? { authorSelector: legadoSelector(search.author) } : {}),
+      ...(legadoSelector(search.intro) ? { descriptionSelector: legadoSelector(search.intro) } : {}),
+      ...(legadoSelector(search.coverUrl) ? { coverSelector: legadoSelector(search.coverUrl), coverAttribute: legadoAttribute(search.coverUrl, "src") } : {})
+    },
+    chapters: { itemSelector: chapterItem, titleSelector: chapterTitle, urlSelector: chapterUrl, urlAttribute: legadoAttribute(toc.chapterUrl, "href") },
+    content: { contentSelector }
+  };
+  const title = legadoSelector(detail.name);
+  const author = legadoSelector(detail.author);
+  const intro = legadoSelector(detail.intro);
+  if (title || author || intro) mapped.detail = {
+    ...(title ? { titleSelector: title } : {}),
+    ...(author ? { authorSelector: author } : {}),
+    ...(intro ? { descriptionSelector: intro } : {})
+  };
+  return mapped;
+}
+
 function parseExternalSourceBundle(payload: unknown, subscriptionIdHint?: string): ParsedSourceSubscription | null {
   const entries = Array.isArray(payload) ? payload : isRecord(payload) && Array.isArray(payload.sources) ? payload.sources : isRecord(payload) && (typeof payload.bookSourceName === "string" || typeof payload.name === "string") ? [payload] : null;
   if (!entries) return null;
@@ -60,7 +107,8 @@ function parseExternalSourceBundle(payload: unknown, subscriptionIdHint?: string
     }
     const normalizeTemplate = (value: string) => value.replace(/\{\{\s*(key|keyword)\s*\}\}/gi, "{keyword}").replace(/\{\{\s*page\s*\}\}/gi, "{page}").replace(/\{\{\s*([^{}]+?)\s*\}\}/g, "{$1}");
     try {
-      const normalized = parseNovelSourceJson(JSON.stringify({ name, baseUrl, searchUrl: normalizeTemplate(searchUrl), bookUrl: normalizeTemplate(bookUrl), chapterListUrl: normalizeTemplate(chapterListUrl), chapterUrl: normalizeTemplate(chapterUrl), ...(raw.htmlRules !== undefined ? { htmlRules: raw.htmlRules } : {}) }));
+      const mappedRules = raw.htmlRules !== undefined ? raw.htmlRules : mapLegadoRules(raw);
+      const normalized = parseNovelSourceJson(JSON.stringify({ name, baseUrl, searchUrl: normalizeTemplate(searchUrl), bookUrl: normalizeTemplate(bookUrl), chapterListUrl: normalizeTemplate(chapterListUrl), chapterUrl: normalizeTemplate(chapterUrl), ...(mappedRules !== undefined ? { htmlRules: mappedRules } : {}) }));
       compatible.push({ ...normalized, remoteId, version: typeof raw.version === "string" ? raw.version : "0.0.0" });
     } catch (error) {
       unsupported.push({ id: remoteId, name, reason: error instanceof Error ? error.message : "书源配置校验失败。" });
