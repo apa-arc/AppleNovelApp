@@ -43,3 +43,9 @@ test("HTML search extracts picture sources, background covers and newer lazy att
   assert.equal(page.items[2].coverUrl, "https://cdn.example/later.jpg");
   assert.equal(page.items[3].coverUrl, undefined);
 });
+
+test("HTML cover extraction prefers the highest-resolution srcset candidate", () => {
+  const html = '<ul><li class="book"><a class="title" href="/book/1">高清封面</a><img src="small.jpg" srcset="/small.jpg 320w, /large.jpg 1200w, /medium.jpg 640w"></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "s1", "源", "封面", "https://books.example/search", { itemSelector: "li.book", titleSelector: "a.title", urlSelector: "a.title" });
+  assert.equal(page.items[0].coverUrl, "https://books.example/large.jpg");
+});
