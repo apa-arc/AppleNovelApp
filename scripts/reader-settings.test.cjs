@@ -10,7 +10,7 @@ test("reader settings use stable defaults", () => {
 
 test("reader settings preserve valid user preferences", () => {
   assert.deepEqual(normalizeReaderSettings({ fontSize: 24, theme: "night", pageTurnMode: "left-right", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32 }), {
-    fontSize: 24, theme: "night", readingMode: "tap", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32,
+    fontSize: 24, theme: "night", pageTurnMode: "left-right", lineSpacing: 2.1, paragraphSpacing: 18, horizontalPadding: 32,
   });
 });
 
