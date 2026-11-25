@@ -30,6 +30,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+
+function parseExternalSourceBundle(payload: unknown): ParsedSourceSubscription | null {
+  const entries = Array.isArray(payload) ? payload : isRecord(payload) && Array.isArray(payload.sources) ? payload.sources : isRecord(payload) && (typeof payload.bookSourceName === "string" || typeof payload.name === "string") ? [payload] : null;
+  if (!entries) return null;
+  if (entries.length > 500) throw new Error("订阅书源数量超过 500 个限制。");
+  const compatible: ParsedSourceSubscription["compatible"] = [];
+  const unsupported: ParsedSourceSubscription["unsupported"] = [];
+  const seen = new Set<string>();
+  entries.forEach((raw: unknown, index: number) => {
+    if (!isRecord(raw)) {
+      unsupported.push({ id: "external-" + index, name: "未知书源", reason: "书源条目不是 JSON 对象。" });
+      return;
+    }
+    const name = typeof raw.name === "string" ? raw.name : typeof raw.bookSourceName === "string" ? raw.bookSourceName : "未命名书源";
+    const remoteId = typeof raw.id === "string" ? raw.id : typeof raw.bookSourceUrl === "string" ? raw.bookSourceUrl : "external-" + index + "-" + name;
+    if (seen.has(remoteId)) { unsupported.push({ id: remoteId, name, reason: "订阅中存在重复书源。" }); return; }
+    seen.add(remoteId);
+    const searchUrl = typeof raw.searchUrl === "string" ? raw.searchUrl : "";
+    let baseUrl = typeof raw.baseUrl === "string" ? raw.baseUrl : typeof raw.bookSourceUrl === "string" ? raw.bookSourceUrl : "";
+    if (!baseUrl && searchUrl) { try { baseUrl = new URL(searchUrl.replace(/\{\{?key\}?\}/g, "keyword")).origin; } catch { baseUrl = ""; } }
+    const bookUrl = typeof raw.bookUrl === "string" ? raw.bookUrl : typeof raw.bookInfoUrl === "string" ? raw.bookInfoUrl : "";
+    const chapterListUrl = typeof raw.chapterListUrl === "string" ? raw.chapterListUrl : typeof raw.tocUrl === "string" ? raw.tocUrl : "";
+    const chapterUrl = typeof raw.chapterUrl === "string" ? raw.chapterUrl : typeof raw.contentUrl === "string" ? raw.contentUrl : "";
+    if (!searchUrl || !baseUrl || !bookUrl || !chapterListUrl || !chapterUrl) {
+      const hasRuleDsl = !!(raw.ruleSearch || raw.ruleBookInfo || raw.ruleToc || raw.ruleContent);
+      unsupported.push({ id: remoteId, name, reason: hasRuleDsl ? "已识别为阅读类规则书源，但其专属规则表达式尚未适配，暂不执行。" : "缺少完整的搜索、详情、目录或正文接口地址。" });
+      return;
+    }
+    const normalizeTemplate = (value: string) => value.replace(/\{\{\s*(key|keyword)\s*\}\}/gi, "{keyword}").replace(/\{\{\s*page\s*\}\}/gi, "{page}").replace(/\{\{\s*([^{}]+?)\s*\}\}/g, "{$1}");
+    try {
+      const normalized = parseNovelSourceJson(JSON.stringify({ name, baseUrl, searchUrl: normalizeTemplate(searchUrl), bookUrl: normalizeTemplate(bookUrl), chapterListUrl: normalizeTemplate(chapterListUrl), chapterUrl: normalizeTemplate(chapterUrl), ...(raw.htmlRules !== undefined ? { htmlRules: raw.htmlRules } : {}) }));
+      compatible.push({ ...normalized, remoteId, version: typeof raw.version === "string" ? raw.version : "0.0.0" });
+    } catch (error) {
+      unsupported.push({ id: remoteId, name, reason: error instanceof Error ? error.message : "书源配置校验失败。" });
+    }
+  });
+  return { subscriptionId: isRecord(payload) && typeof payload.subscriptionId === "string" ? payload.subscriptionId : "external-json-subscription", name: isRecord(payload) && typeof payload.name === "string" ? payload.name : "外部阅读书源订阅", updatedAt: isRecord(payload) && typeof payload.updatedAt === "string" ? payload.updatedAt : "", compatible, aliasSources: [], unsupported };
+}
+
 /**
  * Parses the repository manifest format without executing its scriptUrl.
  * Normal entries require an explicit JSON endpoint appConfig; alias dictionaries
@@ -41,7 +80,9 @@ export function parseSourceSubscription(raw: string): ParsedSourceSubscription {
   catch { throw new Error("订阅 JSON 格式错误。"); }
   if (!isRecord(payload) || payload.schemaVersion !== 1 ||
       typeof payload.subscriptionId !== "string" || !Array.isArray(payload.sources)) {
-    throw new Error("不是受支持的小说书源订阅清单。");
+    const external = parseExternalSourceBundle(payload);
+    if (external) return external;
+    throw new Error("无法识别订阅格式。支持本软件清单、单个/批量 JSON 书源；脚本型规则暂不执行。");
   }
   if (payload.sources.length > 500) throw new Error("订阅书源数量超过 500 个限制。");
   const ids = new Set<string>();
