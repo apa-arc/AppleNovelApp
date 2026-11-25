@@ -46,6 +46,7 @@ type Book = {
   progress: number;
   color: string;
   coverUrl?: string;
+  coverCandidates?: string[];
   lastChapter?: string;
   chapterIndex?: number;
   onlineSourceId?: string;
@@ -101,8 +102,8 @@ function BookCover({ book, grid = false, failedCoverUrls, onCoverError }: {
   failedCoverUrls?: Record<string, boolean>;
   onCoverError?: (url: string) => void;
 }) {
-  const coverUrl = book.coverUrl || book.onlineSummary?.coverUrl;
-  if (coverUrl && !failedCoverUrls?.[coverUrl]) {
+  const coverUrl = [book.coverUrl, ...(book.coverCandidates || []), book.onlineSummary?.coverUrl].find((url): url is string => !!url && !failedCoverUrls?.[url]);
+  if (coverUrl) {
     return (
       <Image
         source={{ uri: coverUrl }}
@@ -873,6 +874,10 @@ export default function App() {
       return;
     }
     const id = getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author);
+    const coverCandidates = [...new Set([
+      selectedSearchNovel.coverUrl,
+      ...selectedSearchNovel.sources.map((entry) => entry.summary.coverUrl),
+    ].filter((url): url is string => !!url))];
     setBooks((current) => {
       const existing = current.find((book) => book.id === id);
       const nextBook: Book = {
@@ -884,6 +889,7 @@ export default function App() {
         progress: existing?.progress ?? 0,
         color: "#E5E9DF",
         coverUrl: selectedSearchNovel.coverUrl || option.summary.coverUrl || existing?.coverUrl || existing?.onlineSummary?.coverUrl,
+        coverCandidates: [...new Set([...coverCandidates, ...(existing?.coverCandidates || [])])],
         lastChapter: existing?.lastChapter || "尚未开始",
         chapterIndex: existing?.chapterIndex ?? 0,
         onlineSourceId: source.id,
