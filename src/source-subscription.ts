@@ -39,11 +39,11 @@ function legadoSelector(value: unknown): string | undefined {
   // separately, so remove it before converting the selector itself.
   const selector = raw.replace(/@(text|href|src|content)$/i, "");
   const normalized = selector
-    .replace(/(^|[\\s>])class\\.([\\w-]+)/gi, "$1.$2")
-    .replace(/(^|[\\s>])id\\.([\\w-]+)/gi, "$1#$2")
-    .replace(/(^|[\\s>])tag\\.([\\w-]+)/gi, "$1$2");
-  if (!normalized || /@|(?:^|[\\s>])(?:class|id|tag)\\./i.test(normalized)) return undefined;
-  return /^[\\w#.*\\s>,\\[\\]="'$^~|=:-]+$/.test(normalized) ? normalized : undefined;
+    .replace(/(^|[\s>])class\.([\w-]+)/gi, "$1.$2")
+    .replace(/(^|[\s>])id\.([\w-]+)/gi, "$1#$2")
+    .replace(/(^|[\s>])tag\.([\w-]+)/gi, "$1$2");
+  if (!normalized || /@|(?:^|[\s>])(?:class|id|tag)\./i.test(normalized)) return undefined;
+  return /^[\w#.*\s>,\[\]="'$^~|=:-]+$/.test(normalized) ? normalized : undefined;
 }
 function legadoAttribute(value: unknown, fallback: string): string {
   if (typeof value !== "string") return fallback;
