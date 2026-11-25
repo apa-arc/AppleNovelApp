@@ -31,7 +31,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 
-function parseExternalSourceBundle(payload: unknown): ParsedSourceSubscription | null {
+function parseExternalSourceBundle(payload: unknown, subscriptionIdHint?: string): ParsedSourceSubscription | null {
   const entries = Array.isArray(payload) ? payload : isRecord(payload) && Array.isArray(payload.sources) ? payload.sources : isRecord(payload) && (typeof payload.bookSourceName === "string" || typeof payload.name === "string") ? [payload] : null;
   if (!entries) return null;
   if (entries.length > 500) throw new Error("订阅书源数量超过 500 个限制。");
@@ -66,7 +66,7 @@ function parseExternalSourceBundle(payload: unknown): ParsedSourceSubscription |
       unsupported.push({ id: remoteId, name, reason: error instanceof Error ? error.message : "书源配置校验失败。" });
     }
   });
-  return { subscriptionId: isRecord(payload) && typeof payload.subscriptionId === "string" ? payload.subscriptionId : "external-json-subscription", name: isRecord(payload) && typeof payload.name === "string" ? payload.name : "外部阅读书源订阅", updatedAt: isRecord(payload) && typeof payload.updatedAt === "string" ? payload.updatedAt : "", compatible, aliasSources: [], unsupported };
+  return { subscriptionId: isRecord(payload) && typeof payload.subscriptionId === "string" ? payload.subscriptionId : (subscriptionIdHint || "external-json-subscription"), name: isRecord(payload) && typeof payload.name === "string" ? payload.name : "外部阅读书源订阅", updatedAt: isRecord(payload) && typeof payload.updatedAt === "string" ? payload.updatedAt : "", compatible, aliasSources: [], unsupported };
 }
 
 /**
@@ -74,13 +74,13 @@ function parseExternalSourceBundle(payload: unknown): ParsedSourceSubscription |
  * Normal entries require an explicit JSON endpoint appConfig; alias dictionaries
  * are validated and returned separately because they do not fetch book content.
  */
-export function parseSourceSubscription(raw: string): ParsedSourceSubscription {
+export function parseSourceSubscription(raw: string, subscriptionIdHint?: string): ParsedSourceSubscription {
   let payload: unknown;
   try { payload = JSON.parse(raw); }
   catch { throw new Error("订阅 JSON 格式错误。"); }
   if (!isRecord(payload) || payload.schemaVersion !== 1 ||
       typeof payload.subscriptionId !== "string" || !Array.isArray(payload.sources)) {
-    const external = parseExternalSourceBundle(payload);
+    const external = parseExternalSourceBundle(payload, subscriptionIdHint);
     if (external) return external;
     throw new Error("无法识别订阅格式。支持本软件清单、单个/批量 JSON 书源；脚本型规则暂不执行。");
   }
