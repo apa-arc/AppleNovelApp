@@ -14,7 +14,7 @@ export type SourceHttpResult = {
 };
 
 export type SourceHttpClient = {
-  get(endpoint: SourceEndpoint, urlOverride?: string): Promise<SourceHttpResult>;
+  get(endpoint: SourceEndpoint, urlOverride?: string, signal?: AbortSignal): Promise<SourceHttpResult>;
 };
 
 export class SourceHttpError extends Error {
@@ -27,6 +27,7 @@ export class SourceHttpError extends Error {
       | "http-error"
       | "response-too-large"
       | "timeout"
+      | "cancelled"
       | "network-error"
   ) {
     super(message);
@@ -59,7 +60,7 @@ export function createSourceHttpClient(
   const allowedOrigins = configuredOrigins(source);
 
   return {
-    async get(endpoint, urlOverride) {
+    async get(endpoint, urlOverride, externalSignal) {
       if (!source.enabled) {
         throw new SourceHttpError("该书源已停用。", "source-disabled");
       }
@@ -85,6 +86,9 @@ export function createSourceHttpClient(
       }
 
       const controller = new AbortController();
+      const abortFromCaller = () => controller.abort();
+      if (externalSignal?.aborted) controller.abort();
+      else externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
       const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       try {
         const response = await fetchImpl(target.toString(), {
@@ -124,6 +128,9 @@ export function createSourceHttpClient(
         };
       } catch (error) {
         if (error instanceof SourceHttpError) throw error;
+        if (externalSignal?.aborted) {
+          throw new SourceHttpError("搜索已取消。", "cancelled");
+        }
         if (controller.signal.aborted) {
           throw new SourceHttpError("书源请求超时（12 秒）。", "timeout");
         }
@@ -134,6 +141,7 @@ export function createSourceHttpClient(
         throw new SourceHttpError("书源网络请求失败，请检查网络或站点状态。", "network-error");
       } finally {
         clearTimeout(timeout);
+        externalSignal?.removeEventListener("abort", abortFromCaller);
       }
     },
   };
