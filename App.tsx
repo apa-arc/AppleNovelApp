@@ -7,6 +7,7 @@ import type { NovelSource } from "./src/source";
 import { parseSourceSubscription } from "./src/source-subscription";
 import { normalizeBookAlias, parseBookAliasDictionary } from "./src/book-alias-dictionary";
 import { searchNovelSource } from "./src/source-search";
+import { rankNovelSearchResults, rankSourcesByPerformance, updateSearchPerformanceMetric, runSearchPool, type SearchPerformanceMetric } from "./src/search-ranking";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
 import { compareChapterUpdates } from "./src/subscription";
@@ -68,6 +69,7 @@ const DEFAULT_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/apa-arc/Nove
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
 const SEARCH_LOGS_STORAGE_KEY = "@private_novel/search_logs_v1";
+const SEARCH_SOURCE_METRICS_STORAGE_KEY = "@private_novel/search_source_metrics_v1";
 const SEARCH_HISTORY_STORAGE_KEY = "@private_novel/search_history_v1";
 const SHELF_VIEW_STORAGE_KEY = "@private_novel/shelf_view_v1";
 const APPEARANCE_STORAGE_KEY = "@private_novel/appearance_v1";
@@ -168,6 +170,8 @@ export default function App() {
   const [selectedSearchNovel, setSelectedSearchNovel] = useState<SearchNovelGroup | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
+  const [searchSourceMetrics, setSearchSourceMetrics] = useState<Record<string, SearchPerformanceMetric>>({});
+  const searchRequestIdRef = useRef(0);
   const [searchLogs, setSearchLogs] = useState<SearchLogEntry[]>([]);
   const [showSearchLogs, setShowSearchLogs] = useState(false);
   const [searchLogFilter, setSearchLogFilter] = useState<"成功" | "失败">("成功");
@@ -354,6 +358,13 @@ export default function App() {
           const parsedLogs: unknown = JSON.parse(savedSearchLogs);
           if (Array.isArray(parsedLogs)) setSearchLogs(parsedLogs as SearchLogEntry[]);
         }
+        const savedSourceMetrics = await AsyncStorage.getItem(SEARCH_SOURCE_METRICS_STORAGE_KEY);
+        if (savedSourceMetrics && active) {
+          const parsedMetrics: unknown = JSON.parse(savedSourceMetrics);
+          if (parsedMetrics && typeof parsedMetrics === "object" && !Array.isArray(parsedMetrics)) {
+            setSearchSourceMetrics(parsedMetrics as Record<string, SearchPerformanceMetric>);
+          }
+        }
         const savedHistory = await AsyncStorage.getItem(READING_HISTORY_STORAGE_KEY);
         if (savedHistory && active) setReadingHistory(normalizeReadingHistory(JSON.parse(savedHistory)));
         const savedReaderSettings = await AsyncStorage.getItem(READER_SETTINGS_STORAGE_KEY);
@@ -413,6 +424,11 @@ export default function App() {
     if (!isLoaded) return;
     AsyncStorage.setItem(SEARCH_LOGS_STORAGE_KEY, JSON.stringify(searchLogs.slice(0, 500))).catch(() => undefined);
   }, [searchLogs, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem(SEARCH_SOURCE_METRICS_STORAGE_KEY, JSON.stringify(searchSourceMetrics)).catch(() => undefined);
+  }, [searchSourceMetrics, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -729,6 +745,7 @@ export default function App() {
       setOnlineResults([]);
       return;
     }
+    const requestId = ++searchRequestIdRef.current;
     setSearchHistory((current) => [keyword, ...current.filter((item) => item.toLocaleLowerCase() !== keyword.toLocaleLowerCase())].slice(0, 10));
     const aliasKey = normalizeBookAlias(keyword);
     const resolvedKeyword = bookAliasMap[aliasKey] || keyword;
@@ -737,32 +754,22 @@ export default function App() {
       setSearchMessage("还没有启用的书源。请先到「源」页面添加订阅。");
       setOnlineResults([]);
       setSearchSummary("");
+      setSearching(false);
       return;
     }
+    const prioritizedSources = rankSourcesByPerformance(enabledSources, searchSourceMetrics);
     setSearching(true);
     setSearchMessage("");
-    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」已匹配真实书名「" + resolvedKeyword + "」。" : "") + "正在向 " + enabledSources.length + " 个书源发起搜索…");
+    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」已匹配真实书名「" + resolvedKeyword + "」。" : "") + "正在搜索 " + prioritizedSources.length + " 个书源（最多同时 3 个）…");
     setOnlineResults([]);
-    const settled = await Promise.allSettled(enabledSources.map(async (source) => {
-      const startedAt = Date.now();
-      const page = await searchNovelSource(source, resolvedKeyword, getSourceClient(source));
-      return { page, latencyMs: Date.now() - startedAt };
-    }));
+
     const groups = new Map<string, SearchNovelGroup>();
-    let failed = 0;
-    const completedAt = Date.now();
     const nextSearchLogs: SearchLogEntry[] = [];
-    settled.forEach((result, index) => {
-      const source = enabledSources[index];
-      if (result.status !== "fulfilled") {
-        failed += 1;
-        const reason = result.reason instanceof Error ? result.reason.message : String(result.reason || "搜索请求失败");
-        nextSearchLogs.push({ id: completedAt + ":" + index + ":" + source.id, sourceId: source.id, sourceName: source.name, keyword, ok: false, resultCount: 0, error: reason, searchedAt: completedAt });
-        return;
-      }
-      const { page, latencyMs } = result.value;
-      nextSearchLogs.push({ id: completedAt + ":" + index + ":" + source.id, sourceId: source.id, sourceName: source.name, keyword, ok: true, resultCount: page.items.length, searchedAt: completedAt });
-      page.items.forEach((item) => {
+    let completed = 0;
+    let failed = 0;
+    let foundCount = 0;
+    const mergePage = (items: NovelSummary[], latencyMs: number) => {
+      items.forEach((item) => {
         const key = [normalizeNovelTitle(item.title), normalizeNovelTitle(item.author)].join("::");
         const existing = groups.get(key);
         const option = { summary: item, latencyMs };
@@ -772,18 +779,53 @@ export default function App() {
           if (item.description.length > existing.description.length) existing.description = item.description;
           if (!existing.coverUrl && item.coverUrl) existing.coverUrl = item.coverUrl;
           if (!existing.sources.some((entry) => entry.summary.sourceId === item.sourceId)) existing.sources.push(option);
+          existing.sources.sort((a, b) => a.latencyMs - b.latencyMs);
         }
       });
-    });
-    const groupedResults = [...groups.values()].map((group) => ({
+    };
+
+    await runSearchPool(
+      prioritizedSources,
+      async (source) => searchNovelSource(source, resolvedKeyword, getSourceClient(source)),
+      (outcome) => {
+        if (requestId !== searchRequestIdRef.current) return;
+        completed += 1;
+        const source = outcome.source;
+        const completedAt = Date.now();
+        if (outcome.ok) {
+          mergePage(outcome.value.items, outcome.latencyMs);
+          foundCount = groups.size;
+          nextSearchLogs.push({ id: completedAt + ":" + source.id, sourceId: source.id, sourceName: source.name, keyword, ok: true, resultCount: outcome.value.items.length, searchedAt: completedAt });
+        } else {
+          failed += 1;
+          const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error || "搜索请求失败");
+          nextSearchLogs.push({ id: completedAt + ":" + source.id, sourceId: source.id, sourceName: source.name, keyword, ok: false, resultCount: 0, error: reason, searchedAt: completedAt });
+        }
+        setSearchSourceMetrics((current) => ({
+          ...current,
+          [source.id]: updateSearchPerformanceMetric(current[source.id], source.id, outcome.latencyMs, outcome.ok, outcome.ok ? outcome.value.items.length : 0, completedAt),
+        }));
+        const currentResults = rankNovelSearchResults([...groups.values()].map((group) => ({
+          ...group,
+          sources: [...group.sources].sort((a, b) => a.latencyMs - b.latencyMs),
+        })), resolvedKeyword);
+        setOnlineResults(currentResults);
+        setSearchLogs((current) => [...nextSearchLogs.slice(-1), ...current].slice(0, 500));
+        setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + "已完成 " + completed + "/" + prioritizedSources.length + " 个书源，当前找到 " + foundCount + " 本" + (completed < prioritizedSources.length ? "，其他书源继续搜索…" : "。"));
+      },
+      { concurrency: 3, isCancelled: () => requestId !== searchRequestIdRef.current }
+    );
+
+    if (requestId !== searchRequestIdRef.current) return;
+    setSearching(false);
+    const success = prioritizedSources.length - failed;
+    const groupedResults = rankNovelSearchResults([...groups.values()].map((group) => ({
       ...group,
       sources: [...group.sources].sort((a, b) => a.latencyMs - b.latencyMs),
-    }));
-    setSearchLogs((current) => [...nextSearchLogs, ...current].slice(0, 500));
+    })), resolvedKeyword);
     setOnlineResults(groupedResults);
-    setSearching(false);
-    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + "搜索完成：成功 " + (enabledSources.length - failed) + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。");
-    setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（支持常见 JSON 与已配置规则的 HTML）。" : "点击小说名称即可自动获取可用阅读源和章节目录。");
+    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + "搜索完成：成功 " + success + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。");
+    setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（支持常见 JSON 与已配置规则的 HTML）。" : "已优先展示匹配度较高的结果；其他书源结果已合并。点击小说名称即可获取章节目录。");
   };
 
   const loadNovelCatalogFor = async (novel: SearchNovelGroup) => {
