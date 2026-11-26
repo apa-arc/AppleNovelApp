@@ -59,7 +59,7 @@ export function createSourceHttpClient(
   timeoutMs = REQUEST_TIMEOUT_MS
 ): SourceHttpClient {
   const allowedOrigins = configuredOrigins(source);
-  const effectiveTimeoutMs = effectiveTimeoutMs;
+  const effectiveTimeoutMs = Math.max(500, Math.min(REQUEST_TIMEOUT_MS, timeoutMs));
 
   return {
     async get(endpoint, urlOverride, externalSignal) {
@@ -91,7 +91,7 @@ export function createSourceHttpClient(
       const abortFromCaller = () => controller.abort();
       if (externalSignal?.aborted) controller.abort();
       else externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
-      const timeout = setTimeout(() => controller.abort(), Math.max(500, Math.min(REQUEST_TIMEOUT_MS, timeoutMs)));
+      const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
       try {
         const response = await fetchImpl(target.toString(), {
           method: "GET",
@@ -134,7 +134,7 @@ export function createSourceHttpClient(
           throw new SourceHttpError("搜索已取消。", "cancelled");
         }
         if (controller.signal.aborted) {
-          throw new SourceHttpError("书源请求超时（${Math.ceil(effectiveTimeoutMs / 1000)} 秒）。", "timeout");
+          throw new SourceHttpError(`书源请求超时（${Math.ceil(effectiveTimeoutMs / 1000)} 秒）。`, "timeout");
         }
         const message = error instanceof Error ? error.message : "";
         if (/redirect/i.test(message)) {
