@@ -67,3 +67,12 @@ test("resolves the speaker rather than the person being addressed", () => {
 test("recognizes the common name-colon dialogue format without guessing pronouns", () => {
   assert.deepEqual(extractExplicitSpeakerNames("张三：“快走！”她：“我不走。”"), ["张三"]);
 });
+
+
+test("does not read a speaker attribution following a quoted line", () => {
+  const segments = splitTextForMultiVoice("“你好。”张三说道。", { "张三": 58 });
+  assert.equal(segments.length, 1);
+  assert.equal(segments[0].kind, "dialogue");
+  assert.equal(segments[0].speakerName, "张三");
+  assert.equal(segments[0].speakerId, 58);
+});
