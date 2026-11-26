@@ -46,6 +46,7 @@ import {
   Image,
   Animated,
   Easing,
+  PanResponder,
 } from "react-native";
 
 type Tab = "书架" | "搜索" | "源" | "我的";
@@ -214,6 +215,39 @@ export default function App() {
   const [ttsDefaultVoiceId, setTtsDefaultVoiceId] = useState(3);
   const [ttsSpeakerMap, setTtsSpeakerMap] = useState<Record<string, number>>({});
   const [ttsCellularAllowed, setTtsCellularAllowed] = useState(false);
+  const ttsFloatingPosition = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const ttsFloatingPositionRef = useRef({ x: 0, y: 0 });
+  const ttsFloatingPanResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_event, gesture) =>
+      Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5,
+    onPanResponderMove: (_event, gesture) => {
+      const { width, height } = Dimensions.get("window");
+      const maxX = Math.max(0, width - 114);
+      const maxY = Math.max(0, height - 500);
+      const x = Math.max(-maxX, Math.min(0, ttsFloatingPositionRef.current.x + gesture.dx));
+      const y = Math.max(-maxY, Math.min(0, ttsFloatingPositionRef.current.y + gesture.dy));
+      ttsFloatingPosition.setValue({ x, y });
+    },
+    onPanResponderRelease: (_event, gesture) => {
+      const { width, height } = Dimensions.get("window");
+      const maxX = Math.max(0, width - 114);
+      const maxY = Math.max(0, height - 500);
+      const rawX = Math.max(-maxX, Math.min(0, ttsFloatingPositionRef.current.x + gesture.dx));
+      const rawY = Math.max(-maxY, Math.min(0, ttsFloatingPositionRef.current.y + gesture.dy));
+      const snapLeft = gesture.moveX < width / 2;
+      const target = { x: snapLeft ? -maxX : 0, y: rawY };
+      ttsFloatingPositionRef.current = target;
+      Animated.spring(ttsFloatingPosition, {
+        toValue: target,
+        useNativeDriver: false,
+        stiffness: 220,
+        damping: 24,
+        mass: 0.8,
+      }).start();
+      if (snapLeft) setTtsPanelOpen(false);
+    },
+  })).current;
   const ttsGenerationIdRef = useRef(0);
   const ttsBookIdRef = useRef<string | null>(null);
   const ttsChapterIndexRef = useRef<number | null>(null);
@@ -1964,7 +1998,7 @@ export default function App() {
           </Pressable>
         </View>}
         {!showCatalog && (
-          <View pointerEvents="box-none" style={{ position: "absolute", right: 16, bottom: 86, alignItems: "flex-end", zIndex: 30 }}>
+          <Animated.View pointerEvents="box-none" {...ttsFloatingPanResponder.panHandlers} style={[{ position: "absolute", right: 16, bottom: 86, alignItems: "flex-end", zIndex: 30 }, { transform: ttsFloatingPosition.getTranslateTransform() }]}>
             {ttsPanelOpen && (
               <View style={{
                 width: 286,
@@ -2079,7 +2113,7 @@ export default function App() {
                 <Text style={{ color: readerTheme === "night" ? "#E5E9DE" : "#65745D", fontSize: 16 }}>⚙</Text>
               </Pressable>
             </View>
-          </View>
+          </Animated.View>
         )}
       </SafeAreaView>
     );
