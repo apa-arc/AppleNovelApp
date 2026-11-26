@@ -39,6 +39,7 @@ export class OfflineAudioPlaybackController {
   private listeners = new Set<PlaybackListener>();
   private destroyed = false;
   private waitingForTrack = false;
+  private pausedByUser = false;
   private advancing = false;
 
   constructor() {
@@ -83,6 +84,7 @@ export class OfflineAudioPlaybackController {
     if (!track) return;
     this.currentIndex = index;
     this.waitingForTrack = false;
+    this.pausedByUser = false;
     this.currentTime = 0;
     this.duration = 0;
     this.player.replace(track.uri);
@@ -157,7 +159,7 @@ export class OfflineAudioPlaybackController {
     this.tracks.push(...tracks);
     if (this.currentIndex < 0) {
       void this.playIndex(0);
-    } else if (this.waitingForTrack) {
+    } else if (this.waitingForTrack && !this.pausedByUser) {
       this.waitingForTrack = false;
       void this.advance();
     }
@@ -168,14 +170,20 @@ export class OfflineAudioPlaybackController {
     this.assertAlive();
     this.player.pause();
     this.playing = false;
-    this.waitingForTrack = false;
+    this.pausedByUser = true;
     this.emit();
   }
 
   async resume(): Promise<void> {
     this.assertAlive();
+    this.pausedByUser = false;
     if (this.currentIndex < 0 && this.tracks.length > 0) {
       await this.playIndex(0);
+      return;
+    }
+    if (this.waitingForTrack && this.currentIndex + 1 < this.tracks.length) {
+      this.waitingForTrack = false;
+      await this.advance();
       return;
     }
     this.player.play();
@@ -218,6 +226,7 @@ export class OfflineAudioPlaybackController {
     this.duration = 0;
     this.playing = false;
     this.waitingForTrack = false;
+    this.pausedByUser = false;
     this.player.clearLockScreenControls();
     this.emit();
   }
