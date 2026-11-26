@@ -34,6 +34,9 @@ module.exports = ({ config }) => {
       },
     ]);
   }
+  if (!plugins.includes("@kesha-antonov/react-native-background-downloader")) {
+    plugins.push("@kesha-antonov/react-native-background-downloader");
+  }
 
   const ios = { ...(config.ios || {}) };
   const infoPlist = { ...(ios.infoPlist || {}) };
