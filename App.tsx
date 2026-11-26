@@ -1904,6 +1904,9 @@ export default function App() {
           setTtsProgress(Math.round(((index + 1) / segments.length) * 100));
         }
         await controller.start(initialTracks);
+        // Starting may wait for the native iOS audio session. A stop or newer
+        // generation can invalidate this request while that await is pending.
+        if (generationId !== ttsGenerationIdRef.current) return;
         controller.setSpeed(ttsSpeed);
         setTtsMessage(`已识别 ${Object.keys(speakerMap).length} 位角色，正在准备后续语音`);
 
@@ -2021,6 +2024,8 @@ export default function App() {
           chapterTitle: `${name} · 音色试听`,
           segmentIndex: 0,
         }]);
+        // Do not let a cancelled preview finish or mutate a newer chapter queue.
+        if (previewId !== ttsGenerationIdRef.current) return;
         controller.finishQueue();
         controller.setSpeed(ttsSpeed);
         setTtsMessage(`正在试听${name}的${voiceLabel(voiceId)}`);
