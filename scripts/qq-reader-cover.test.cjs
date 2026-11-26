@@ -17,7 +17,7 @@ test("QQ Reading cover fallback requires exact title and prefers matching author
   };
   const cover = await lookupQQReaderCover("同名书", "目标作者", fetchMock);
   assert.equal(cover, "https://wfqqreader-1252317822.image.myqcloud.com/cover/22/t5_22.webp");
-  assert.match(calls[1], /book-detail\\/22$/);
+  assert.match(calls[1], /book-detail\/22$/);
 });
 
 test("QQ Reading cover fallback does not return a different title's cover", async () => {
