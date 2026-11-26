@@ -24,6 +24,35 @@ const COVER_KEYS = [
   "coverUrlList", "cover_url_list", "imageList", "image_list",
 ];
 const LIST_KEYS = ["data", "list", "books", "results", "items", "records"];
+const SEARCH_RESULT_CACHE_TTL_MS = 45_000;
+const SEARCH_RESULT_CACHE_MAX_ENTRIES = 120;
+type SearchResultCacheEntry = { expiresAt: number; page: NovelSearchPage };
+const searchResultCache = new Map<string, SearchResultCacheEntry>();
+
+function getCachedSearchPage(key: string): NovelSearchPage | undefined {
+  const entry = searchResultCache.get(key);
+  if (!entry) return undefined;
+  if (entry.expiresAt <= Date.now()) {
+    searchResultCache.delete(key);
+    return undefined;
+  }
+  // Return fresh containers so callers cannot mutate the cached page.
+  return { ...entry.page, items: entry.page.items.map((item) => ({ ...item })) };
+}
+
+function cacheSearchPage(key: string, page: NovelSearchPage): void {
+  searchResultCache.delete(key);
+  while (searchResultCache.size >= SEARCH_RESULT_CACHE_MAX_ENTRIES) {
+    const oldestKey = searchResultCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    searchResultCache.delete(oldestKey);
+  }
+  searchResultCache.set(key, {
+    expiresAt: Date.now() + SEARCH_RESULT_CACHE_TTL_MS,
+    page: { ...page, items: page.items.map((item) => ({ ...item })) },
+  });
+}
+
 
 function firstString(record: JsonRecord, keys: string[]): string {
   for (const key of keys) {
@@ -159,10 +188,21 @@ export function buildSearchRequestUrl(searchUrl: string, keyword: string): strin
 export async function searchNovelSource(source: NovelSource, keyword: string, client: SourceHttpClient = createSourceHttpClient(source, fetch, 8_000), signal?: AbortSignal): Promise<NovelSearchPage> {
   const cleanKeyword = keyword.trim();
   if (!cleanKeyword) throw new Error("请输入小说名称。");
+  if (signal?.aborted) throw new Error("搜索已取消。");
+  const cacheKey = source.id + "\\u0000" + source.searchUrl + "\\u0000" + cleanKeyword.toLocaleLowerCase();
+  const cachedPage = getCachedSearchPage(cacheKey);
+  if (cachedPage) return cachedPage;
   const response = await client.get("searchUrl", buildSearchRequestUrl(source.searchUrl, cleanKeyword), signal);
   if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
     if (!source.htmlRules?.search) throw new Error("该书源返回 HTML，但没有配置 CSS 搜索规则。");
     return parseHtmlSearchResults(response.body, source.id, source.name, cleanKeyword, response.url, source.htmlRules.search);
   }
-  return parseJsonSearchResults(response.body, source, cleanKeyword, response.url);
+  const page = /html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))
+    ? (() => {
+        if (!source.htmlRules?.search) throw new Error("该书源返回 HTML，但没有配置 CSS 搜索规则。");
+        return parseHtmlSearchResults(response.body, source.id, source.name, cleanKeyword, response.url, source.htmlRules.search);
+      })()
+    : parseJsonSearchResults(response.body, source, cleanKeyword, response.url);
+  if (!signal?.aborted) cacheSearchPage(cacheKey, page);
+  return page;
 }
