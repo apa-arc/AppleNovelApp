@@ -116,3 +116,21 @@ test("fetches detail-page og:image even when a source has no CSS detail rules", 
   assert.equal(detail.coverUrl, "https://cdn.books.example/poster.jpg");
   assert.equal(detail.title, summary.title);
 });
+
+test("HTML chapter links can use an explicitly allowed alternate source domain", async () => {
+  const multiDomainSource = {
+    ...source,
+    allowedDomains: ["cdn.books.example"],
+    htmlRules: { chapters: { itemSelector: "li", titleSelector: "a", urlSelector: "a" } }
+  };
+  const client = {
+    get: async () => ({
+      url: summary.bookUrl,
+      contentType: "text/html",
+      body: '<ul><li><a href="https://cdn.books.example/chapter/1">第一章</a></li></ul>'
+    })
+  };
+  const chapters = await fetchNovelChapterList(multiDomainSource, summary, client);
+  assert.equal(chapters.length, 1);
+  assert.equal(chapters[0].url, "https://cdn.books.example/chapter/1");
+});
