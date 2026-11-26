@@ -74,7 +74,34 @@ function bestSrcsetCandidate(value:string):string {
  candidates.sort((a,b)=>b.score-a.score);
  return candidates[0]?.url||"";
 }
-function safeCoverUrl(v:string,base:string):string{try{const raw=v.trim();if(!raw||/^(data:|blob:|javascript:|about:)/i.test(raw)||/(placeholder|blank|no[-_]?cover|default[-_]?cover|loading|spacer|no[-_]?image)/i.test(raw))return"";const u=new URL(raw,base);if((u.protocol!=="https:"&&u.protocol!=="http:")||u.username||u.password)return"";if(u.protocol==="http:")u.protocol="https:";return u.toString();}catch{return"";}}
+function safeCoverUrl(v:string,base:string):string{
+ try{
+  const raw=v.trim();
+  if(!raw||/^(data:|blob:|javascript:|about:)/i.test(raw)||/(placeholder|blank|no[-_]?cover|default[-_]?cover|loading|spacer|no[-_]?image)/i.test(raw))return"";
+  const u=new URL(raw,base),host=u.hostname.toLowerCase().replace(/^\\[|\\]$/g,"").replace(/\\.$/,"");
+  if((u.protocol!=="https:"&&u.protocol!=="http:")||u.username||u.password)return"";
+  if(host==="localhost"||host.endsWith(".localhost")||host.endsWith(".local")||host.endsWith(".internal"))return"";
+  const octets=host.split(".");
+  if(octets.length===4&&octets.every((part)=>/^\\d{1,3}$/.test(part))){
+   const [a,b,c]=octets.map(Number);
+   if([a,b,c].some((part)=>part<0||part>255)||a===0||a===10||a===127||a>=224||(a===100&&b>=64&&b<=127)||(a===169&&b===254)||(a===172&&b>=16&&b<=31)||(a===192&&b===168)||(a===192&&b===0&&c===0)||(a===198&&(b===18||b===19)))return"";
+  }
+  if(host.includes(":")&&(host==="::"||host==="::1"||/^f[cd]/i.test(host)||/^fe[89ab]/i.test(host)||/^::ffff:/i.test(host)))return"";
+  if(u.protocol==="http:")u.protocol="https:";
+  return u.toString();
+ }catch{return"";}
+}
+function imageUrlFromNode(node:Node,base:string,preferredAttribute?:string):string{
+ const values=[
+  preferredAttribute?attr(node,preferredAttribute):"",
+  attr(node,"content"),attr(node,"href"),attr(node,"data-src"),attr(node,"data-original"),
+  attr(node,"data-lazy-src"),attr(node,"data-lazyload"),attr(node,"data-actualsrc"),
+  attr(node,"data-cover"),attr(node,"data-image"),bestSrcsetCandidate(attr(node,"data-srcset")),
+  bestSrcsetCandidate(attr(node,"srcset")),attr(node,"src"),
+  attr(node,"style").match(/background(?:-image)?\\s*:\\s*url\\(['"]?([^)'" ]+)/i)?.[1]||""
+ ];
+ return values.map((value)=>safeCoverUrl(value,base)).find(Boolean)||"";
+}
 
 export type HtmlSearchRules={itemSelector:string;titleSelector:string;urlSelector:string;authorSelector?:string;descriptionSelector?:string;titleAttribute?:string;authorAttribute?:string;descriptionAttribute?:string;urlAttribute?:string;coverSelector?:string;coverAttribute?:string};
 export type HtmlDetailRules={titleSelector?:string;authorSelector?:string;descriptionSelector?:string;coverSelector?:string;coverAttribute?:string;titleAttribute?:string;authorAttribute?:string;descriptionAttribute?:string};
@@ -85,10 +112,12 @@ export function parseHtmlSearchResults(body:string,sourceId:string,sourceName:st
 }
 export function parseHtmlNovelDetail(body:string,summary:NovelSummary,r:HtmlDetailRules):NovelDetail{
  const root=parseHtmlDocument(body);
- const metadataCoverSelectors=["meta[property='og:image:secure_url']","meta[property='og:image']","meta[name='og:image']","meta[name='twitter:image']","meta[property='twitter:image']","link[rel='image_src']"];
- const configuredCovers=r.coverSelector?selectHtmlNodes(root,r.coverSelector).map((node)=>attr(node,r.coverAttribute||"content")||attr(node,"content")||attr(node,"href")||attr(node,"src")):[];
- const metadataCovers=metadataCoverSelectors.flatMap((selector)=>selectHtmlNodes(root,selector).map((node)=>attr(node,node.tag==="link"?"href":"content")||attr(node,"content")||attr(node,"href")||attr(node,"src")));
- const coverUrl=[...configuredCovers,...metadataCovers].map((raw)=>safeCoverUrl(raw,summary.bookUrl)).find(Boolean)||"";
+ const metadataCoverSelectors=["meta[property='og:image:secure_url']","meta[property='og:image']","meta[name='og:image']","meta[name='twitter:image']","meta[name='twitter:image:src']","meta[property='twitter:image']","meta[property='og:image:url']","link[rel='image_src']"];
+ const configuredCovers=r.coverSelector?selectHtmlNodes(root,r.coverSelector).map((node)=>imageUrlFromNode(node,summary.bookUrl,r.coverAttribute)):[];
+ const metadataCovers=metadataCoverSelectors.flatMap((selector)=>selectHtmlNodes(root,selector).map((node)=>imageUrlFromNode(node,summary.bookUrl,node.tag==="link"?"href":"content")));
+ const commonCoverSelectors=["#fmimg img",".bookimg img",".book-img img",".book-cover img",".cover img",".novel-cover img","img#cover","img.cover","[data-cover]"];
+ const pageCovers=commonCoverSelectors.flatMap((selector)=>selectHtmlNodes(root,selector).map((node)=>imageUrlFromNode(node,summary.bookUrl)));
+ const coverUrl=[...configuredCovers,...metadataCovers,...pageCovers].find(Boolean)||"";
  return{
   ...summary,
   title:textAt(root,r.titleSelector,r.titleAttribute)||summary.title,
