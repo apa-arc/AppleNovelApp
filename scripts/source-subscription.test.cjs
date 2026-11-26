@@ -6,7 +6,7 @@ const { parseSourceSubscription } = require("../.test-build/source-subscription.
 
 const compatible = {
   id: "json-source", name: "JSON 源", version: "1.2.0",
-  baseUrl: "https://books.example", domains: ["books.example"],
+  baseUrl: "https://books.example", domains: ["books.example", "cdn.books.example"],
   appConfig: {
     searchUrl: "https://books.example/search?q={keyword}",
     bookUrl: "https://books.example/book",
@@ -24,9 +24,25 @@ test("imports only entries with explicit safe JSON endpoint configuration", () =
   assert.equal(result.compatible.length, 1);
   assert.equal(result.compatible[0].name, "JSON 源");
   assert.equal(result.compatible[0].version, "1.2.0");
+  assert.deepEqual(result.compatible[0].allowedDomains, ["books.example", "cdn.books.example"]);
   assert.equal(result.compatible[0].htmlRules.search.itemSelector, ".book");
   assert.equal(result.unsupported.length, 1);
   assert.match(result.unsupported[0].reason, /脚本规则暂不执行/);
+});
+
+
+test("imports external JSON source allowDomains into the runtime configuration", () => {
+  const result = parseSourceSubscription(JSON.stringify({
+    name: "外部多域名源",
+    baseUrl: "https://books.example/",
+    domains: ["books.example", "img.books-cdn.example"],
+    searchUrl: "https://books.example/search?q={keyword}",
+    bookUrl: "https://books.example/book/{bookUrl}",
+    chapterListUrl: "https://books.example/toc/{bookUrl}",
+    chapterUrl: "https://books.example/chapter/{chapterUrl}"
+  }));
+  assert.equal(result.compatible.length, 1);
+  assert.deepEqual(result.compatible[0].allowedDomains, ["books.example", "img.books-cdn.example"]);
 });
 
 test("imports a validated alias dictionary separately from normal reading sources", () => {
