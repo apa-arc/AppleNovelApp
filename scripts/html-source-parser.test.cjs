@@ -97,3 +97,10 @@ test("Legado @text metadata uses element text instead of an HTML attribute", () 
   assert.equal(page.items[0].author, "文本作者");
   assert.equal(page.items[0].description, "文本简介");
 });
+
+test("HTML chapter titles support Legado content attributes", () => {
+  const chapters = p.parseHtmlChapterList('<ul><li><a data-title="序章" href="/c/1">占位文本</a></li></ul>', "b", "https://example.com", {
+    itemSelector: "li", titleSelector: "a", titleAttribute: "data-title", urlSelector: "a"
+  });
+  assert.equal(chapters[0].title, "序章");
+});
