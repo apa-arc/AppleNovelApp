@@ -26,7 +26,7 @@ test("QQ Reading cover fallback does not return a different title's cover", asyn
     { bid: 11, title: "另一本书", author: "目标作者" }
   ] } }), { status: 200 });
   const cover = await lookupQQReaderCover("目标小说", "目标作者", async (...args) => {
-    detailRequested = true;
+    if (String(args[0]).includes("/book-detail/")) detailRequested = true;
     return fetchMock(...args);
   });
   assert.equal(cover, null);
@@ -39,7 +39,7 @@ test("QQ Reading cover fallback rejects an exact-title result with a different k
     { bid: 11, title: "同名书", author: "其他作者" }
   ] } }), { status: 200 });
   const cover = await lookupQQReaderCover("同名书", "目标作者", async (...args) => {
-    detailRequested = true;
+    if (String(args[0]).includes("/book-detail/")) detailRequested = true;
     return fetchMock(...args);
   });
   assert.equal(cover, null);
