@@ -277,6 +277,10 @@ export class OfflineAudioPlaybackController {
 
   clearQueue(): void {
     this.assertAlive();
+    // Treat clearing as an explicit stop before calling native pause. Some
+    // players synchronously emit didJustFinish from pause(), which must never
+    // advance the old queue while it is being discarded.
+    this.pausedByUser = true;
     this.player.pause();
     this.tracks = [];
     this.currentIndex = -1;
