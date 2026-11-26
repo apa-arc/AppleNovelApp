@@ -296,6 +296,7 @@ export default function App() {
   const [searchSourceMetrics, setSearchSourceMetrics] = useState<Record<string, SearchPerformanceMetric>>({});
   const searchRequestIdRef = useRef(0);
   const catalogRequestIdRef = useRef(0);
+  const qqCoverLookupRef = useRef(new Set<string>());
   const searchRequestControllerRef = useRef<AbortController | null>(null);
   const [searchLogs, setSearchLogs] = useState<SearchLogEntry[]>([]);
   const [showSearchLogs, setShowSearchLogs] = useState(false);
@@ -926,9 +927,23 @@ export default function App() {
     [books, query]
   );
 
+  const recoverQQCoverForResult = async (novel: SearchNovelGroup, requestId: number) => {
+    if (qqCoverLookupRef.current.has(novel.id)) return;
+    qqCoverLookupRef.current.add(novel.id);
+    const coverUrl = await lookupQQReaderCover(novel.title, novel.author);
+    if (!coverUrl || requestId !== searchRequestIdRef.current) return;
+    setOnlineResults((current) => current.map((item) => item.id === novel.id && !item.coverUrl
+      ? { ...item, coverUrl }
+      : item));
+    setSelectedSearchNovel((current) => current?.id === novel.id && !current.coverUrl
+      ? { ...current, coverUrl }
+      : current);
+  };
+
   const searchOnlineNovels = async (searchTerm = onlineQuery) => {
     const keyword = searchTerm.trim();
     const requestId = ++searchRequestIdRef.current;
+    qqCoverLookupRef.current.clear();
     searchRequestControllerRef.current?.abort();
     const requestController = new AbortController();
     searchRequestControllerRef.current = requestController;
@@ -1038,24 +1053,9 @@ export default function App() {
       void (async () => {
         for (let offset = 0; offset < missingCoverResults.length; offset += 3) {
           if (requestId !== searchRequestIdRef.current) return;
-          const batch = missingCoverResults.slice(offset, offset + 3);
-          const recovered = await Promise.all(batch.map(async (item) => ({
-            id: item.id,
-            coverUrl: await lookupQQReaderCover(item.title, item.author),
-          })));
-          if (requestId !== searchRequestIdRef.current) return;
-          const valid = recovered.filter((item): item is { id: string; coverUrl: string } => !!item.coverUrl);
-          if (valid.length === 0) continue;
-          setOnlineResults((current) => current.map((item) => {
-            const found = valid.find((candidate) => candidate.id === item.id);
-            if (!found || item.coverUrl) return item;
-            return { ...item, coverUrl: found.coverUrl };
-          }));
-          setSelectedSearchNovel((current) => {
-            if (!current) return current;
-            const found = valid.find((candidate) => candidate.id === current.id);
-            return found && !current.coverUrl ? { ...current, coverUrl: found.coverUrl } : current;
-          });
+          await Promise.all(missingCoverResults.slice(offset, offset + 3).map((item) =>
+            recoverQQCoverForResult(item, requestId)
+          ));
         }
       })();
     }
@@ -2474,7 +2474,7 @@ export default function App() {
                 return (
                 <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={"打开《" + item.title + "》详情"} hitSlop={6} style={styles.searchResultTile} onPress={() => openSearchNovel(item)}>
                   {coverUrl ? (
-                    <Image source={{ uri: coverUrl }} style={styles.searchResultCover} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [coverUrl]: true }))} />
+                    <Image source={{ uri: coverUrl }} style={styles.searchResultCover} resizeMode="cover" onError={() => { setFailedCoverUrls((current) => ({ ...current, [coverUrl]: true })); void recoverQQCoverForResult(item, searchRequestIdRef.current); }} />
                   ) : (
                     <View style={[styles.searchResultCover, styles.searchResultCoverFallback]}>
                       <Text style={styles.searchResultFallbackTitle} numberOfLines={4}>{item.title}</Text>
