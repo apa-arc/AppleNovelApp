@@ -165,6 +165,24 @@ export default function App() {
     const controller = getOfflineAudioPlaybackController();
     return controller.subscribe(setTtsPlaybackState);
   }, [selectedBook?.id]);
+  useEffect(() => {
+    if (!selectedBook) {
+      setTtsSpeakerMap({});
+      return;
+    }
+    AsyncStorage.getItem(`${TTS_SPEAKER_MAP_STORAGE_KEY}:${selectedBook.id}`).then((value) => {
+      if (!value) {
+        setTtsSpeakerMap({});
+        return;
+      }
+      try {
+        const parsed = JSON.parse(value);
+        setTtsSpeakerMap(parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {});
+      } catch {
+        setTtsSpeakerMap({});
+      }
+    }).catch(() => setTtsSpeakerMap({}));
+  }, [selectedBook?.id]);
   const [books, setBooks] = useState<Book[]>([]);
   const [readingHistory, setReadingHistory] = useState<ReadingHistoryEntry[]>([]);
   const [showReadingHistory, setShowReadingHistory] = useState(false);
@@ -1724,6 +1742,11 @@ export default function App() {
     };
     const previewTtsVoice = async (name: string, voiceId: number) => {
       try {
+        const ready = await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+        if (!ready) {
+          Alert.alert("音色试听", "请先点击听书按钮下载中文语音模型。");
+          return;
+        }
         ttsGenerationIdRef.current += 1;
         setTtsGenerating(false);
         ttsBookIdRef.current = null;
@@ -1739,6 +1762,18 @@ export default function App() {
         setTtsMessage(`正在试听${name}的${voiceLabel(voiceId)}`);
       } catch (error) {
         Alert.alert("音色试听", error instanceof Error ? error.message : "试听失败。");
+      }
+    };
+    const restartOfflineTts = async () => {
+      try {
+        const ready = await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+        if (!ready) {
+          Alert.alert("离线听书", "请先点击听书按钮下载中文多角色语音模型。");
+          return;
+        }
+        await startOfflineTts();
+      } catch (error) {
+        Alert.alert("离线听书", error instanceof Error ? error.message : "无法检查本地语音模型。");
       }
     };
     const setTtsCellular = async (allowed: boolean) => {
@@ -1991,7 +2026,7 @@ export default function App() {
                   ))}
                 </ScrollView>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                  <Pressable onPress={() => void startOfflineTts()}><Text style={{ color: "#829575", fontSize: 11, fontWeight: "700" }}>重新生成本章</Text></Pressable>
+                  <Pressable onPress={() => void restartOfflineTts()}><Text style={{ color: "#829575", fontSize: 11, fontWeight: "700" }}>重新生成本章</Text></Pressable>
                   <Pressable onPress={() => void setTtsCellular(!ttsCellularAllowed)}><Text style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 10 }}>{ttsCellularAllowed ? "允许蜂窝下载" : "仅 Wi-Fi 下载"}</Text></Pressable>
                   <Pressable onPress={stopOfflineTts}><Text style={{ color: "#B56F62", fontSize: 11 }}>停止</Text></Pressable>
                 </View>
