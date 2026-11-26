@@ -154,7 +154,13 @@ export async function fetchNovelDetail(
   summary: NovelSummary,
   client: SourceHttpClient = createSourceHttpClient(source)
 ): Promise<NovelDetail> {
-  const response = await client.get("bookUrl", summary.bookUrl);
+  const bookPathSegments = new URL(summary.bookUrl).pathname.split("/").filter(Boolean);
+  const bookPathId = bookPathSegments[bookPathSegments.length - 1] || summary.id;
+  const bookPath = bookPathId.includes("_") ? bookPathId.split("_").join("/") : bookPathSegments.join("/");
+  const templated = replaceTemplate(source.bookUrl, {
+    bookUrl: summary.bookUrl, book: summary.bookUrl, url: summary.bookUrl, bookId: bookPathId, bookPath
+  });
+  const response = await client.get("bookUrl", templated || summary.bookUrl);
   if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
     // Detail pages often expose a standard og:image even when no custom
     // CSS detail rules are configured. Always parse metadata as a cover fallback.
@@ -174,7 +180,7 @@ export async function fetchNovelChapterList(
   // exposing the TOC at /html/7/7116/index.html.
   const bookPath = bookPathId.includes("_") ? bookPathId.split("_").join("/") : bookPathSegments.join("/");
   const templated = replaceTemplate(source.chapterListUrl, {
-    bookUrl: summary.bookUrl, book: summary.bookUrl, bookId: bookPathId, bookPath
+    bookUrl: summary.bookUrl, book: summary.bookUrl, url: summary.bookUrl, bookId: bookPathId, bookPath
   });
   const response = await client.get("chapterListUrl", templated || source.chapterListUrl);
   if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
