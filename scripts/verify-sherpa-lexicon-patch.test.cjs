@@ -10,6 +10,6 @@ test("Sherpa ONNX iOS detector prioritizes the Chinese Kokoro lexicon", () => {
   );
   assert.ok(fs.existsSync(sourcePath), "Sherpa ONNX iOS detector source must exist");
   const source = fs.readFileSync(sourcePath, "utf8");
-  assert.match(source, /if \(a\.languageId === "zh"\) return true;/);
-  assert.match(source, /if \(b\.languageId === "zh"\) return false;/);
+  assert.match(source, /if \(a\.languageId == "zh"\) return true;/);
+  assert.match(source, /if \(b\.languageId == "zh"\) return false;/);
 });
