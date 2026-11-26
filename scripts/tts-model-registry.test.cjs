@@ -43,6 +43,21 @@ test("uses an installed model directly without refreshing the registry", async (
   assert.deepEqual(calls, ["getInstalledPath"]);
 });
 
+
+test("refreshes the registry when installed-path lookup itself throws Unknown model id", async () => {
+  const { calls, dependencies } = createDependencies({
+    async getInstalledPath() {
+      calls.push("getInstalledPath");
+      throw new Error(`Unknown model id: ${modelId}`);
+    },
+  });
+
+  const path = await resolveTtsModelPath(modelId, dependencies);
+
+  assert.equal(path, "/models/kokoro");
+  assert.deepEqual(calls, ["getInstalledPath", "refresh", "ensureModel"]);
+});
+
 test("refreshes the registry before the first download", async () => {
   const { calls, dependencies } = createDependencies();
 
