@@ -1,0 +1,17 @@
+diff --git a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-helper.mm b/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-helper.mm
+index 0000000..0000000 100644
+--- a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-helper.mm
++++ b/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-helper.mm
+@@ -251,9 +251,13 @@ std::vector<LexiconCandidate> FindLexiconCandidates(
+     std::sort(candidates.begin(), candidates.end(), [](const LexiconCandidate& a, const LexiconCandidate& b) {
+         if (a.languageId == b.languageId) return a.path < b.path;
++        // Prefer Chinese lexicon for the app's Chinese Kokoro multi-language model.
++        // Keep the remaining language candidates available for future selection.
++        if (a.languageId == "zh") return true;
++        if (b.languageId == "zh") return false;
+         if (a.languageId == "default") return true;
+         if (b.languageId == "default") return false;
+         return a.languageId < b.languageId;
+     });
+     return candidates;
+ }
