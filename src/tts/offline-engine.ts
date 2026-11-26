@@ -6,6 +6,7 @@ import {
   ModelCategory,
   configureBackgroundDownloader,
   ensureModel,
+  refreshModels,
   type Progress,
 } from "react-native-sherpa-onnx/download";
 import {
@@ -65,10 +66,34 @@ export async function ensureOfflineTtsModel(
     allowsCellularAccess: allowCellularModelDownloads,
     showNotificationsEnabled: false,
   });
-  const result = await ensureModel(ModelCategory.Tts, KOKORO_ZH_MODEL_ID, {
-    onProgress,
-    verifyChecksum: true,
-  });
+
+  // ensureModel() only looks up IDs in the local model registry. It does not
+  // populate that registry itself, so a fresh install otherwise fails with
+  // "Unknown model id" before the first model download can even begin.
+  await refreshModels(ModelCategory.Tts);
+
+  let result;
+  try {
+    result = await ensureModel(ModelCategory.Tts, KOKORO_ZH_MODEL_ID, {
+      onProgress,
+      verifyChecksum: true,
+    });
+  } catch (error) {
+    // A recently cached catalog may predate Kokoro v1.1. Refresh it once before
+    // surfacing an unknown-ID error; do not retry unrelated download failures.
+    if (
+      !(error instanceof Error) ||
+      !error.message.includes(`Unknown model id: ${KOKORO_ZH_MODEL_ID}`)
+    ) {
+      throw error;
+    }
+    await refreshModels(ModelCategory.Tts, { forceRefresh: true });
+    result = await ensureModel(ModelCategory.Tts, KOKORO_ZH_MODEL_ID, {
+      onProgress,
+      verifyChecksum: true,
+    });
+  }
+
   return result.localPath;
 }
 
