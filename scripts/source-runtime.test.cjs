@@ -65,6 +65,27 @@ test("request cannot escape configured origins", async () => {
   assert.equal(called, false);
 });
 
+
+test("source parser preserves explicit public alternate domains and rejects private domains", () => {
+  const value = {
+    name: "多域名源", baseUrl: "https://books.example",
+    searchUrl: "https://books.example/search", bookUrl: "https://books.example/book",
+    chapterListUrl: "https://books.example/toc", chapterUrl: "https://books.example/chapter",
+    allowedDomains: ["cdn.books.example", "books.example", "cdn.books.example"]
+  };
+  assert.deepEqual(parseNovelSourceJson(JSON.stringify(value)).allowedDomains, ["cdn.books.example", "books.example"]);
+  assert.throws(() => parseNovelSourceJson(JSON.stringify({ ...value, allowedDomains: ["127.0.0.1"] })), /公开 HTTPS 主机名/);
+  assert.throws(() => parseNovelSourceJson(JSON.stringify({ ...value, allowedDomains: ["*.books.example"] })), /公开 HTTPS 主机名/);
+});
+
+test("source runtime permits requests and final URLs on explicitly allowed alternate domains", async () => {
+  const client = createSourceHttpClient(source({ allowedDomains: ["cdn.books.example"] }), async () =>
+    mockResponse({ url: "https://cdn.books.example/book/123" })
+  );
+  const result = await client.get("bookUrl", "https://cdn.books.example/book/123");
+  assert.equal(result.url, "https://cdn.books.example/book/123");
+});
+
 test("disabled sources cannot make requests", async () => {
   const client = createSourceHttpClient(source({ enabled: false }), async () => mockResponse());
   await assert.rejects(client.get("searchUrl"), (error) => error.code === "source-disabled");
