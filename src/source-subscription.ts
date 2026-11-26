@@ -105,7 +105,7 @@ function parseExternalSourceBundle(payload: unknown, subscriptionIdHint?: string
     let baseUrl = typeof raw.baseUrl === "string" ? raw.baseUrl : typeof raw.bookSourceUrl === "string" ? raw.bookSourceUrl : "";
     const rawSearchUrl = typeof raw.searchUrl === "string" ? raw.searchUrl : typeof legadoSearch.url === "string" ? legadoSearch.url : "";
     if (!baseUrl && rawSearchUrl) { try { baseUrl = new URL(rawSearchUrl.replace(/\{\{?key\}?\}/g, "keyword")).origin; } catch { baseUrl = ""; } }
-    const normalizeTemplate = (value: string) => value.replace(/\{\{\s*(key|keyword)\s*\}\}/gi, "{keyword}").replace(/\{\{\s*page\s*\}\}/gi, "{page}").replace(/\{\{\s*([^{}]+?)\s*\}\}/g, "{$1}");
+    const normalizeTemplate = (value: string) => value.replace(/\{\{?\s*(key|keyword)\s*\}?\}/gi, "{keyword}").replace(/\{\{?\s*page\s*\}?\}/gi, "{page}").replace(/\{\{\s*([^{}]+?)\s*\}\}/g, "{$1}");
     const resolveEndpoint = (value: string) => {
       const normalized = normalizeTemplate(value);
       try {
