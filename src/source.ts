@@ -149,7 +149,7 @@ function validateAllowedDomains(value: unknown): string[] | undefined {
     let parsed: URL;
     try { parsed = new URL("https://" + input); }
     catch { throw new Error("allowedDomains 中包含无效域名：" + input); }
-    if (parsed.username || parsed.password || parsed.port || parsed.pathname !== "/" ||
+    if (input.includes("*") || parsed.username || parsed.password || parsed.port || parsed.pathname !== "/" ||
         parsed.search || parsed.hash || parsed.host !== input ||
         isPrivateOrLocalHost(parsed.hostname)) {
       throw new Error("allowedDomains 只允许公开 HTTPS 主机名：" + input);
