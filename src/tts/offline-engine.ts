@@ -1,4 +1,5 @@
 import * as FileSystem from "expo-file-system/legacy";
+import { resolveTtsModelPath } from "./model-registry";
 import {
   getCoreMlSupport,
 } from "react-native-sherpa-onnx";
@@ -6,6 +7,8 @@ import {
   ModelCategory,
   configureBackgroundDownloader,
   ensureModel,
+  getModelPath,
+  refreshModels,
   type Progress,
 } from "react-native-sherpa-onnx/download";
 import {
@@ -65,11 +68,21 @@ export async function ensureOfflineTtsModel(
     allowsCellularAccess: allowCellularModelDownloads,
     showNotificationsEnabled: false,
   });
-  const result = await ensureModel(ModelCategory.Tts, KOKORO_ZH_MODEL_ID, {
-    onProgress,
-    verifyChecksum: true,
+
+  return resolveTtsModelPath(KOKORO_ZH_MODEL_ID, {
+    getInstalledPath: () => getModelPath(ModelCategory.Tts, KOKORO_ZH_MODEL_ID),
+    refreshModels: async (forceRefresh = false) => {
+      if (forceRefresh) {
+        await refreshModels(ModelCategory.Tts, { forceRefresh: true });
+      } else {
+        await refreshModels(ModelCategory.Tts);
+      }
+    },
+    ensureModel: () => ensureModel(ModelCategory.Tts, KOKORO_ZH_MODEL_ID, {
+      onProgress,
+      verifyChecksum: true,
+    }),
   });
-  return result.localPath;
 }
 
 /**
