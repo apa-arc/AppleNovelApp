@@ -234,7 +234,7 @@ export default function App() {
       Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5,
     onPanResponderMove: (_event, gesture) => {
       const { width, height } = Dimensions.get("window");
-      const maxX = Math.max(0, width - 114);
+      const maxX = Math.max(0, width - 318);
       const maxY = Math.max(0, height - 560);
       const x = Math.max(-maxX, Math.min(0, ttsFloatingPositionRef.current.x + gesture.dx));
       const y = Math.max(-maxY, Math.min(0, ttsFloatingPositionRef.current.y + gesture.dy));
@@ -242,7 +242,7 @@ export default function App() {
     },
     onPanResponderRelease: (_event, gesture) => {
       const { width, height } = Dimensions.get("window");
-      const maxX = Math.max(0, width - 114);
+      const maxX = Math.max(0, width - 318);
       const maxY = Math.max(0, height - 560);
       const rawY = Math.max(-maxY, Math.min(0, ttsFloatingPositionRef.current.y + gesture.dy));
       const snapLeft = gesture.moveX < width / 2;
@@ -2079,7 +2079,7 @@ export default function App() {
           </Pressable>
         </View>}
         {!showCatalog && (
-          <Animated.View pointerEvents="box-none" {...ttsFloatingPanResponder.panHandlers} style={[{ position: "absolute", right: 16, bottom: 86, alignItems: ttsFloatingSide === "left" ? "flex-start" : "flex-end", zIndex: 30 }, { transform: ttsFloatingPosition.getTranslateTransform() }]}>
+          <Animated.View pointerEvents="box-none" {...ttsFloatingPanResponder.panHandlers} style={[{ position: "absolute", right: 16, bottom: 86, width: 286, alignItems: ttsFloatingSide === "left" ? "flex-start" : "flex-end", zIndex: 30 }, { transform: ttsFloatingPosition.getTranslateTransform() }]}>
             {ttsPanelOpen && (
               <View style={{
                 width: 286,
