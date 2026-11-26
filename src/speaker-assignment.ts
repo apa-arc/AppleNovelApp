@@ -105,7 +105,7 @@ function cleanNarrationAroundDialogue(value: string): string {
 
 function speakerBeforeQuote(text: string, quoteStart: number): string | undefined {
   const prefix = text.slice(Math.max(0, quoteStart - 48), quoteStart);
-  const clause = prefix.split(/[。！？；\\n]/).pop() ?? prefix;
+  const clause = prefix.split(/[。！？；\n]/).pop() ?? prefix;
   return speakerFromTag(clause);
 }
 function speakerAfterQuote(text: string, quoteEnd: number): string | undefined {
