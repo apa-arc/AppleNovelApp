@@ -30,9 +30,9 @@ test("allocates stable distinct Kokoro voices and preserves manual choices", () 
 
 test("uses the default voice when dialogue speaker is ambiguous or unmapped", () => {
   const segments = splitTextForMultiVoice("她说道：“别过来！”", {});
-  assert.equal(segments.length, 2);
-  assert.equal(segments[1].speakerId, DEFAULT_KOKORO_ZH_VOICE_ID);
-  assert.equal(segments[1].speakerName, undefined);
+  assert.equal(segments.length, 1);
+  assert.equal(segments[0].speakerId, DEFAULT_KOKORO_ZH_VOICE_ID);
+  assert.equal(segments[0].speakerName, undefined);
 });
 
 test("splits narration and dialogue while assigning the book voice map", () => {
