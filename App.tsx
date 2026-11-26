@@ -392,7 +392,8 @@ export default function App() {
         const urls = [...new Set([book.coverUrl, ...(book.coverCandidates || []), book.onlineSummary?.coverUrl].filter((url): url is string => !!url))];
         // No cover URL is also a recovery case; otherwise only retry after every known URL failed.
         if (urls.length > 0 && urls.some((url) => !failedCoverUrls[url])) return false;
-        const attemptKey = book.id + ":" + urls.filter((url) => failedCoverUrls[url]).sort().join("|");
+        const enabledSourceKey = sources.filter((source) => source.enabled).map((source) => source.id).sort().join(",");
+        const attemptKey = book.id + ":" + enabledSourceKey + ":" + urls.filter((url) => failedCoverUrls[url]).sort().join("|");
         if (coverRecoveryAttemptsRef.current.has(attemptKey)) return false;
         coverRecoveryAttemptsRef.current.add(attemptKey);
         return true;
