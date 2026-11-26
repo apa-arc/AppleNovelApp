@@ -128,22 +128,34 @@ export async function loadOfflineTts(
         maxNumSentences: 1,
       };
 
+      const createValidatedEngine = async (selectedProvider: "coreml" | "cpu") => {
+        const engine = await createTTS({ ...options, provider: selectedProvider });
+        try {
+          const speakerCount = await engine.getNumSpeakers();
+          if (speakerCount < KOKORO_ZH_EXPECTED_SPEAKERS) {
+            throw new Error(
+              `中文多角色音色模型不完整：预期至少 ${KOKORO_ZH_EXPECTED_SPEAKERS} 个音色，实际检测到 ${speakerCount} 个。`,
+            );
+          }
+          return { engine, speakerCount };
+        } catch (error) {
+          await engine.destroy();
+          throw error;
+        }
+      };
+
       let engine: TtsEngine;
+      let speakerCount: number;
       try {
-        engine = await createTTS(options);
+        ({ engine, speakerCount } = await createValidatedEngine(provider));
       } catch (error) {
+        // Core ML can pass the generic capability probe but still fail to
+        // initialize this model or expose its complete speaker table.
         if (provider !== "coreml") throw error;
         provider = "cpu";
-        engine = await createTTS({ ...options, provider: "cpu" });
+        ({ engine, speakerCount } = await createValidatedEngine("cpu"));
       }
 
-      const speakerCount = await engine.getNumSpeakers();
-      if (speakerCount < KOKORO_ZH_EXPECTED_SPEAKERS) {
-        await engine.destroy();
-        throw new Error(
-          `中文多角色音色模型不完整：预期至少 ${KOKORO_ZH_EXPECTED_SPEAKERS} 个音色，实际检测到 ${speakerCount} 个。`,
-        );
-      }
       engineInstance = engine;
       activeProvider = provider;
       return engine;
