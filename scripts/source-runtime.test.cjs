@@ -65,6 +65,27 @@ test("request cannot escape configured origins", async () => {
   assert.equal(called, false);
 });
 
+
+test("source parser preserves explicit public alternate domains and rejects private domains", () => {
+  const value = {
+    name: "多域名源", baseUrl: "https://books.example",
+    searchUrl: "https://books.example/search", bookUrl: "https://books.example/book",
+    chapterListUrl: "https://books.example/toc", chapterUrl: "https://books.example/chapter",
+    allowedDomains: ["cdn.books.example", "books.example", "cdn.books.example"]
+  };
+  assert.deepEqual(parseNovelSourceJson(JSON.stringify(value)).allowedDomains, ["cdn.books.example", "books.example"]);
+  assert.throws(() => parseNovelSourceJson(JSON.stringify({ ...value, allowedDomains: ["127.0.0.1"] })), /公开 HTTPS 主机名/);
+  assert.throws(() => parseNovelSourceJson(JSON.stringify({ ...value, allowedDomains: ["*.books.example"] })), /公开 HTTPS 主机名/);
+});
+
+test("source runtime permits requests and final URLs on explicitly allowed alternate domains", async () => {
+  const client = createSourceHttpClient(source({ allowedDomains: ["cdn.books.example"] }), async () =>
+    mockResponse({ url: "https://cdn.books.example/book/123" })
+  );
+  const result = await client.get("bookUrl", "https://cdn.books.example/book/123");
+  assert.equal(result.url, "https://cdn.books.example/book/123");
+});
+
 test("disabled sources cannot make requests", async () => {
   const client = createSourceHttpClient(source({ enabled: false }), async () => mockResponse());
   await assert.rejects(client.get("searchUrl"), (error) => error.code === "source-disabled");
@@ -114,4 +135,23 @@ test("source parser preserves URL template tokens for native source adapters", (
   assert.equal(parsed.searchUrl, value.searchUrl);
   assert.equal(parsed.chapterListUrl, value.chapterListUrl);
   assert.equal(parsed.chapterUrl, value.chapterUrl);
+});
+
+
+test("caller abort signal cancels an in-flight source request", async () => {
+  const controller = new AbortController();
+  const client = createSourceHttpClient(source(), async (_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+  }));
+  const pending = client.get("searchUrl", undefined, controller.signal);
+  controller.abort();
+  await assert.rejects(pending, (error) => error instanceof SourceHttpError && error.code === "cancelled");
+});
+
+
+test("search request timeout can be shorter than catalog default", async () => {
+  const client = createSourceHttpClient(source(), async (_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+  }), 500);
+  await assert.rejects(client.get("searchUrl"), (error) => error instanceof SourceHttpError && error.code === "timeout" && /1 秒/.test(error.message));
 });

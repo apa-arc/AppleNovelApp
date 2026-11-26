@@ -19,8 +19,40 @@ const COVER_KEYS = [
   "pic", "picUrl", "pic_url", "picURL", "image", "imageUrl", "image_url", "img", "imgUrl",
   "img_url", "imgurl", "imgSrc", "img_src", "thumbnail", "thumb", "thumbUrl", "thumb_url",
   "thumbnailUrl", "thumbnail_url", "poster", "posterUrl", "poster_url", "verticalCover", "vertical_cover",
+  "coverImagePath", "cover_image_path", "bookCoverPath", "book_cover_path", "imagePath", "image_path",
+  "imgPath", "img_path", "picPath", "pic_path", "coverLink", "cover_link", "originalUrl", "original_url",
+  "coverUrlList", "cover_url_list", "imageList", "image_list",
 ];
 const LIST_KEYS = ["data", "list", "books", "results", "items", "records"];
+const SEARCH_RESULT_CACHE_TTL_MS = 45_000;
+const SEARCH_RESULT_CACHE_MAX_ENTRIES = 120;
+type SearchResultCacheEntry = { expiresAt: number; page: NovelSearchPage };
+const searchResultCache = new Map<string, SearchResultCacheEntry>();
+
+function getCachedSearchPage(key: string): NovelSearchPage | undefined {
+  const entry = searchResultCache.get(key);
+  if (!entry) return undefined;
+  if (entry.expiresAt <= Date.now()) {
+    searchResultCache.delete(key);
+    return undefined;
+  }
+  // Return fresh containers so callers cannot mutate the cached page.
+  return { ...entry.page, items: entry.page.items.map((item) => ({ ...item })) };
+}
+
+function cacheSearchPage(key: string, page: NovelSearchPage): void {
+  searchResultCache.delete(key);
+  while (searchResultCache.size >= SEARCH_RESULT_CACHE_MAX_ENTRIES) {
+    const oldestKey = searchResultCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    searchResultCache.delete(oldestKey);
+  }
+  searchResultCache.set(key, {
+    expiresAt: Date.now() + SEARCH_RESULT_CACHE_TTL_MS,
+    page: { ...page, items: page.items.map((item) => ({ ...item })) },
+  });
+}
+
 
 function firstString(record: JsonRecord, keys: string[]): string {
   for (const key of keys) {
@@ -99,7 +131,7 @@ function findCoverUrl(record: JsonRecord, responseUrl: string, depth = 0): strin
         if (resolved) return resolved;
       } else if (candidate && typeof candidate === "object") {
         const nested = candidate as JsonRecord;
-        for (const nestedKey of ["url", "src", "original", "large", "path", "imageUrl", "image_url", "file", "value", "href", "uri"]) {
+        for (const nestedKey of ["url", "src", "original", "large", "path", "imageUrl", "image_url", "file", "value", "href", "uri", "srcUrl", "fileUrl", "originalUrl", "thumbnailUrl", "coverUrl"]) {
           const raw = nested[nestedKey];
           if (typeof raw === "string") {
             const resolved = resolveCoverImageUrl(raw, responseUrl);
@@ -110,7 +142,7 @@ function findCoverUrl(record: JsonRecord, responseUrl: string, depth = 0): strin
     }
   }
   if (depth >= 3) return undefined;
-  for (const key of ["book", "bookInfo", "book_info", "info", "data", "detail", "result", "item", "images", "imageInfo", "image_info", "coverInfo", "cover_info", "picInfo", "pic_info", "media"]) {
+  for (const key of ["book", "bookInfo", "book_info", "info", "data", "detail", "result", "item", "images", "image", "img", "picture", "imageInfo", "image_info", "coverInfo", "cover_info", "picInfo", "pic_info", "media"]) {
     const nested = record[key];
     if (nested && typeof nested === "object" && !Array.isArray(nested)) {
       const found = findCoverUrl(nested as JsonRecord, responseUrl, depth + 1);
@@ -153,13 +185,27 @@ export function buildSearchRequestUrl(searchUrl: string, keyword: string): strin
 }
 
 /** JSON-only MVP adapter; it never executes source-provided JavaScript. */
-export async function searchNovelSource(source: NovelSource, keyword: string, client: SourceHttpClient = createSourceHttpClient(source)): Promise<NovelSearchPage> {
+export async function searchNovelSource(source: NovelSource, keyword: string, client: SourceHttpClient = createSourceHttpClient(source, fetch, 8_000), signal?: AbortSignal): Promise<NovelSearchPage> {
   const cleanKeyword = keyword.trim();
   if (!cleanKeyword) throw new Error("请输入小说名称。");
-  const response = await client.get("searchUrl", buildSearchRequestUrl(source.searchUrl, cleanKeyword));
-  if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
+  if (signal?.aborted) throw new Error("搜索已取消。");
+  const cacheKey = source.id + "\\u0000" + source.searchUrl + "\\u0000" + cleanKeyword.toLocaleLowerCase();
+  const cachedPage = getCachedSearchPage(cacheKey);
+  if (cachedPage) return cachedPage;
+  const response = await client.get("searchUrl", buildSearchRequestUrl(source.searchUrl, cleanKeyword), signal);
+  const isHtml = /html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["));
+  let page: NovelSearchPage;
+  if (isHtml) {
     if (!source.htmlRules?.search) throw new Error("该书源返回 HTML，但没有配置 CSS 搜索规则。");
-    return parseHtmlSearchResults(response.body, source.id, source.name, cleanKeyword, response.url, source.htmlRules.search);
+    const allowedOrigins = [
+      ...[source.baseUrl, source.searchUrl, source.bookUrl, source.chapterListUrl, source.chapterUrl]
+        .map((value) => new URL(value.replace(/\{[^}]+\}/g, "template")).origin),
+      ...(source.allowedDomains || []).map((domain) => new URL("https://" + domain).origin),
+    ];
+    page = parseHtmlSearchResults(response.body, source.id, source.name, cleanKeyword, response.url, source.htmlRules.search, allowedOrigins);
+  } else {
+    page = parseJsonSearchResults(response.body, source, cleanKeyword, response.url);
   }
-  return parseJsonSearchResults(response.body, source, cleanKeyword, response.url);
+  if (!signal?.aborted) cacheSearchPage(cacheKey, page);
+  return page;
 }

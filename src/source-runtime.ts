@@ -14,7 +14,7 @@ export type SourceHttpResult = {
 };
 
 export type SourceHttpClient = {
-  get(endpoint: SourceEndpoint, urlOverride?: string): Promise<SourceHttpResult>;
+  get(endpoint: SourceEndpoint, urlOverride?: string, signal?: AbortSignal): Promise<SourceHttpResult>;
 };
 
 export class SourceHttpError extends Error {
@@ -27,6 +27,7 @@ export class SourceHttpError extends Error {
       | "http-error"
       | "response-too-large"
       | "timeout"
+      | "cancelled"
       | "network-error"
   ) {
     super(message);
@@ -44,7 +45,9 @@ function configuredOrigins(source: NovelSource): Set<string> {
     source.bookUrl,
     source.chapterListUrl,
     source.chapterUrl,
-  ].map((value) => new URL(value).origin));
+  ].map((value) => new URL(value).origin).concat(
+    (source.allowedDomains || []).map((domain) => new URL("https://" + domain).origin)
+  ));
 }
 
 /**
@@ -54,12 +57,14 @@ function configuredOrigins(source: NovelSource): Set<string> {
  */
 export function createSourceHttpClient(
   source: NovelSource,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = REQUEST_TIMEOUT_MS
 ): SourceHttpClient {
   const allowedOrigins = configuredOrigins(source);
+  const effectiveTimeoutMs = Math.max(500, Math.min(REQUEST_TIMEOUT_MS, timeoutMs));
 
   return {
-    async get(endpoint, urlOverride) {
+    async get(endpoint, urlOverride, externalSignal) {
       if (!source.enabled) {
         throw new SourceHttpError("该书源已停用。", "source-disabled");
       }
@@ -85,7 +90,10 @@ export function createSourceHttpClient(
       }
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const abortFromCaller = () => controller.abort();
+      if (externalSignal?.aborted) controller.abort();
+      else externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
+      const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
       try {
         const response = await fetchImpl(target.toString(), {
           method: "GET",
@@ -124,8 +132,11 @@ export function createSourceHttpClient(
         };
       } catch (error) {
         if (error instanceof SourceHttpError) throw error;
+        if (externalSignal?.aborted) {
+          throw new SourceHttpError("搜索已取消。", "cancelled");
+        }
         if (controller.signal.aborted) {
-          throw new SourceHttpError("书源请求超时（12 秒）。", "timeout");
+          throw new SourceHttpError(`书源请求超时（${Math.ceil(effectiveTimeoutMs / 1000)} 秒）。`, "timeout");
         }
         const message = error instanceof Error ? error.message : "";
         if (/redirect/i.test(message)) {
@@ -134,6 +145,7 @@ export function createSourceHttpClient(
         throw new SourceHttpError("书源网络请求失败，请检查网络或站点状态。", "network-error");
       } finally {
         clearTimeout(timeout);
+        externalSignal?.removeEventListener("abort", abortFromCaller);
       }
     },
   };

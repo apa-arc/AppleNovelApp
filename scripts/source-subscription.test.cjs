@@ -6,7 +6,7 @@ const { parseSourceSubscription } = require("../.test-build/source-subscription.
 
 const compatible = {
   id: "json-source", name: "JSON 源", version: "1.2.0",
-  baseUrl: "https://books.example", domains: ["books.example"],
+  baseUrl: "https://books.example", domains: ["books.example", "cdn.books.example"],
   appConfig: {
     searchUrl: "https://books.example/search?q={keyword}",
     bookUrl: "https://books.example/book",
@@ -24,9 +24,25 @@ test("imports only entries with explicit safe JSON endpoint configuration", () =
   assert.equal(result.compatible.length, 1);
   assert.equal(result.compatible[0].name, "JSON 源");
   assert.equal(result.compatible[0].version, "1.2.0");
+  assert.deepEqual(result.compatible[0].allowedDomains, ["books.example", "cdn.books.example"]);
   assert.equal(result.compatible[0].htmlRules.search.itemSelector, ".book");
   assert.equal(result.unsupported.length, 1);
   assert.match(result.unsupported[0].reason, /脚本规则暂不执行/);
+});
+
+
+test("imports external JSON source allowDomains into the runtime configuration", () => {
+  const result = parseSourceSubscription(JSON.stringify({
+    name: "外部多域名源",
+    baseUrl: "https://books.example/",
+    domains: ["books.example", "img.books-cdn.example"],
+    searchUrl: "https://books.example/search?q={keyword}",
+    bookUrl: "https://books.example/book/{bookUrl}",
+    chapterListUrl: "https://books.example/toc/{bookUrl}",
+    chapterUrl: "https://books.example/chapter/{chapterUrl}"
+  }));
+  assert.equal(result.compatible.length, 1);
+  assert.deepEqual(result.compatible[0].allowedDomains, ["books.example", "img.books-cdn.example"]);
 });
 
 test("imports a validated alias dictionary separately from normal reading sources", () => {
@@ -154,4 +170,258 @@ test("recognizes the live 11-entry subscription alias source as compatible", () 
   assert.equal(result.aliasSources[0].name, "小说别名库");
   assert.equal(result.aliasSources[0].dataUrl, "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/aliases/book-aliases.json");
   assert.equal(result.unsupported.some((entry) => entry.id === "book-alias-dictionary"), false);
+});
+
+
+test("imports standalone and array-form JSON sources with common field aliases", () => {
+  const source = {
+    bookSourceName: "外部 JSON 源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    bookInfoUrl: "https://books.example/book/{{bookUrl}}",
+    tocUrl: "https://books.example/toc/{{bookUrl}}",
+    contentUrl: "https://books.example/content/{{chapterUrl}}"
+  };
+  const single = parseSourceSubscription(JSON.stringify(source));
+  assert.equal(single.compatible.length, 1);
+  assert.equal(single.compatible[0].name, "外部 JSON 源");
+  assert.equal(single.compatible[0].searchUrl, "https://books.example/search?q={keyword}");
+  const batch = parseSourceSubscription(JSON.stringify([source, { ...source, bookSourceName: "第二个源", bookSourceUrl: "https://other.example/" }]));
+  assert.equal(batch.compatible.length, 2);
+});
+
+test("recognizes Legado-style rule sources without executing their rule DSL", () => {
+  const result = parseSourceSubscription(JSON.stringify([{
+    bookSourceName: "阅读规则源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    ruleSearch: { bookList: "class.result", name: "a@text" },
+    ruleToc: { chapterList: "class.chapter a" },
+    ruleContent: { content: "id.content" }
+  }]));
+  assert.equal(result.compatible.length, 0);
+  assert.equal(result.unsupported.length, 1);
+  assert.match(result.unsupported[0].reason, /专属规则表达式尚未适配/);
+});
+
+
+test("supports TXT subscriptions containing one JSON source per line", () => {
+  const source = {
+    name: "TXT JSON 源", baseUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={keyword}",
+    bookUrl: "https://books.example/book/{bookUrl}",
+    chapterListUrl: "https://books.example/toc/{bookUrl}",
+    chapterUrl: "https://books.example/content/{chapterUrl}"
+  };
+  const result = parseSourceSubscription("# source list\n" + JSON.stringify(source) + "\n");
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.compatible[0].name, "TXT JSON 源");
+});
+
+test("maps basic Legado class/id/tag selectors into the app HTML rule format", () => {
+  const source = {
+    bookSourceName: "静态规则源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    bookInfoUrl: "https://books.example/book/{bookUrl}",
+    tocUrl: "https://books.example/toc/{bookUrl}",
+    contentUrl: "https://books.example/content/{chapterUrl}",
+    ruleSearch: { bookList: "class.book", name: "tag.a@text", bookUrl: "tag.a@href", author: "class.author@text", coverUrl: "tag.img@src" },
+    ruleToc: { chapterList: "class.chapter", chapterName: "tag.a@text", chapterUrl: "tag.a@href" },
+    ruleContent: { content: "id.content" },
+    ruleBookInfo: { name: "id.title", author: "class.author", intro: "class.intro" }
+  };
+  const result = parseSourceSubscription(JSON.stringify([source]));
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.compatible[0].htmlRules.search.itemSelector, ".book");
+  assert.equal(result.compatible[0].htmlRules.search.titleSelector, "a");
+  assert.equal(result.compatible[0].htmlRules.search.coverSelector, "img");
+  assert.equal(result.compatible[0].htmlRules.chapters.itemSelector, ".chapter");
+  assert.equal(result.compatible[0].htmlRules.chapters.titleAttribute, "text");
+  assert.equal(result.compatible[0].htmlRules.content.contentSelector, "#content");
+  assert.equal(result.compatible[0].htmlRules.detail.titleSelector, "#title");
+});
+
+
+test("maps Legado attribute suffixes on compound CSS selectors", () => {
+  const source = {
+    bookSourceName: "复合选择器源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    bookInfoUrl: "https://books.example/book/{bookUrl}",
+    tocUrl: "https://books.example/toc/{bookUrl}",
+    contentUrl: "https://books.example/content/{chapterUrl}",
+    ruleSearch: {
+      bookList: "class.result",
+      name: "a.book-title@text",
+      bookUrl: "a.book-title@href",
+      author: "span.author-name@text",
+      coverUrl: "img.cover@src"
+    },
+    ruleToc: {
+      chapterList: "class.chapter-list a.chapter",
+      chapterName: "a.chapter@text",
+      chapterUrl: "a.chapter@href"
+    },
+    ruleContent: { content: "div.reader-content@text" }
+  };
+  const result = parseSourceSubscription(JSON.stringify(source));
+  assert.equal(result.compatible.length, 1);
+  const rules = result.compatible[0].htmlRules;
+  assert.equal(rules.search.titleSelector, "a.book-title");
+  assert.equal(rules.search.urlSelector, "a.book-title");
+  assert.equal(rules.search.urlAttribute, "href");
+  assert.equal(rules.search.authorSelector, "span.author-name");
+  assert.equal(rules.search.coverSelector, "img.cover");
+  assert.equal(rules.search.coverAttribute, "src");
+  assert.equal(rules.chapters.itemSelector, ".chapter-list a.chapter");
+  assert.equal(rules.chapters.urlAttribute, "href");
+  assert.equal(rules.content.contentSelector, "div.reader-content");
+});
+
+
+test("preserves Legado @content and attribute selectors for search and detail metadata", () => {
+  const source = {
+    bookSourceName: "Meta 属性源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    bookInfoUrl: "https://books.example/book/{bookUrl}",
+    tocUrl: "https://books.example/toc/{bookUrl}",
+    contentUrl: "https://books.example/content/{chapterUrl}",
+    ruleSearch: {
+      bookList: "class.book",
+      name: "tag.meta[name=title]@content",
+      bookUrl: "tag.a@href",
+      author: "tag.meta[name=author]@content",
+      intro: "tag.meta[name=description]@content"
+    },
+    ruleToc: { chapterList: "class.chapter", chapterName: "tag.a@text", chapterUrl: "tag.a@href" },
+    ruleContent: { content: "id.content" },
+    ruleBookInfo: {
+      name: "tag.meta[name=title]@content",
+      author: "tag.meta[name=author]@content",
+      intro: "tag.meta[name=description]@content"
+    }
+  };
+  const result = parseSourceSubscription(JSON.stringify([source]));
+  assert.equal(result.compatible.length, 1);
+  const rules = result.compatible[0].htmlRules;
+  assert.equal(rules.search.titleSelector, "meta[name=title]");
+  assert.equal(rules.search.titleAttribute, "content");
+  assert.equal(rules.search.authorAttribute, "content");
+  assert.equal(rules.search.descriptionAttribute, "content");
+  assert.equal(rules.detail.titleAttribute, "content");
+  assert.equal(rules.detail.authorAttribute, "content");
+  assert.equal(rules.detail.descriptionAttribute, "content");
+});
+
+test("imports Legado sources that keep the search URL inside ruleSearch.url", () => {
+  const result = parseSourceSubscription(JSON.stringify({
+    bookSourceName: "Legado 相对地址源",
+    bookSourceUrl: "https://books.example/",
+    ruleSearch: {
+      url: "/search?key={{key}}&page={{page}}",
+      bookList: "class.book",
+      name: "tag.a@text",
+      bookUrl: "tag.a@href",
+      author: "class.author@text"
+    },
+    tocUrl: "/toc/{bookUrl}?id={bookId}",
+    contentUrl: "/content/{chapterUrl}",
+    ruleToc: {
+      chapterList: "class.chapter",
+      chapterName: "tag.a@text",
+      chapterUrl: "tag.a@href"
+    },
+    ruleContent: { content: "id.content" },
+    ruleBookInfo: { name: "id.title", author: "class.author" }
+  }));
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.unsupported.length, 0);
+  const source = result.compatible[0];
+  assert.equal(source.searchUrl, "https://books.example/search?key={keyword}&page={page}");
+  assert.equal(source.bookUrl, "https://books.example/");
+  assert.equal(source.chapterListUrl, "https://books.example/toc/{bookUrl}?id={bookId}");
+  assert.equal(source.chapterUrl, "https://books.example/content/{chapterUrl}");
+  assert.equal(source.htmlRules.search.titleSelector, "a");
+  assert.equal(source.htmlRules.chapters.itemSelector, ".chapter");
+});
+
+
+test("normalizes single-brace Legado key and page templates", () => {
+  const result = parseSourceSubscription(JSON.stringify({
+    bookSourceName: "单花括号模板源",
+    bookSourceUrl: "https://books.example/",
+    ruleSearch: {
+      url: "/search?key={key}&page={page}",
+      bookList: "class.book",
+      name: "tag.a@text",
+      bookUrl: "tag.a@href"
+    },
+    tocUrl: "/toc/{bookUrl}",
+    contentUrl: "/content/{chapterUrl}",
+    ruleToc: {
+      chapterList: "class.chapter",
+      chapterName: "tag.a@text",
+      chapterUrl: "tag.a@href"
+    },
+    ruleContent: { content: "id.content" }
+  }));
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.compatible[0].searchUrl, "https://books.example/search?key={keyword}&page={page}");
+});
+
+test("maps Legado detail-page cover rules into the HTML detail parser", () => {
+  const result = parseSourceSubscription(JSON.stringify({
+    bookSourceName: "详情封面规则源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={keyword}",
+    bookInfoUrl: "https://books.example/book/{bookUrl}",
+    tocUrl: "https://books.example/toc/{bookUrl}",
+    contentUrl: "https://books.example/content/{chapterUrl}",
+    ruleSearch: { bookList: "class.book", name: "tag.a@text", bookUrl: "tag.a@href" },
+    ruleToc: { chapterList: "class.chapter", chapterName: "tag.a@text", chapterUrl: "tag.a@href" },
+    ruleContent: { content: "id.content" },
+    ruleBookInfo: { name: "id.title", coverUrl: "tag.meta[property=og:image]@content" }
+  }));
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.compatible[0].htmlRules.detail.coverSelector, "meta[property=og:image]");
+  assert.equal(result.compatible[0].htmlRules.detail.coverAttribute, "content");
+});
+
+
+test("rejects complete Legado endpoint sources when their rule DSL is not supported", () => {
+  const result = parseSourceSubscription(JSON.stringify([{
+    bookSourceName: "暂不支持的动态规则源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    bookInfoUrl: "https://books.example/book/{{url}}",
+    tocUrl: "https://books.example/toc/{{url}}",
+    contentUrl: "https://books.example/content/{{url}}",
+    ruleSearch: { bookList: "class.result", name: "xpath////a/text()", bookUrl: "tag.a@href" },
+    ruleToc: { chapterList: "class.chapter", chapterName: "tag.a@text", chapterUrl: "tag.a@href" },
+    ruleContent: { content: "id.content" }
+  }]));
+  assert.equal(result.compatible.length, 0);
+  assert.equal(result.unsupported.length, 1);
+  assert.match(result.unsupported[0].reason, /暂未适配的表达式/);
+});
+
+
+test("maps supported Legado nth-child selectors for detail author extraction", () => {
+  const result = parseSourceSubscription(JSON.stringify([{
+    bookSourceName: "详情复合选择器源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    bookInfoUrl: "https://books.example/book/{{url}}",
+    tocUrl: "https://books.example/toc/{{url}}",
+    contentUrl: "https://books.example/content/{{url}}",
+    ruleSearch: { bookList: "class.book", name: "tag.a@text", bookUrl: "tag.a@href" },
+    ruleBookInfo: { author: "class.info_ct > tag.div:nth-child(2)@text" },
+    ruleToc: { chapterList: "class.chapter", chapterName: "tag.a@text", chapterUrl: "tag.a@href" },
+    ruleContent: { content: "id.content" }
+  }]));
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.compatible[0].htmlRules.detail.authorSelector, ".info_ct > div:nth-child(2)");
+  assert.equal(result.compatible[0].htmlRules.detail.authorAttribute, "text");
 });

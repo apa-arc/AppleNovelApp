@@ -1,0 +1,82 @@
+name: iOS Native Integration Check
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - app.config.js
+      - app.json
+      - package.json
+      - package-lock.json
+      - src/tts/**
+      - src/speaker-assignment.ts
+      - .github/workflows/ios-native-check.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ios-native-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ios-native:
+    name: Prebuild, Pods, and unsigned device compile
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Restore app icon asset
+        run: |
+          if [ ! -f assets/icon.png ]; then
+            test -f assets/icon.png.base64
+            base64 -D -i assets/icon.png.base64 -o assets/icon.png
+          fi
+          test -s assets/icon.png
+
+      - name: Generate iOS native project
+        env:
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
+          APP_UPDATE_CHANNEL: production
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Install iOS pods
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx pod-install
+
+      - name: Compile unsigned iOS device target
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          test -n "$WORKSPACE"
+          SCHEME="$(xcodebuild -list -json -workspace "$WORKSPACE" 2>/dev/null | ruby -rjson -e 'j=JSON.parse(STDIN.read); puts j.dig("workspace","schemes")&.find { |s| !s.start_with?("Pods-") }')"
+          test -n "$SCHEME"
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$RUNNER_TEMP/AppleNovelNativeCheck" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+          APP_PATH="$(find "$RUNNER_TEMP/AppleNovelNativeCheck/Build/Products/Release-iphoneos" -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "Native iOS app compiled successfully: $(basename "$APP_PATH")"

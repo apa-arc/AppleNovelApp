@@ -23,5 +23,29 @@ module.exports = ({ config }) => {
     };
   }
 
-  return { ...config, extra, updates };
+  const plugins = [...(config.plugins || [])];
+  if (!plugins.some((plugin) => Array.isArray(plugin) && plugin[0] === "expo-audio")) {
+    plugins.push([
+      "expo-audio",
+      {
+        microphonePermission: false,
+        recordAudioAndroid: false,
+        enableBackgroundRecording: false,
+      },
+    ]);
+  }
+  if (!plugins.includes("@kesha-antonov/react-native-background-downloader")) {
+    plugins.push("@kesha-antonov/react-native-background-downloader");
+  }
+
+  const ios = { ...(config.ios || {}) };
+  const infoPlist = { ...(ios.infoPlist || {}) };
+  const backgroundModes = Array.isArray(infoPlist.UIBackgroundModes)
+    ? [...infoPlist.UIBackgroundModes]
+    : [];
+  if (!backgroundModes.includes("audio")) backgroundModes.push("audio");
+  infoPlist.UIBackgroundModes = backgroundModes;
+  ios.infoPlist = infoPlist;
+
+  return { ...config, ios, plugins, extra, updates };
 };

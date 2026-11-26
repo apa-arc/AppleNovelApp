@@ -102,3 +102,70 @@ test("keeps absolute chapter URLs encoded when a source uses a query parameter",
   await fetchNovelChapterContent(querySource, chapter, client);
   assert.equal(requested, "https://books.example/read?url=https%3A%2F%2Fbooks.example%2Fchapter%2F1");
 });
+
+test("fetches detail-page og:image even when a source has no CSS detail rules", async () => {
+  const htmlSource = { ...source, htmlRules: undefined };
+  const client = {
+    get: async () => ({
+      url: summary.bookUrl,
+      contentType: "text/html; charset=utf-8",
+      body: '<html><head><meta property="og:image" content="//cdn.books.example/poster.jpg"></head><body><h1>测试小说</h1></body></html>'
+    })
+  };
+  const detail = await fetchNovelDetail(htmlSource, summary, client);
+  assert.equal(detail.coverUrl, "https://cdn.books.example/poster.jpg");
+  assert.equal(detail.title, summary.title);
+});
+
+test("HTML chapter links can use an explicitly allowed alternate source domain", async () => {
+  const multiDomainSource = {
+    ...source,
+    allowedDomains: ["cdn.books.example"],
+    htmlRules: { chapters: { itemSelector: "li", titleSelector: "a", urlSelector: "a" } }
+  };
+  const client = {
+    get: async () => ({
+      url: summary.bookUrl,
+      contentType: "text/html",
+      body: '<ul><li><a href="https://cdn.books.example/chapter/1">第一章</a></li></ul>'
+    })
+  };
+  const chapters = await fetchNovelChapterList(multiDomainSource, summary, client);
+  assert.equal(chapters.length, 1);
+  assert.equal(chapters[0].url, "https://cdn.books.example/chapter/1");
+});
+
+
+test("resolves Legado bookInfoUrl templates that use the {{url}} token", async () => {
+  const legadoSource = {
+    ...source,
+    bookUrl: "https://books.example/api/book-info?url={url}"
+  };
+  let requested = "";
+  const client = {
+    get: async (_endpoint, url) => {
+      requested = url;
+      return { url, contentType: "application/json", body: JSON.stringify({ title: "详情书名" }) };
+    }
+  };
+  const detail = await fetchNovelDetail(legadoSource, summary, client);
+  assert.equal(requested, "https://books.example/api/book-info?url=https%3A%2F%2Fbooks.example%2Fbook%2F1");
+  assert.equal(detail.title, "详情书名");
+});
+
+test("resolves Legado tocUrl templates that use the {{url}} token", async () => {
+  const legadoSource = {
+    ...source,
+    chapterListUrl: "https://books.example/api/toc?url={url}"
+  };
+  let requested = "";
+  const client = {
+    get: async (_endpoint, url) => {
+      requested = url;
+      return { url, contentType: "application/json", body: JSON.stringify([{ title: "第一章", url: "/chapter/1" }]) };
+    }
+  };
+  const chapters = await fetchNovelChapterList(legadoSource, summary, client);
+  assert.equal(requested, "https://books.example/api/toc?url=https%3A%2F%2Fbooks.example%2Fbook%2F1");
+  assert.equal(chapters.length, 1);
+});

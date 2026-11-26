@@ -62,17 +62,76 @@ function assertSupportedSelector(selector:string):void{
 export function selectHtmlNodes(root:Node,selector:string):Node[]{assertSupportedSelector(selector);return all(root).filter(n=>selector.split(",").some(s=>matches(n,s.trim())));}
 export function htmlNodeText(n:Node):string{const walk=(x:Node):string=>x.children.map(c=>typeof c==="string"?c:(["script","style","noscript"].includes(c.tag)?"":(["br","hr"].includes(c.tag)?"\n":(BLOCK.has(c.tag)?"\n":"")+walk(c)+(BLOCK.has(c.tag)?"\n":"")))).join("");return walk(n).replace(/[\t\f\v ]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").trim();}
 function attr(n:Node,name:string):string{return n.attrs[name.toLowerCase()]||"";}
-function textAt(n:Node,selector?:string,attribute?:string):string{const x=selector?selectHtmlNodes(n,selector)[0]:undefined;return x?(attribute?attr(x,attribute):htmlNodeText(x)):"";}
-function safeUrl(v:string,base:string):string{try{const origin=new URL(base).origin,u=new URL(v,base);return u.protocol==="https:"&&!u.username&&!u.password&&u.origin===origin?u.toString():"";}catch{return"";}}
-function safeCoverUrl(v:string,base:string):string{try{const u=new URL(v,base);if((u.protocol!=="https:"&&u.protocol!=="http:")||u.username||u.password)return"";if(u.protocol==="http:")u.protocol="https:";return u.toString();}catch{return"";}}
-
-export type HtmlSearchRules={itemSelector:string;titleSelector:string;urlSelector:string;authorSelector?:string;descriptionSelector?:string;urlAttribute?:string;coverSelector?:string;coverAttribute?:string};
-export type HtmlDetailRules={titleSelector?:string;authorSelector?:string;descriptionSelector?:string;titleAttribute?:string;authorAttribute?:string;descriptionAttribute?:string};
-export type HtmlChapterRules={itemSelector:string;titleSelector:string;urlSelector:string;urlAttribute?:string};
-export type HtmlContentRules={contentSelector:string;titleSelector?:string};
-export function parseHtmlSearchResults(body:string,sourceId:string,sourceName:string,keyword:string,responseUrl:string,r:HtmlSearchRules):{keyword:string;sourceId:string;items:NovelSummary[];hasMore:boolean}{
- const root=parseHtmlDocument(body),items=selectHtmlNodes(root,r.itemSelector).flatMap((n,i)=>{const tn=r.titleSelector===":self"?n:selectHtmlNodes(n,r.titleSelector)[0],ln=r.urlSelector===":self"?n:selectHtmlNodes(n,r.urlSelector)[0],title=tn?htmlNodeText(tn):"",bookUrl=ln?safeUrl(attr(ln,r.urlAttribute||"href"),responseUrl):"";if(!title||!bookUrl)return[];const cv=(r.coverSelector?selectHtmlNodes(n,r.coverSelector)[0]:undefined)||selectHtmlNodes(n,"img")[0],coverNodes=[...(cv?[cv]:[]),...selectHtmlNodes(n,"img"),...selectHtmlNodes(n,"picture source")].filter((node,index,nodes)=>nodes.indexOf(node)===index),coverCandidates=coverNodes.flatMap((image)=>[attr(image,"data-src"),attr(image,"data-original"),attr(image,"data-lazy-src"),attr(image,"data-lazyload"),attr(image,"data-lazy"),attr(image,"data-actualsrc"),attr(image,"data-original-src"),attr(image,"data-img"),attr(image,"data-image"),attr(image,"data-ks-lazyload"),attr(image,"data-echo"),attr(image,"data-url"),attr(image,"data-cover"),attr(image,"data-book-cover"),attr(image,"data-thumb"),attr(image,"data-lazy-img"),attr(image,"data-bg"),attr(image,"data-background"),attr(image,r.coverAttribute||""),attr(image,"data-srcset").split(",")[0]?.trim().split(/\s+/)[0]||"",attr(image,"srcset").split(",")[0]?.trim().split(/\s+/)[0]||"",attr(image,"src")]).concat(selectHtmlNodes(n,"[style]").map((node)=>attr(node,"style").match(/background(?:-image)?\s*:\s*url\(['"]?([^)'"]+)/i)?.[1]||"")),coverRaw=coverCandidates.find((value)=>{const candidate=value.trim();if(!candidate||/^(data:|about:|javascript:)/i.test(candidate)||/(placeholder|blank|no[-_]?cover|default[-_]?cover|loading|spacer)/i.test(candidate))return false;return !!safeCoverUrl(candidate,responseUrl);})||"",coverUrl=coverRaw?safeCoverUrl(coverRaw,responseUrl):"";return[{id:sourceId+":"+i+":"+bookUrl,sourceId,sourceName,title,author:textAt(n,r.authorSelector)||"未知作者",description:textAt(n,r.descriptionSelector),bookUrl,...(coverUrl?{coverUrl}:{})}];});return{keyword,sourceId,items,hasMore:false};
+function textAt(n:Node,selector?:string,attribute?:string):string{const x=selector?selectHtmlNodes(n,selector)[0]:undefined;return x?(attribute&&attribute!=="text"?attr(x,attribute):htmlNodeText(x)):"";}
+function safeUrl(v:string,base:string,allowedOrigins?:string[]):string{try{const u=new URL(v,base),allowed=new Set([new URL(base).origin,...(allowedOrigins||[])]);return u.protocol==="https:"&&!u.username&&!u.password&&allowed.has(u.origin)?u.toString():"";}catch{return"";}}
+function bestSrcsetCandidate(value:string):string {
+ const candidates=value.split(",").map((entry)=>entry.trim()).map((entry)=> {
+  const parts=entry.split(/\s+/),url=parts[0]||"",descriptor=parts[1]||"";
+  const number=Number.parseFloat(descriptor);
+  const score=descriptor.endsWith("w")&&Number.isFinite(number)?number:descriptor.endsWith("x")&&Number.isFinite(number)?number*1000:0;
+  return {url,score};
+ }).filter((entry)=>!!entry.url);
+ candidates.sort((a,b)=>b.score-a.score);
+ return candidates[0]?.url||"";
 }
-export function parseHtmlNovelDetail(body:string,summary:NovelSummary,r:HtmlDetailRules):NovelDetail{const root=parseHtmlDocument(body);return{...summary,title:textAt(root,r.titleSelector,r.titleAttribute)||summary.title,author:textAt(root,r.authorSelector,r.authorAttribute)||summary.author,description:textAt(root,r.descriptionSelector,r.descriptionAttribute)||summary.description,chapters:[]};}
-export function parseHtmlChapterList(body:string,novelId:string,responseUrl:string,r:HtmlChapterRules):NovelChapter[]{const root=parseHtmlDocument(body),out:NovelChapter[]=[];selectHtmlNodes(root,r.itemSelector).forEach((n,i)=>{const tn=r.titleSelector===":self"?n:selectHtmlNodes(n,r.titleSelector)[0],ln=r.urlSelector===":self"?n:selectHtmlNodes(n,r.urlSelector)[0],title=tn?htmlNodeText(tn):"",href=ln?safeUrl(attr(ln,r.urlAttribute||"href"),responseUrl):"";if(title&&href)out.push({id:novelId+":"+i+":"+href,novelId,title,url:href,index:out.length});});if(!out.length)throw new Error("HTML 章节规则没有匹配到有效章节。");return out;}
+function safeCoverUrl(v:string,base:string):string{
+ try{
+  const raw=v.trim();
+  if(!raw||/^(data:|blob:|javascript:|about:)/i.test(raw)||/(placeholder|blank|no[-_]?cover|default[-_]?cover|loading|spacer|no[-_]?image)/i.test(raw))return"";
+  const u=new URL(raw,base),host=u.hostname.toLowerCase().replace(/^\[|\]$/g,"").replace(/\.$/,"");
+  if((u.protocol!=="https:"&&u.protocol!=="http:")||u.username||u.password)return"";
+  if(host==="localhost"||host.endsWith(".localhost")||host.endsWith(".local")||host.endsWith(".internal"))return"";
+  const octets=host.split(".");
+  if(octets.length===4&&octets.every((part)=>/^\d{1,3}$/.test(part))){
+   const [a,b,c,d]=octets.map(Number);
+   if([a,b,c,d].some((part)=>part<0||part>255)||a===0||a===10||a===127||a>=224||(a===100&&b>=64&&b<=127)||(a===169&&b===254)||(a===172&&b>=16&&b<=31)||(a===192&&b===168)||(a===192&&b===0&&c===0)||(a===198&&(b===18||b===19)))return"";
+  }
+  if(host.includes(":")&&(host==="::"||host==="::1"||/^f[cd]/i.test(host)||/^fe[89ab]/i.test(host)||/^::ffff:/i.test(host)))return"";
+  if(u.protocol==="http:")u.protocol="https:";
+  return u.toString();
+ }catch{return"";}
+}
+function imageUrlFromNode(node:Node,base:string,preferredAttribute?:string):string{
+ const values=[
+  preferredAttribute?attr(node,preferredAttribute):"",
+  attr(node,"content"),attr(node,"href"),attr(node,"data-src"),attr(node,"data-original"),
+  attr(node,"data-lazy-src"),attr(node,"data-lazyload"),attr(node,"data-lazy"),
+  attr(node,"data-actualsrc"),attr(node,"data-original-src"),attr(node,"data-img"),
+  attr(node,"data-ks-lazyload"),attr(node,"data-echo"),attr(node,"data-url"),
+  attr(node,"data-cover"),attr(node,"data-book-cover"),attr(node,"data-thumb"),
+  attr(node,"data-lazy-img"),attr(node,"data-bg"),attr(node,"data-background"),
+  attr(node,"data-image"),bestSrcsetCandidate(attr(node,"data-srcset")),
+  bestSrcsetCandidate(attr(node,"srcset")),attr(node,"src"),
+  attr(node,"style").match(/background(?:-image)?\s*:\s*url\(['"]?([^)'" ]+)/i)?.[1]||""
+ ];
+ return values.map((value)=>safeCoverUrl(value,base)).find(Boolean)||"";
+}
+
+export type HtmlSearchRules={itemSelector:string;titleSelector:string;urlSelector:string;authorSelector?:string;descriptionSelector?:string;titleAttribute?:string;authorAttribute?:string;descriptionAttribute?:string;urlAttribute?:string;coverSelector?:string;coverAttribute?:string};
+export type HtmlDetailRules={titleSelector?:string;authorSelector?:string;descriptionSelector?:string;coverSelector?:string;coverAttribute?:string;titleAttribute?:string;authorAttribute?:string;descriptionAttribute?:string};
+export type HtmlChapterRules={itemSelector:string;titleSelector:string;urlSelector:string;titleAttribute?:string;urlAttribute?:string};
+export type HtmlContentRules={contentSelector:string;titleSelector?:string};
+export function parseHtmlSearchResults(body:string,sourceId:string,sourceName:string,keyword:string,responseUrl:string,r:HtmlSearchRules,allowedOrigins?:string[]):{keyword:string;sourceId:string;items:NovelSummary[];hasMore:boolean}{
+ const root=parseHtmlDocument(body),items=selectHtmlNodes(root,r.itemSelector).flatMap((n,i)=>{const tn=r.titleSelector===":self"?n:selectHtmlNodes(n,r.titleSelector)[0],ln=r.urlSelector===":self"?n:selectHtmlNodes(n,r.urlSelector)[0],title=tn?(r.titleAttribute&&r.titleAttribute!=="text"?attr(tn,r.titleAttribute):htmlNodeText(tn)):"",bookUrl=ln?safeUrl(attr(ln,r.urlAttribute||"href"),responseUrl,allowedOrigins):"";if(!title||!bookUrl)return[];const cv=(r.coverSelector?selectHtmlNodes(n,r.coverSelector)[0]:undefined)||selectHtmlNodes(n,"img")[0],coverNodes=[...(cv?[cv]:[]),...selectHtmlNodes(n,"img"),...selectHtmlNodes(n,"picture source")].filter((node,index,nodes)=>nodes.indexOf(node)===index),coverCandidates=coverNodes.flatMap((image)=>[attr(image,"data-src"),attr(image,"data-original"),attr(image,"data-lazy-src"),attr(image,"data-lazyload"),attr(image,"data-lazy"),attr(image,"data-actualsrc"),attr(image,"data-original-src"),attr(image,"data-img"),attr(image,"data-image"),attr(image,"data-ks-lazyload"),attr(image,"data-echo"),attr(image,"data-url"),attr(image,"data-cover"),attr(image,"data-book-cover"),attr(image,"data-thumb"),attr(image,"data-lazy-img"),attr(image,"data-bg"),attr(image,"data-background"),attr(image,r.coverAttribute||""),bestSrcsetCandidate(attr(image,"data-srcset")),bestSrcsetCandidate(attr(image,"srcset")),attr(image,"src")]).concat(selectHtmlNodes(n,"[style]").map((node)=>attr(node,"style").match(/background(?:-image)?\s*:\s*url\(['"]?([^)'"]+)/i)?.[1]||"")),coverRaw=coverCandidates.find((value)=>{const candidate=value.trim();if(!candidate||/^(data:|about:|javascript:)/i.test(candidate)||/(placeholder|blank|no[-_]?cover|default[-_]?cover|loading|spacer)/i.test(candidate))return false;return !!safeCoverUrl(candidate,responseUrl);})||"",coverUrl=coverRaw?safeCoverUrl(coverRaw,responseUrl):"";return[{id:sourceId+":"+i+":"+bookUrl,sourceId,sourceName,title,author:textAt(n,r.authorSelector,r.authorAttribute)||"未知作者",description:textAt(n,r.descriptionSelector,r.descriptionAttribute),bookUrl,...(coverUrl?{coverUrl}:{})}];});return{keyword,sourceId,items,hasMore:false};
+}
+export function parseHtmlNovelDetail(body:string,summary:NovelSummary,r:HtmlDetailRules):NovelDetail{
+ const root=parseHtmlDocument(body);
+ const metadataCoverSelectors=["meta[property='og:image:secure_url']","meta[property='og:image']","meta[name='og:image']","meta[name='twitter:image']","meta[name='twitter:image:src']","meta[property='twitter:image']","meta[property='og:image:url']","link[rel='image_src']"];
+ const configuredCovers=r.coverSelector?selectHtmlNodes(root,r.coverSelector).map((node)=>imageUrlFromNode(node,summary.bookUrl,r.coverAttribute)):[];
+ const metadataCovers=metadataCoverSelectors.flatMap((selector)=>selectHtmlNodes(root,selector).map((node)=>imageUrlFromNode(node,summary.bookUrl,node.tag==="link"?"href":"content")));
+ const commonCoverSelectors=["#fmimg img",".bookimg img",".book-img img",".book-cover img",".cover img",".novel-cover img","img#cover","img.cover","[data-cover]"];
+ const pageCovers=commonCoverSelectors.flatMap((selector)=>selectHtmlNodes(root,selector).map((node)=>imageUrlFromNode(node,summary.bookUrl)));
+ const coverUrl=[...configuredCovers,...metadataCovers,...pageCovers].find(Boolean)||"";
+ const rawAuthor=textAt(root,r.authorSelector,r.authorAttribute)||summary.author;
+ const rawDescription=textAt(root,r.descriptionSelector,r.descriptionAttribute)||summary.description;
+ return{
+  ...summary,
+  title:textAt(root,r.titleSelector,r.titleAttribute)||summary.title,
+  author:rawAuthor.replace(/^(?:作者|Author)\s*[:：]\s*/i,"").trim(),
+  description:rawDescription.replace(/^(?:简介|内容简介|作品简介)\s*[:：]\s*/i,"").trim(),
+  ...(coverUrl?{coverUrl}:{}),
+  chapters:[]
+ };
+}
+export function parseHtmlChapterList(body:string,novelId:string,responseUrl:string,r:HtmlChapterRules,allowedOrigins?:string[]):NovelChapter[]{const root=parseHtmlDocument(body),out:NovelChapter[]=[];selectHtmlNodes(root,r.itemSelector).forEach((n,i)=>{const tn=r.titleSelector===":self"?n:selectHtmlNodes(n,r.titleSelector)[0],ln=r.urlSelector===":self"?n:selectHtmlNodes(n,r.urlSelector)[0],title=tn?(r.titleAttribute&&r.titleAttribute!=="text"?attr(tn,r.titleAttribute):htmlNodeText(tn)):"",href=ln?safeUrl(attr(ln,r.urlAttribute||"href"),responseUrl,allowedOrigins):"";if(title&&href)out.push({id:novelId+":"+i+":"+href,novelId,title,url:href,index:out.length});});if(!out.length)throw new Error("HTML 章节规则没有匹配到有效章节。");return out;}
 export function parseHtmlChapterContent(body:string,fallbackTitle:string,r:HtmlContentRules):NovelContent{const root=parseHtmlDocument(body),node=selectHtmlNodes(root,r.contentSelector)[0];if(!node)throw new Error("HTML 正文选择器未匹配到内容："+r.contentSelector);const content=htmlNodeText(node);if(!content)throw new Error("HTML 正文为空。");return{chapterId:"",title:textAt(root,r.titleSelector)||fallbackTitle,content};}

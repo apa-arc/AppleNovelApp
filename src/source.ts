@@ -9,6 +9,8 @@ export type NovelSource = {
   enabled: boolean;
   importedAt: number;
   htmlRules?: HtmlSourceRules;
+  /** Additional public HTTPS hostnames explicitly trusted by a source subscription. */
+  allowedDomains?: string[];
   subscriptionGroup?: "normal" | "adult";
   subscriptionId?: string;
   remoteSourceId?: string;
@@ -29,14 +31,15 @@ export type NovelSource = {
 };
 
 export type HtmlSourceRules = {
-  search?: { itemSelector:string; titleSelector:string; urlSelector:string; authorSelector?:string; descriptionSelector?:string; urlAttribute?:string; coverSelector?:string; coverAttribute?:string };
-  detail?: { titleSelector?:string; authorSelector?:string; descriptionSelector?:string; titleAttribute?:string; authorAttribute?:string; descriptionAttribute?:string };
-  chapters?: { itemSelector:string; titleSelector:string; urlSelector:string; urlAttribute?:string };
+  search?: { itemSelector:string; titleSelector:string; urlSelector:string; authorSelector?:string; descriptionSelector?:string; titleAttribute?:string; authorAttribute?:string; descriptionAttribute?:string; urlAttribute?:string; coverSelector?:string; coverAttribute?:string };
+  detail?: { titleSelector?:string; authorSelector?:string; descriptionSelector?:string; coverSelector?:string; coverAttribute?:string; titleAttribute?:string; authorAttribute?:string; descriptionAttribute?:string };
+  chapters?: { itemSelector:string; titleSelector:string; urlSelector:string; titleAttribute?:string; urlAttribute?:string };
   content?: { contentSelector:string; titleSelector?:string };
 };
 
 type SourceInput = {
   htmlRules?: unknown;
+  allowedDomains?: unknown;
   name?: unknown;
   baseUrl?: unknown;
   searchUrl?: unknown;
@@ -58,9 +61,9 @@ function validateHtmlRules(value: unknown): HtmlSourceRules {
     for(const field of allowed){if(obj[field]===undefined)continue;if(typeof obj[field]!=="string"||!(obj[field] as string).trim()||(obj[field] as string).length>300)throw new Error("htmlRules."+key+"."+field+" 无效。");out[field]=(obj[field] as string).trim();}
     for(const field of required)if(!out[field])throw new Error("htmlRules."+key+" 缺少 "+field+"。");return out;
   };
-  const search=read("search",["itemSelector","titleSelector","urlSelector"],["itemSelector","titleSelector","urlSelector","authorSelector","descriptionSelector","urlAttribute","coverSelector","coverAttribute"]);
-  const detail=read("detail",[],["titleSelector","authorSelector","descriptionSelector","titleAttribute","authorAttribute","descriptionAttribute"]);
-  const chapters=read("chapters",["itemSelector","titleSelector","urlSelector"],["itemSelector","titleSelector","urlSelector","urlAttribute"]);
+  const search=read("search",["itemSelector","titleSelector","urlSelector"],["itemSelector","titleSelector","urlSelector","authorSelector","descriptionSelector","titleAttribute","authorAttribute","descriptionAttribute","urlAttribute","coverSelector","coverAttribute"]);
+  const detail=read("detail",[],["titleSelector","authorSelector","descriptionSelector","coverSelector","coverAttribute","titleAttribute","authorAttribute","descriptionAttribute"]);
+  const chapters=read("chapters",["itemSelector","titleSelector","urlSelector"],["itemSelector","titleSelector","urlSelector","titleAttribute","urlAttribute"]);
   const content=read("content",["contentSelector"],["contentSelector","titleSelector"]);
   return {...(search?{search:search as NonNullable<HtmlSourceRules["search"]>}:{}),...(detail?{detail:detail as NonNullable<HtmlSourceRules["detail"]>}:{}),...(chapters?{chapters:chapters as NonNullable<HtmlSourceRules["chapters"]>}:{}),...(content?{content:content as NonNullable<HtmlSourceRules["content"]>}:{})};
 }
@@ -131,6 +134,31 @@ function isSafeHttpsUrl(value: unknown, field: string): string {
   return value.trim();
 }
 
+
+function validateAllowedDomains(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 50) {
+    throw new Error("allowedDomains 必须是最多 50 个域名的数组。");
+  }
+  const domains = new Set<string>();
+  for (const raw of value) {
+    if (typeof raw !== "string" || !raw.trim()) {
+      throw new Error("allowedDomains 中包含无效域名。");
+    }
+    const input = raw.trim().toLowerCase();
+    let parsed: URL;
+    try { parsed = new URL("https://" + input); }
+    catch { throw new Error("allowedDomains 中包含无效域名：" + input); }
+    if (input.includes("*") || parsed.username || parsed.password || parsed.port || parsed.pathname !== "/" ||
+        parsed.search || parsed.hash || parsed.host !== input ||
+        isPrivateOrLocalHost(parsed.hostname)) {
+      throw new Error("allowedDomains 只允许公开 HTTPS 主机名：" + input);
+    }
+    domains.add(parsed.hostname);
+  }
+  return [...domains];
+}
+
 export function parseNovelSourceJson(raw: string): Omit<NovelSource, "id" | "enabled" | "importedAt"> {
   let parsed: unknown;
   try {
@@ -153,6 +181,7 @@ export function parseNovelSourceJson(raw: string): Omit<NovelSource, "id" | "ena
     chapterListUrl: isSafeHttpsUrl(input.chapterListUrl, "chapterListUrl"),
     chapterUrl: isSafeHttpsUrl(input.chapterUrl, "chapterUrl"),
     ...(input.htmlRules !== undefined ? { htmlRules: validateHtmlRules(input.htmlRules) } : {}),
+    ...(input.allowedDomains !== undefined ? { allowedDomains: validateAllowedDomains(input.allowedDomains) } : {}),
   };
 }
 

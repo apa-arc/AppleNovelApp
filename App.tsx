@@ -7,6 +7,7 @@ import type { NovelSource } from "./src/source";
 import { parseSourceSubscription } from "./src/source-subscription";
 import { normalizeBookAlias, parseBookAliasDictionary } from "./src/book-alias-dictionary";
 import { searchNovelSource } from "./src/source-search";
+import { rankNovelSearchResults, rankSourcesByPerformance, updateSearchPerformanceMetric, runSearchPool, type SearchPerformanceMetric } from "./src/search-ranking";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
 import { compareChapterUpdates } from "./src/subscription";
@@ -15,6 +16,18 @@ import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } fr
 import { getOrFetchChapterContent, prefetchNextChapters } from "./src/chapter-cache";
 import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
+import { buildSpeakerVoiceMap, splitTextForMultiVoice } from "./src/speaker-assignment";
+import { isModelDownloaded, ModelCategory } from "react-native-sherpa-onnx/download";
+import {
+  KOKORO_ZH_MODEL_ID,
+  loadOfflineTts,
+  setOfflineTtsCellularDownloadsAllowed,
+  synthesizeOfflineSegment,
+} from "./src/tts/offline-engine";
+import {
+  getOfflineAudioPlaybackController,
+  type OfflineAudioPlaybackState,
+} from "./src/tts/audio-playback";
 import {
   AppState,
   SafeAreaView,
@@ -33,6 +46,7 @@ import {
   Image,
   Animated,
   Easing,
+  PanResponder,
 } from "react-native";
 
 type Tab = "书架" | "搜索" | "源" | "我的";
@@ -45,6 +59,7 @@ type Book = {
   progress: number;
   color: string;
   coverUrl?: string;
+  coverCandidates?: string[];
   lastChapter?: string;
   chapterIndex?: number;
   onlineSourceId?: string;
@@ -68,9 +83,14 @@ const DEFAULT_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/apa-arc/Nove
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
 const SEARCH_LOGS_STORAGE_KEY = "@private_novel/search_logs_v1";
+const SEARCH_SOURCE_METRICS_STORAGE_KEY = "@private_novel/search_source_metrics_v1";
 const SEARCH_HISTORY_STORAGE_KEY = "@private_novel/search_history_v1";
 const SHELF_VIEW_STORAGE_KEY = "@private_novel/shelf_view_v1";
 const APPEARANCE_STORAGE_KEY = "@private_novel/appearance_v1";
+const TTS_SPEAKER_MAP_STORAGE_KEY = "@private_novel/tts_speaker_map_v1";
+const TTS_CELLULAR_ALLOWED_STORAGE_KEY = "@private_novel/tts_cellular_allowed_v1";
+const TTS_DEFAULT_VOICE_STORAGE_KEY = "@private_novel/tts_default_voice_v1";
+const TTS_AUTO_NEXT_CHAPTER_STORAGE_KEY = "@private_novel/tts_auto_next_chapter_v1";
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
 type SearchNovelGroup = { id: string; title: string; author: string; description: string; coverUrl?: string; sources: SearchSourceOption[] };
 type SearchLogEntry = { id: string; sourceId: string; sourceName: string; keyword: string; ok: boolean; resultCount: number; error?: string; searchedAt: number };
@@ -99,8 +119,8 @@ function BookCover({ book, grid = false, failedCoverUrls, onCoverError }: {
   failedCoverUrls?: Record<string, boolean>;
   onCoverError?: (url: string) => void;
 }) {
-  const coverUrl = book.coverUrl || book.onlineSummary?.coverUrl;
-  if (coverUrl && !failedCoverUrls?.[coverUrl]) {
+  const coverUrl = [book.coverUrl, ...(book.coverCandidates || []), book.onlineSummary?.coverUrl].find((url): url is string => !!url && !failedCoverUrls?.[url]);
+  if (coverUrl) {
     return (
       <Image
         source={{ uri: coverUrl }}
@@ -123,10 +143,55 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("书架");
   const [appearanceMode, setAppearanceMode] = useState<"light" | "dark">("light");
   const appIsDark = appearanceMode === "dark";
+  useEffect(() => {
+    AsyncStorage.getItem(TTS_CELLULAR_ALLOWED_STORAGE_KEY).then((value) => {
+      const allowed = value === "1";
+      setTtsCellularAllowed(allowed);
+      setOfflineTtsCellularDownloadsAllowed(allowed);
+    }).catch(() => undefined);
+  }, []);
+
   const [shelfView, setShelfView] = useState<"list" | "grid">("grid");
   const autoSubscriptionCheckRef = useRef(false);
   const [query, setQuery] = useState("");
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  useEffect(() => {
+    AsyncStorage.getItem(TTS_AUTO_NEXT_CHAPTER_STORAGE_KEY).then((value) => {
+      if (value === "0") setTtsAutoNextChapter(false);
+      else if (value === "1") setTtsAutoNextChapter(true);
+    }).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.getItem(TTS_DEFAULT_VOICE_STORAGE_KEY).then((value) => {
+      const voiceId = Number(value);
+      if (Number.isInteger(voiceId) && voiceId >= 3 && voiceId <= 102) setTtsDefaultVoiceId(voiceId);
+    }).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedBook) return;
+    const controller = getOfflineAudioPlaybackController();
+    return controller.subscribe(setTtsPlaybackState);
+  }, [selectedBook?.id]);
+  useEffect(() => {
+    if (!selectedBook) {
+      setTtsSpeakerMap({});
+      return;
+    }
+    AsyncStorage.getItem(`${TTS_SPEAKER_MAP_STORAGE_KEY}:${selectedBook.id}`).then((value) => {
+      if (!value) {
+        setTtsSpeakerMap({});
+        return;
+      }
+      try {
+        const parsed = JSON.parse(value);
+        setTtsSpeakerMap(parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {});
+      } catch {
+        setTtsSpeakerMap({});
+      }
+    }).catch(() => setTtsSpeakerMap({}));
+  }, [selectedBook?.id]);
   const [books, setBooks] = useState<Book[]>([]);
   const [readingHistory, setReadingHistory] = useState<ReadingHistoryEntry[]>([]);
   const [showReadingHistory, setShowReadingHistory] = useState(false);
@@ -142,6 +207,64 @@ export default function App() {
   const [readerHorizontalPadding, setReaderHorizontalPadding] = useState(DEFAULT_READER_SETTINGS.horizontalPadding);
   const [readerMode, setReaderMode] = useState<PageTurnMode>(DEFAULT_READER_SETTINGS.pageTurnMode);
   const [readerParagraphIndex, setReaderParagraphIndex] = useState(0);
+  const [ttsPlaybackState, setTtsPlaybackState] = useState<OfflineAudioPlaybackState>({
+    playing: false,
+    currentTime: 0,
+    duration: 0,
+    currentIndex: -1,
+    trackCount: 0,
+    chapterTitle: "",
+    finished: false,
+  });
+  const [ttsGenerating, setTtsGenerating] = useState(false);
+  const [ttsProgress, setTtsProgress] = useState(0);
+  const [ttsMessage, setTtsMessage] = useState("");
+  const [ttsPanelOpen, setTtsPanelOpen] = useState(false);
+  const [ttsFloatingSide, setTtsFloatingSide] = useState<"left" | "right">("right");
+  const [ttsSpeed, setTtsSpeed] = useState(1);
+  const [ttsDefaultVoiceId, setTtsDefaultVoiceId] = useState(3);
+  const [ttsSpeakerMap, setTtsSpeakerMap] = useState<Record<string, number>>({});
+  const [ttsCellularAllowed, setTtsCellularAllowed] = useState(false);
+  const [ttsAutoNextChapter, setTtsAutoNextChapter] = useState(true);
+  const ttsFloatingPosition = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const ttsFloatingPositionRef = useRef({ x: 0, y: 0 });
+  const ttsFloatingPanResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_event, gesture) =>
+      Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5,
+    onPanResponderMove: (_event, gesture) => {
+      const { width, height } = Dimensions.get("window");
+      const maxX = Math.max(0, width - 318);
+      const maxY = Math.max(0, height - 560);
+      const x = Math.max(-maxX, Math.min(0, ttsFloatingPositionRef.current.x + gesture.dx));
+      const y = Math.max(-maxY, Math.min(0, ttsFloatingPositionRef.current.y + gesture.dy));
+      ttsFloatingPosition.setValue({ x, y });
+    },
+    onPanResponderRelease: (_event, gesture) => {
+      const { width, height } = Dimensions.get("window");
+      const maxX = Math.max(0, width - 318);
+      const maxY = Math.max(0, height - 560);
+      const rawY = Math.max(-maxY, Math.min(0, ttsFloatingPositionRef.current.y + gesture.dy));
+      const snapLeft = gesture.moveX < width / 2;
+      const target = { x: snapLeft ? -maxX : 0, y: rawY };
+      setTtsFloatingSide(snapLeft ? "left" : "right");
+      ttsFloatingPositionRef.current = target;
+      Animated.spring(ttsFloatingPosition, {
+        toValue: target,
+        useNativeDriver: false,
+        stiffness: 220,
+        damping: 24,
+        mass: 0.8,
+      }).start();
+    },
+  })).current;
+  const ttsGenerationIdRef = useRef(0);
+  const ttsBookIdRef = useRef<string | null>(null);
+  const ttsChapterIndexRef = useRef<number | null>(null);
+  const ttsAutoResumeRef = useRef(false);
+  const ttsAutoAdvanceReadyRef = useRef(false);
+  const ttsAutoResumeChapterRef = useRef<number | null>(null);
+  const ttsStartRef = useRef<(() => Promise<void>) | null>(null);
   const [readerChromeVisible, setReaderChromeVisible] = useState(true);
   const readerTapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const [readerContentHeight, setReaderContentHeight] = useState(0);
@@ -164,10 +287,14 @@ export default function App() {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [onlineResults, setOnlineResults] = useState<SearchNovelGroup[]>([]);
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, boolean>>({});
+  const [coverRecoveryPulse, setCoverRecoveryPulse] = useState(0);
   const [chapterSortOrder, setChapterSortOrder] = useState<"asc" | "desc">("asc");
   const [selectedSearchNovel, setSelectedSearchNovel] = useState<SearchNovelGroup | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
+  const [searchSourceMetrics, setSearchSourceMetrics] = useState<Record<string, SearchPerformanceMetric>>({});
+  const searchRequestIdRef = useRef(0);
+  const searchRequestControllerRef = useRef<AbortController | null>(null);
   const [searchLogs, setSearchLogs] = useState<SearchLogEntry[]>([]);
   const [showSearchLogs, setShowSearchLogs] = useState(false);
   const [searchLogFilter, setSearchLogFilter] = useState<"成功" | "失败">("成功");
@@ -194,7 +321,6 @@ export default function App() {
   const [appUpdateCheckedAt, setAppUpdateCheckedAt] = useState<number | null>(null);
   const [appUpdateDismissed, setAppUpdateDismissed] = useState(false);
   const appUpdateOperationRef = useRef(false);
-  const lastAutomaticUpdateCheckRef = useRef(0);
 
   const checkForAppUpdate = async (silent = false) => {
     if (__DEV__) {
@@ -235,7 +361,6 @@ export default function App() {
         setAppUpdateStatus("当前已是最新版本");
       }
     } catch {
-      lastAutomaticUpdateCheckRef.current = 0;
       setAppUpdateStatus("更新检查或后台下载失败，当前版本仍可继续使用。回到前台后会再次尝试。");
     } finally {
       appUpdateOperationRef.current = false;
@@ -273,22 +398,6 @@ export default function App() {
       setAppUpdateStatus("暂时无法重启应用，请关闭后重新打开");
     }
   };
-
-  useEffect(() => {
-    if (!isLoaded || __DEV__ || !Updates.isEnabled) return;
-    const checkIfDue = () => {
-      // Check on launch and when returning to the foreground, at most once
-      // every six hours. This avoids repeated requests while the app is active.
-      if (Date.now() - lastAutomaticUpdateCheckRef.current < 6 * 60 * 60 * 1000) return;
-      lastAutomaticUpdateCheckRef.current = Date.now();
-      void checkForAppUpdate(true);
-    };
-    checkIfDue();
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") checkIfDue();
-    });
-    return () => subscription.remove();
-  }, [isLoaded]);
 
   useEffect(() => {
     let active = true;
@@ -354,6 +463,13 @@ export default function App() {
           const parsedLogs: unknown = JSON.parse(savedSearchLogs);
           if (Array.isArray(parsedLogs)) setSearchLogs(parsedLogs as SearchLogEntry[]);
         }
+        const savedSourceMetrics = await AsyncStorage.getItem(SEARCH_SOURCE_METRICS_STORAGE_KEY);
+        if (savedSourceMetrics && active) {
+          const parsedMetrics: unknown = JSON.parse(savedSourceMetrics);
+          if (parsedMetrics && typeof parsedMetrics === "object" && !Array.isArray(parsedMetrics)) {
+            setSearchSourceMetrics(parsedMetrics as Record<string, SearchPerformanceMetric>);
+          }
+        }
         const savedHistory = await AsyncStorage.getItem(READING_HISTORY_STORAGE_KEY);
         if (savedHistory && active) setReadingHistory(normalizeReadingHistory(JSON.parse(savedHistory)));
         const savedReaderSettings = await AsyncStorage.getItem(READER_SETTINGS_STORAGE_KEY);
@@ -385,6 +501,87 @@ export default function App() {
     });
   }, [books, isLoaded]);
 
+  // Repair missing or broken covers for previously saved online books.
+  // Each distinct failure set is attempted once to avoid retry loops.
+  const coverRecoveryAttemptsRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (!isLoaded || !sources.length || !books.length) return;
+    let active = true;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const recover = async () => {
+      const needsRecovery = books.filter((book) => {
+        if (!book.onlineSourceId && !book.onlineSummary) return false;
+        const urls = [...new Set([book.coverUrl, ...(book.coverCandidates || []), book.onlineSummary?.coverUrl].filter((url): url is string => !!url))];
+        // No cover URL is also a recovery case; otherwise only retry after every known URL failed.
+        if (urls.length > 0 && urls.some((url) => !failedCoverUrls[url])) return false;
+        const enabledSourceKey = sources.filter((source) => source.enabled).map((source) => source.id).sort().join(",");
+        const attemptKey = book.id + ":" + enabledSourceKey + ":" + urls.filter((url) => failedCoverUrls[url]).sort().join("|");
+        if (coverRecoveryAttemptsRef.current.has(attemptKey)) return false;
+        coverRecoveryAttemptsRef.current.add(attemptKey);
+        return true;
+      }).slice(0, 3);
+      for (const book of needsRecovery) {
+        if (!active) return;
+        const orderedSources = [
+          ...sources.filter((source) => source.enabled && source.id === book.onlineSourceId),
+          ...sources.filter((source) => source.enabled && source.id !== book.onlineSourceId),
+        ];
+        if (!orderedSources.length) continue;
+        const searchOutcomes = await runSearchPool(
+          orderedSources,
+          (source) => searchNovelSource(source, book.title, getSourceClient(source)),
+          () => undefined,
+          { concurrency: 4, deadlineMs: 18_000, isCancelled: () => !active },
+        );
+        if (!active) return;
+        const targetTitle = normalizeNovelTitle(book.title);
+        const candidates = searchOutcomes.flatMap((outcome) => outcome.ok ? outcome.value.items : [])
+          .filter((item) => normalizeNovelTitle(item.title) === targetTitle)
+          .sort((a, b) => {
+            const authorA = normalizeNovelTitle(a.author) === normalizeNovelTitle(book.author) ? 1 : 0;
+            const authorB = normalizeNovelTitle(b.author) === normalizeNovelTitle(book.author) ? 1 : 0;
+            return authorB - authorA;
+          })
+          .slice(0, 5);
+        // Many sites expose the poster only on the book detail page as og:image,
+        // not in search results. Query detail metadata when search has no cover.
+        const coverResults = await Promise.allSettled(candidates.map(async (item) => {
+          if (item.coverUrl && !failedCoverUrls[item.coverUrl]) return item.coverUrl;
+          const source = sources.find((entry) => entry.id === item.sourceId && entry.enabled);
+          if (!source) return undefined;
+          const detail = await fetchNovelDetail(source, item, getSourceClient(source));
+          return detail.coverUrl;
+        }));
+        if (!active) return;
+        const recoveredUrls = [...new Set(coverResults.flatMap((result) =>
+          result.status === "fulfilled" && result.value ? [result.value] : []
+        ))];
+        if (!recoveredUrls.length) continue;
+        setBooks((current) => current.map((savedBook) => {
+          if (savedBook.id !== book.id) return savedBook;
+          const merged = [...new Set([...(savedBook.coverCandidates || []), ...recoveredUrls])];
+          return {
+            ...savedBook,
+            coverCandidates: merged,
+            coverUrl: savedBook.coverUrl || recoveredUrls[0],
+          };
+        }));
+      }
+      // Continue in small batches so a large shelf is not blocked by the
+      // first three books when their sources temporarily return no cover.
+      if (needsRecovery.length === 3 && active) {
+        retryTimer = setTimeout(() => {
+          if (active) setCoverRecoveryPulse((value) => value + 1);
+        }, 900);
+      }
+    };
+    void recover();
+    return () => {
+      active = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [books, coverRecoveryPulse, failedCoverUrls, isLoaded, sources]);
+
   useEffect(() => {
     if (!isLoaded) return;
     AsyncStorage.setItem(SUBSCRIPTION_URLS_STORAGE_KEY, JSON.stringify({ url: subscriptionUrl })).catch(() => {
@@ -413,6 +610,11 @@ export default function App() {
     if (!isLoaded) return;
     AsyncStorage.setItem(SEARCH_LOGS_STORAGE_KEY, JSON.stringify(searchLogs.slice(0, 500))).catch(() => undefined);
   }, [searchLogs, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem(SEARCH_SOURCE_METRICS_STORAGE_KEY, JSON.stringify(searchSourceMetrics)).catch(() => undefined);
+  }, [searchSourceMetrics, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -608,7 +810,7 @@ export default function App() {
       if (length > 2 * 1024 * 1024) throw new Error("订阅文件超过 2 MB 限制。");
       const raw = await response.text();
       if (raw.length > 2 * 1024 * 1024) throw new Error("订阅文件超过 2 MB 限制。");
-      const subscription = parseSourceSubscription(raw);
+      const subscription = parseSourceSubscription(raw, "external-json:" + url.host + url.pathname);
       const importedAliases: Record<string, string> = {};
       let aliasRecordCount = 0;
       let aliasCount = 0;
@@ -724,9 +926,15 @@ export default function App() {
 
   const searchOnlineNovels = async (searchTerm = onlineQuery) => {
     const keyword = searchTerm.trim();
+    const requestId = ++searchRequestIdRef.current;
+    searchRequestControllerRef.current?.abort();
+    const requestController = new AbortController();
+    searchRequestControllerRef.current = requestController;
     if (!keyword) {
       setSearchMessage("先输入小说名称再搜索。");
       setOnlineResults([]);
+      setSearching(false);
+      searchRequestControllerRef.current = null;
       return;
     }
     setSearchHistory((current) => [keyword, ...current.filter((item) => item.toLocaleLowerCase() !== keyword.toLocaleLowerCase())].slice(0, 10));
@@ -737,32 +945,25 @@ export default function App() {
       setSearchMessage("还没有启用的书源。请先到「源」页面添加订阅。");
       setOnlineResults([]);
       setSearchSummary("");
+      setSearching(false);
+      searchRequestControllerRef.current = null;
       return;
     }
+    const prioritizedSources = rankSourcesByPerformance(enabledSources, searchSourceMetrics);
     setSearching(true);
     setSearchMessage("");
-    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」已匹配真实书名「" + resolvedKeyword + "」。" : "") + "正在向 " + enabledSources.length + " 个书源发起搜索…");
+    setFailedCoverUrls({});
+    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」已匹配真实书名「" + resolvedKeyword + "」。" : "") + "正在搜索 " + prioritizedSources.length + " 个书源（最多同时 4 个，单源超时 8 秒）…");
     setOnlineResults([]);
-    const settled = await Promise.allSettled(enabledSources.map(async (source) => {
-      const startedAt = Date.now();
-      const page = await searchNovelSource(source, resolvedKeyword, getSourceClient(source));
-      return { page, latencyMs: Date.now() - startedAt };
-    }));
+
     const groups = new Map<string, SearchNovelGroup>();
-    let failed = 0;
-    const completedAt = Date.now();
     const nextSearchLogs: SearchLogEntry[] = [];
-    settled.forEach((result, index) => {
-      const source = enabledSources[index];
-      if (result.status !== "fulfilled") {
-        failed += 1;
-        const reason = result.reason instanceof Error ? result.reason.message : String(result.reason || "搜索请求失败");
-        nextSearchLogs.push({ id: completedAt + ":" + index + ":" + source.id, sourceId: source.id, sourceName: source.name, keyword, ok: false, resultCount: 0, error: reason, searchedAt: completedAt });
-        return;
-      }
-      const { page, latencyMs } = result.value;
-      nextSearchLogs.push({ id: completedAt + ":" + index + ":" + source.id, sourceId: source.id, sourceName: source.name, keyword, ok: true, resultCount: page.items.length, searchedAt: completedAt });
-      page.items.forEach((item) => {
+    let completed = 0;
+    let failed = 0;
+    let foundCount = 0;
+    let deadlineReached = false;
+    const mergePage = (items: NovelSummary[], latencyMs: number) => {
+      items.forEach((item) => {
         const key = [normalizeNovelTitle(item.title), normalizeNovelTitle(item.author)].join("::");
         const existing = groups.get(key);
         const option = { summary: item, latencyMs };
@@ -772,18 +973,65 @@ export default function App() {
           if (item.description.length > existing.description.length) existing.description = item.description;
           if (!existing.coverUrl && item.coverUrl) existing.coverUrl = item.coverUrl;
           if (!existing.sources.some((entry) => entry.summary.sourceId === item.sourceId)) existing.sources.push(option);
+          existing.sources.sort((a, b) => a.latencyMs - b.latencyMs);
         }
       });
-    });
-    const groupedResults = [...groups.values()].map((group) => ({
+    };
+
+    await runSearchPool(
+      prioritizedSources,
+      async (source) => searchNovelSource(source, resolvedKeyword, getSourceClient(source), requestController.signal),
+      (outcome) => {
+        if (requestId !== searchRequestIdRef.current) return;
+        completed += 1;
+        const source = outcome.source;
+        const completedAt = Date.now();
+        if (outcome.ok) {
+          mergePage(outcome.value.items, outcome.latencyMs);
+          foundCount = groups.size;
+          nextSearchLogs.push({ id: completedAt + ":" + source.id, sourceId: source.id, sourceName: source.name, keyword, ok: true, resultCount: outcome.value.items.length, searchedAt: completedAt });
+        } else {
+          failed += 1;
+          const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error || "搜索请求失败");
+          nextSearchLogs.push({ id: completedAt + ":" + source.id, sourceId: source.id, sourceName: source.name, keyword, ok: false, resultCount: 0, error: reason, searchedAt: completedAt });
+        }
+        setSearchSourceMetrics((current) => ({
+          ...current,
+          [source.id]: updateSearchPerformanceMetric(current[source.id], source.id, outcome.latencyMs, outcome.ok, outcome.ok ? outcome.value.items.length : 0, completedAt),
+        }));
+        const currentResults = rankNovelSearchResults([...groups.values()].map((group) => ({
+          ...group,
+          sources: [...group.sources].sort((a, b) => a.latencyMs - b.latencyMs),
+        })), resolvedKeyword);
+        setOnlineResults(currentResults);
+        setSearchLogs((current) => [...nextSearchLogs.slice(-1), ...current].slice(0, 500));
+        setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + "已完成 " + completed + "/" + prioritizedSources.length + " 个书源，当前找到 " + foundCount + " 本" + (completed < prioritizedSources.length ? "，其他书源继续搜索…" : "。"));
+      },
+      {
+        concurrency: 4,
+        deadlineMs: 18_000,
+        isCancelled: () => requestId !== searchRequestIdRef.current,
+        onDeadline: () => {
+          deadlineReached = true;
+          requestController.abort();
+        },
+      }
+    );
+
+    if (requestId !== searchRequestIdRef.current) return;
+    setSearching(false);
+    searchRequestControllerRef.current = null;
+    const success = completed - failed;
+    const groupedResults = rankNovelSearchResults([...groups.values()].map((group) => ({
       ...group,
       sources: [...group.sources].sort((a, b) => a.latencyMs - b.latencyMs),
-    }));
-    setSearchLogs((current) => [...nextSearchLogs, ...current].slice(0, 500));
+    })), resolvedKeyword);
     setOnlineResults(groupedResults);
-    setSearching(false);
-    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + "搜索完成：成功 " + (enabledSources.length - failed) + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。");
-    setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（支持常见 JSON 与已配置规则的 HTML）。" : "点击小说名称即可自动获取可用阅读源和章节目录。");
+    const skipped = prioritizedSources.length - completed;
+    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + (deadlineReached
+      ? "搜索达到 18 秒上限：成功 " + success + " 个，失败 " + failed + " 个，跳过 " + skipped + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。"
+      : "搜索完成：成功 " + success + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。"));
+    setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（支持常见 JSON 与已配置规则的 HTML）。" : (deadlineReached ? "已先展示 18 秒内返回的结果；超时书源已停止请求。 " : "") + "已优先展示匹配度较高的结果；其他书源结果已合并。点击小说名称即可获取章节目录。");
   };
 
   const loadNovelCatalogFor = async (novel: SearchNovelGroup) => {
@@ -841,6 +1089,11 @@ export default function App() {
       return;
     }
     const id = getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author);
+    const coverCandidates = [...new Set([
+      selectedSearchNovel.coverUrl,
+      loadedNovelDetail?.coverUrl,
+      ...selectedSearchNovel.sources.map((entry) => entry.summary.coverUrl),
+    ].filter((url): url is string => !!url))];
     setBooks((current) => {
       const existing = current.find((book) => book.id === id);
       const nextBook: Book = {
@@ -851,7 +1104,8 @@ export default function App() {
         category: option.summary.category || "网络小说",
         progress: existing?.progress ?? 0,
         color: "#E5E9DF",
-        coverUrl: selectedSearchNovel.coverUrl || option.summary.coverUrl || existing?.coverUrl || existing?.onlineSummary?.coverUrl,
+        coverUrl: selectedSearchNovel.coverUrl || loadedNovelDetail?.coverUrl || option.summary.coverUrl || existing?.coverUrl || existing?.onlineSummary?.coverUrl,
+        coverCandidates: [...new Set([...coverCandidates, ...(existing?.coverCandidates || [])])],
         lastChapter: existing?.lastChapter || "尚未开始",
         chapterIndex: existing?.chapterIndex ?? 0,
         onlineSourceId: source.id,
@@ -885,8 +1139,17 @@ export default function App() {
     if (selectedSearchNovel) await loadNovelCatalogFor(selectedSearchNovel);
   };
 
+  const cancelTtsForChapterSwitch = () => {
+    ttsGenerationIdRef.current += 1;
+    setTtsGenerating(false);
+    getOfflineAudioPlaybackController().clearQueue();
+    ttsBookIdRef.current = null;
+    ttsChapterIndexRef.current = null;
+  };
+
   const openOnlineChapter = async (chapter: NovelChapter) => {
     if (!selectedSearchNovel || !selectedSourceId) return;
+    cancelTtsForChapterSwitch();
     const source = sources.find((item) => item.id === selectedSourceId);
     const option = selectedSearchNovel.sources.find((item) => item.summary.sourceId === selectedSourceId);
     if (!source || !source.enabled || !option) {
@@ -919,6 +1182,8 @@ export default function App() {
         category: option.summary.category || "网络小说",
         progress: Math.round((chapter.index / Math.max(1, loadedChapters.length)) * 100),
         color: "#E5E9DF",
+        coverUrl: loadedNovelDetail?.coverUrl || option.summary.coverUrl,
+        coverCandidates: [...new Set([loadedNovelDetail?.coverUrl, option.summary.coverUrl].filter((url): url is string => !!url))],
         lastChapter: chapter.title,
         chapterIndex: chapter.index,
         readerParagraphIndex: 0,
@@ -939,6 +1204,8 @@ export default function App() {
         onlineSourceId: source.id,
         onlineSourceName: source.name,
         onlineSummary: option.summary,
+        coverUrl: book.coverUrl || loadedNovelDetail?.coverUrl || option.summary.coverUrl,
+        coverCandidates: [...new Set([...(book.coverCandidates || []), loadedNovelDetail?.coverUrl, option.summary.coverUrl].filter((url): url is string => !!url))],
         onlineChapters: loadedChapters,
         onlineChapterId: chapter.id,
       })));
@@ -1186,13 +1453,71 @@ export default function App() {
     }
     const next = chapterIndex + delta;
     if (localReading) {
-      if (next >= 0 && next < localChapters.length) saveReadingPosition(selectedBook.id, next);
+      if (next >= 0 && next < localChapters.length) {
+        cancelTtsForChapterSwitch();
+        saveReadingPosition(selectedBook.id, next);
+      }
       return;
     }
     if (next < 0 || next >= SAMPLE_CHAPTERS.length) return;
+    cancelTtsForChapterSwitch();
     saveReadingPosition(selectedBook.id, next);
     setShowCatalog(false);
   };
+
+  useEffect(() => {
+    if (!ttsPlaybackState.finished || !ttsAutoNextChapter || !selectedBook || !ttsAutoAdvanceReadyRef.current) return;
+    const activeIndex = onlineReading ? onlineChapterIndex : chapterIndex;
+    if (ttsBookIdRef.current !== selectedBook.id || ttsChapterIndexRef.current !== activeIndex) return;
+    if (loadingOnlineChapter || showCatalog) return;
+    const chapterCount = onlineReading ? loadedChapters.length : localReading ? localChapters.length : SAMPLE_CHAPTERS.length;
+    const nextIndex = activeIndex + 1;
+    if (nextIndex >= chapterCount) {
+      setTtsMessage("本书已读完");
+      return;
+    }
+    ttsAutoAdvanceReadyRef.current = false;
+    ttsAutoResumeRef.current = true;
+    ttsAutoResumeChapterRef.current = nextIndex;
+    setTtsMessage("本章播放完成，正在准备下一章…");
+    changeChapter(1);
+  }, [
+    ttsPlaybackState.finished,
+    ttsAutoNextChapter,
+    selectedBook?.id,
+    onlineReading,
+    onlineChapterIndex,
+    chapterIndex,
+    loadedChapters.length,
+    localReading,
+    localChapters.length,
+    loadingOnlineChapter,
+    showCatalog,
+  ]);
+
+  useEffect(() => {
+    if (!ttsAutoResumeRef.current || !selectedBook || loadingOnlineChapter) return;
+    const currentIndex = onlineReading ? onlineChapterIndex : chapterIndex;
+    const targetIndex = ttsAutoResumeChapterRef.current;
+    if (targetIndex === null) return;
+    if (currentIndex !== targetIndex) {
+      ttsAutoResumeRef.current = false;
+      ttsAutoResumeChapterRef.current = null;
+      setTtsMessage("下一章加载失败，自动续播已暂停");
+      return;
+    }
+    if (onlineReading && !onlineChapterContent.trim()) return;
+    ttsAutoResumeRef.current = false;
+    ttsAutoResumeChapterRef.current = null;
+    void ttsStartRef.current?.();
+  }, [
+    selectedBook?.id,
+    loadingOnlineChapter,
+    onlineReading,
+    onlineChapterIndex,
+    chapterIndex,
+    onlineChapterContent,
+  ]);
 
   const updateProgress = (bookId: string, amount: number) => {
     setBooks((current) => current.map((book) => {
@@ -1292,7 +1617,7 @@ export default function App() {
 
   if (selectedSearchNovel && !selectedBook) {
     const detailChapters = [...loadedChapters].sort((a, b) => chapterSortOrder === "asc" ? a.index - b.index : b.index - a.index);
-    const detailCoverUrl = (selectedSearchNovel.coverUrl && !failedCoverUrls[selectedSearchNovel.coverUrl] ? selectedSearchNovel.coverUrl : undefined) || selectedSearchNovel.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string])?.summary.coverUrl;
+    const detailCoverUrl = [loadedNovelDetail?.coverUrl, selectedSearchNovel.coverUrl, ...selectedSearchNovel.sources.map((entry) => entry.summary.coverUrl)].find((url): url is string => !!url && !failedCoverUrls[url]);
     return (
       <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
         <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
@@ -1409,6 +1734,215 @@ export default function App() {
       inputRange: [-1, 0, 1],
       outputRange: ["-8deg", "0deg", "8deg"],
     });
+    const voiceLabel = (voiceId: number) =>
+      voiceId >= 58 ? `男声 ${voiceId - 57}` : `女声 ${voiceId - 2}`;
+    const nextAvailableVoice = (currentId: number, reserved: number[]) => {
+      let nextId = currentId;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        nextId = nextId >= 102 ? 3 : nextId + 1;
+        if (!reserved.includes(nextId)) return nextId;
+      }
+      return currentId;
+    };
+    const startOfflineTts = async () => {
+      ttsAutoAdvanceReadyRef.current = false;
+      const generationId = ++ttsGenerationIdRef.current;
+      const controller = getOfflineAudioPlaybackController();
+      controller.clearQueue();
+      ttsBookIdRef.current = currentBook.id;
+      ttsChapterIndexRef.current = activeChapterIndex;
+      setTtsPanelOpen(true);
+      setTtsGenerating(true);
+      setTtsProgress(0);
+      setTtsMessage("正在准备离线语音模型…");
+      try {
+        const engine = await loadOfflineTts((progress) => {
+          if (generationId !== ttsGenerationIdRef.current) return;
+          setTtsProgress(progress.percent);
+          setTtsMessage(
+            progress.phase === "downloading"
+              ? `正在下载中文语音模型 ${progress.percent}%`
+              : `正在解压语音模型 ${progress.percent}%`,
+          );
+        });
+        if (generationId !== ttsGenerationIdRef.current) return;
+
+        const storageKey = `${TTS_SPEAKER_MAP_STORAGE_KEY}:${currentBook.id}`;
+        const savedMap = await AsyncStorage.getItem(storageKey);
+        let existingMap: Record<string, number> = {};
+        if (savedMap) {
+          try {
+            const parsed = JSON.parse(savedMap);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) existingMap = parsed;
+          } catch {
+            existingMap = {};
+          }
+        }
+        const speakerMap = buildSpeakerVoiceMap(activeReadingText, existingMap, ttsDefaultVoiceId);
+        await AsyncStorage.setItem(storageKey, JSON.stringify(speakerMap));
+        if (generationId !== ttsGenerationIdRef.current) return;
+        setTtsSpeakerMap(speakerMap);
+
+        const segments = splitTextForMultiVoice(activeReadingText, speakerMap, ttsDefaultVoiceId);
+        if (segments.length === 0) throw new Error("当前章节没有可朗读的正文。");
+        setTtsProgress(0);
+        setTtsMessage(`正在生成语音 · ${engine.provider === "coreml" ? "Apple Core ML" : "CPU"}`);
+        const initialCount = Math.min(3, segments.length);
+        const initialTracks = [];
+        for (let index = 0; index < initialCount; index += 1) {
+          const segment = segments[index];
+          const uri = await synthesizeOfflineSegment(segment.text, { speakerId: segment.speakerId });
+          if (generationId !== ttsGenerationIdRef.current) return;
+          initialTracks.push({
+            uri,
+            bookTitle: currentBook.title,
+            chapterTitle: activeChapter.title,
+            segmentIndex: index,
+          });
+          setTtsProgress(Math.round(((index + 1) / segments.length) * 100));
+        }
+        await controller.start(initialTracks);
+        controller.setSpeed(ttsSpeed);
+        setTtsMessage(`已识别 ${Object.keys(speakerMap).length} 位角色，正在准备后续语音`);
+
+        for (let index = initialCount; index < segments.length; index += 1) {
+          if (generationId !== ttsGenerationIdRef.current) return;
+          const segment = segments[index];
+          const uri = await synthesizeOfflineSegment(segment.text, { speakerId: segment.speakerId });
+          if (generationId !== ttsGenerationIdRef.current) return;
+          controller.append([{
+            uri,
+            bookTitle: currentBook.title,
+            chapterTitle: activeChapter.title,
+            segmentIndex: index,
+          }]);
+          setTtsProgress(Math.round(((index + 1) / segments.length) * 100));
+        }
+        if (generationId === ttsGenerationIdRef.current) {
+          ttsAutoAdvanceReadyRef.current = true;
+          controller.finishQueue();
+          setTtsGenerating(false);
+          setTtsMessage(`本章语音已准备完成 · ${Object.keys(speakerMap).length} 位角色`);
+        }
+      } catch (error) {
+        if (generationId !== ttsGenerationIdRef.current) return;
+        ttsAutoAdvanceReadyRef.current = false;
+        getOfflineAudioPlaybackController().finishQueue();
+        setTtsGenerating(false);
+        setTtsMessage(error instanceof Error ? error.message : "离线语音生成失败。");
+        Alert.alert("离线听书", error instanceof Error ? error.message : "离线语音生成失败，请稍后重试。");
+      }
+    };
+    ttsStartRef.current = startOfflineTts;
+    const toggleOfflineTts = async () => {
+      const controller = getOfflineAudioPlaybackController();
+      const playback = controller.getState();
+      const sameChapter =
+        ttsBookIdRef.current === currentBook.id &&
+        ttsChapterIndexRef.current === activeChapterIndex &&
+        playback.trackCount > 0;
+      if (sameChapter) {
+        if (playback.playing) {
+          await controller.pause();
+        } else if (playback.currentIndex >= playback.trackCount - 1 && !ttsGenerating) {
+          await startOfflineTts();
+        } else {
+          await controller.resume();
+        }
+        return;
+      }
+      if (ttsGenerating) return;
+      try {
+        const ready = await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+        if (ready) {
+          await startOfflineTts();
+          return;
+        }
+        Alert.alert(
+          "首次使用离线听书",
+          "需要下载约 348 MB 的中文多角色语音模型。下载完成后可完全离线朗读，不使用苹果原生语音或收费接口。默认仅使用 Wi-Fi。",
+          [
+            { text: "暂不下载", style: "cancel" },
+            { text: "下载并开始", onPress: () => { void startOfflineTts(); } },
+          ],
+        );
+      } catch (error) {
+        Alert.alert("离线听书", error instanceof Error ? error.message : "无法检查本地语音模型。");
+      }
+    };
+    const stopOfflineTts = () => {
+      ttsAutoResumeRef.current = false;
+      ttsAutoResumeChapterRef.current = null;
+      ttsAutoAdvanceReadyRef.current = false;
+      ttsGenerationIdRef.current += 1;
+      setTtsGenerating(false);
+      getOfflineAudioPlaybackController().clearQueue();
+      ttsBookIdRef.current = null;
+      ttsChapterIndexRef.current = null;
+      setTtsMessage("已停止听书");
+    };
+    const cycleRoleVoice = async (name: string) => {
+      const currentId = ttsSpeakerMap[name] ?? 58;
+      const reserved = [ttsDefaultVoiceId, ...Object.entries(ttsSpeakerMap)
+        .filter(([otherName]) => otherName !== name)
+        .map(([, voiceId]) => voiceId)];
+      const nextId = nextAvailableVoice(currentId, reserved);
+      const updated = { ...ttsSpeakerMap, [name]: nextId };
+      setTtsSpeakerMap(updated);
+      await AsyncStorage.setItem(`${TTS_SPEAKER_MAP_STORAGE_KEY}:${currentBook.id}`, JSON.stringify(updated));
+      setTtsMessage(`${name} 已切换为${voiceLabel(nextId)}；点击“重新生成本章”后生效`);
+    };
+    const cycleDefaultVoice = async () => {
+      const nextId = nextAvailableVoice(ttsDefaultVoiceId, Object.values(ttsSpeakerMap));
+      setTtsDefaultVoiceId(nextId);
+      await AsyncStorage.setItem(TTS_DEFAULT_VOICE_STORAGE_KEY, String(nextId));
+      setTtsMessage(`旁白音色已切换为${voiceLabel(nextId)}；点击“重新生成本章”后生效`);
+    };
+    const previewTtsVoice = async (name: string, voiceId: number) => {
+      try {
+        const ready = await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+        if (!ready) {
+          Alert.alert("音色试听", "请先点击听书按钮下载中文语音模型。");
+          return;
+        }
+        const previewId = ++ttsGenerationIdRef.current;
+        setTtsGenerating(false);
+        ttsBookIdRef.current = null;
+        ttsChapterIndexRef.current = null;
+        const controller = getOfflineAudioPlaybackController();
+        controller.clearQueue();
+        const uri = await synthesizeOfflineSegment(`你好，我是${name}。`, { speakerId: voiceId });
+        if (previewId !== ttsGenerationIdRef.current) return;
+        await controller.start([{
+          uri,
+          bookTitle: currentBook.title,
+          chapterTitle: `${name} · 音色试听`,
+          segmentIndex: 0,
+        }]);
+        controller.finishQueue();
+        controller.setSpeed(ttsSpeed);
+        setTtsMessage(`正在试听${name}的${voiceLabel(voiceId)}`);
+      } catch (error) {
+        Alert.alert("音色试听", error instanceof Error ? error.message : "试听失败。");
+      }
+    };
+    const restartOfflineTts = async () => {
+      try {
+        const ready = await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+        if (!ready) {
+          Alert.alert("离线听书", "请先点击听书按钮下载中文多角色语音模型。");
+          return;
+        }
+        await startOfflineTts();
+      } catch (error) {
+        Alert.alert("离线听书", error instanceof Error ? error.message : "无法检查本地语音模型。");
+      }
+    };
+    const setTtsCellular = async (allowed: boolean) => {
+      setTtsCellularAllowed(allowed);
+      setOfflineTtsCellularDownloadsAllowed(allowed);
+      await AsyncStorage.setItem(TTS_CELLULAR_ALLOWED_STORAGE_KEY, allowed ? "1" : "0");
+    };
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: readerBackground }]}>
         <StatusBar barStyle={readerTheme === "night" ? "light-content" : "dark-content"} />
@@ -1578,6 +2112,129 @@ export default function App() {
             <Text style={[styles.chapterNavText, (activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter) && styles.disabledText]}>下一章</Text>
           </Pressable>
         </View>}
+        {!showCatalog && (
+          <Animated.View pointerEvents="box-none" {...ttsFloatingPanResponder.panHandlers} style={[{ position: "absolute", right: 16, bottom: 86, width: 286, alignItems: ttsFloatingSide === "left" ? "flex-start" : "flex-end", zIndex: 30 }, { transform: ttsFloatingPosition.getTranslateTransform() }]}>
+            {ttsPanelOpen && (
+              <View style={{
+                width: 286,
+                maxHeight: 390,
+                marginBottom: 12,
+                padding: 14,
+                borderRadius: 18,
+                backgroundColor: readerTheme === "night" ? "#2B3029" : "#FFFFFF",
+                borderWidth: 1,
+                borderColor: readerTheme === "night" ? "#424A3F" : "#E7E6DF",
+                shadowColor: "#000",
+                shadowOpacity: 0.16,
+                shadowRadius: 14,
+                shadowOffset: { width: 0, height: 5 },
+                elevation: 8,
+              }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <Text style={{ color: readerTheme === "night" ? "#F0F0E8" : "#30362D", fontSize: 15, fontWeight: "800" }}>离线多角色听书</Text>
+                  <Pressable onPress={() => setTtsPanelOpen(false)}><Text style={{ color: readerTheme === "night" ? "#C6CBBF" : "#68705F", fontSize: 20 }}>×</Text></Pressable>
+                </View>
+                <Text numberOfLines={2} style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 11, lineHeight: 16, marginBottom: 8 }}>
+                  {ttsMessage || (ttsPlaybackState.playing ? "正在朗读" : "点击悬浮球开始朗读")}
+                </Text>
+                {ttsGenerating && (
+                  <View style={{ height: 4, backgroundColor: readerTheme === "night" ? "#454D41" : "#E9ECE5", borderRadius: 4, overflow: "hidden", marginBottom: 10 }}>
+                    <View style={{ height: 4, width: `${Math.max(2, ttsProgress)}%`, backgroundColor: "#829575" }} />
+                  </View>
+                )}
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 6, marginBottom: 12 }}>
+                  <Pressable onPress={() => void getOfflineAudioPlaybackController().previous()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: readerTheme === "night" ? "#3A4237" : "#F0F2EC", alignItems: "center" }}>
+                    <Text style={{ color: readerTheme === "night" ? "#E5E9DE" : "#4B5545", fontSize: 11 }}>上一段</Text>
+                  </Pressable>
+                  <Pressable onPress={() => void toggleOfflineTts()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: "#65745D", alignItems: "center" }}>
+                    <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "700" }}>{ttsPlaybackState.playing ? "暂停" : "继续"}</Text>
+                  </Pressable>
+                  <Pressable onPress={() => void getOfflineAudioPlaybackController().next()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: readerTheme === "night" ? "#3A4237" : "#F0F2EC", alignItems: "center" }}>
+                    <Text style={{ color: readerTheme === "night" ? "#E5E9DE" : "#4B5545", fontSize: 11 }}>下一段</Text>
+                  </Pressable>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
+                  <Text style={{ color: readerTheme === "night" ? "#D7DDCF" : "#4E5648", fontSize: 12, fontWeight: "700" }}>语速</Text>
+                  <View style={{ flexDirection: "row", gap: 4 }}>
+                    {[0.8, 1, 1.2, 1.5, 1.8, 2].map((speed) => (
+                      <Pressable key={speed} onPress={() => { setTtsSpeed(speed); getOfflineAudioPlaybackController().setSpeed(speed); }} style={{ paddingHorizontal: 7, paddingVertical: 5, borderRadius: 7, backgroundColor: ttsSpeed === speed ? "#65745D" : (readerTheme === "night" ? "#3A4237" : "#F0F2EC") }}>
+                        <Text style={{ fontSize: 10, color: ttsSpeed === speed ? "#FFFFFF" : (readerTheme === "night" ? "#E5E9DE" : "#4B5545") }}>{speed}×</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+                <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 7, borderTopWidth: 1, borderTopColor: readerTheme === "night" ? "#41483C" : "#ECEDE7" }}>
+                    <View>
+                      <Text style={{ color: readerTheme === "night" ? "#E5E9DE" : "#424A3C", fontSize: 12, fontWeight: "700" }}>旁白 · {voiceLabel(ttsDefaultVoiceId)}</Text>
+                      <Text style={{ color: readerTheme === "night" ? "#AEB7A6" : "#899080", fontSize: 10 }}>未识别角色时使用</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <Pressable onPress={() => void previewTtsVoice("旁白", ttsDefaultVoiceId)}><Text style={{ color: "#829575", fontSize: 11 }}>试听</Text></Pressable>
+                      <Pressable onPress={() => void cycleDefaultVoice()}><Text style={{ color: "#829575", fontSize: 11 }}>切换</Text></Pressable>
+                    </View>
+                  </View>
+                  {Object.entries(ttsSpeakerMap).map(([name, voiceId]) => (
+                    <View key={name} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 7, borderTopWidth: 1, borderTopColor: readerTheme === "night" ? "#41483C" : "#ECEDE7" }}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text numberOfLines={1} style={{ color: readerTheme === "night" ? "#E5E9DE" : "#424A3C", fontSize: 12, fontWeight: "700" }}>{name} · {voiceLabel(voiceId)}</Text>
+                        <Text style={{ color: readerTheme === "night" ? "#AEB7A6" : "#899080", fontSize: 10 }}>本书固定角色音色</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", gap: 8 }}>
+                        <Pressable onPress={() => void previewTtsVoice(name, voiceId)}><Text style={{ color: "#829575", fontSize: 11 }}>试听</Text></Pressable>
+                        <Pressable onPress={() => void cycleRoleVoice(name)}><Text style={{ color: "#829575", fontSize: 11 }}>切换</Text></Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                  <Pressable onPress={() => void restartOfflineTts()}><Text style={{ color: "#829575", fontSize: 11, fontWeight: "700" }}>重新生成本章</Text></Pressable>
+                  <Pressable onPress={() => void setTtsCellular(!ttsCellularAllowed)}><Text style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 10 }}>{ttsCellularAllowed ? "允许蜂窝下载" : "仅 Wi-Fi 下载"}</Text></Pressable>
+                  <Pressable onPress={stopOfflineTts}><Text style={{ color: "#B56F62", fontSize: 11 }}>停止</Text></Pressable>
+                  <Pressable onPress={() => {
+                    const enabled = !ttsAutoNextChapter;
+                    setTtsAutoNextChapter(enabled);
+                    void AsyncStorage.setItem(TTS_AUTO_NEXT_CHAPTER_STORAGE_KEY, enabled ? "1" : "0");
+                  }}><Text style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 10 }}>自动下一章：{ttsAutoNextChapter ? "开" : "关"}</Text></Pressable>
+                </View>
+              </View>
+            )}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Pressable onPress={() => void toggleOfflineTts()} style={{
+                width: 56,
+                height: 56,
+                borderRadius: 28,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "#65745D",
+                borderWidth: 2,
+                borderColor: readerTheme === "night" ? "#A7B49A" : "#FFFFFF",
+                shadowColor: "#000",
+                shadowOpacity: 0.22,
+                shadowRadius: 9,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 7,
+              }}>
+                {ttsGenerating && !ttsPlaybackState.playing
+                  ? <ActivityIndicator color="#FFFFFF" />
+                  : <Text style={{ color: "#FFFFFF", fontSize: 17, fontWeight: "800" }}>{ttsPlaybackState.playing ? "Ⅱ" : "听"}</Text>}
+              </Pressable>
+              <Pressable onPress={() => setTtsPanelOpen((open) => !open)} style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: readerTheme === "night" ? "#3A4237" : "#FFFFFF",
+                borderWidth: 1,
+                borderColor: readerTheme === "night" ? "#596351" : "#E4E7DE",
+                elevation: 4,
+              }}>
+                <Text style={{ color: readerTheme === "night" ? "#E5E9DE" : "#65745D", fontSize: 16 }}>⚙</Text>
+              </Pressable>
+            </View>
+          </Animated.View>
+        )}
       </SafeAreaView>
     );
   }
@@ -1735,7 +2392,7 @@ export default function App() {
                   ) : (
                     <View style={[styles.searchResultCover, styles.searchResultCoverFallback]}>
                       <Text style={styles.searchResultFallbackTitle} numberOfLines={4}>{item.title}</Text>
-                      <Text style={styles.searchResultFallbackLabel}>封面暂不可用</Text>
+                      <Text style={styles.searchResultFallbackLabel}>小说封面</Text>
                     </View>
                   )}
                   <Text style={[styles.searchResultTitle, appIsDark && styles.darkPrimaryText]} numberOfLines={2}>{item.title}</Text>
@@ -1860,7 +2517,7 @@ export default function App() {
                 <Text style={styles.updatePrimaryText}>下载并安装更新</Text>
               </Pressable>
             ) : null}
-            <Text style={styles.updateFootnote}>普通界面、功能逻辑和资源会自动检查并后台下载更新；确认重启即可应用，无需重新签名安装。涉及 iOS 原生组件、权限或底层依赖的改动仍需重新构建安装。</Text>
+            <Text style={styles.updateFootnote}>仅支持手动检查和下载更新。涉及 iOS 原生组件、权限或底层依赖的改动仍需重新构建并重新签名安装。</Text>
           </View>
           <View style={[styles.appearanceCard, appIsDark && styles.darkCard]}>
             <Text style={[styles.settingText, appIsDark && styles.darkPrimaryText]}>外观主题</Text>

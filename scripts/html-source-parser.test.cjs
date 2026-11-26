@@ -43,3 +43,231 @@ test("HTML search extracts picture sources, background covers and newer lazy att
   assert.equal(page.items[2].coverUrl, "https://cdn.example/later.jpg");
   assert.equal(page.items[3].coverUrl, undefined);
 });
+
+test("HTML cover extraction prefers the highest-resolution srcset candidate", () => {
+  const html = '<ul><li class="book"><a class="title" href="/book/1">高清封面</a><img src="small.jpg" srcset="/small.jpg 320w, /large.jpg 1200w, /medium.jpg 640w"></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "s1", "源", "封面", "https://books.example/search", { itemSelector: "li.book", titleSelector: "a.title", urlSelector: "a.title" });
+  assert.equal(page.items[0].coverUrl, "https://books.example/large.jpg");
+});
+
+
+test("HTML search and detail read Legado @content metadata attributes", () => {
+  const html = '<ul><li class="book"><meta name="title" content="搜索书名"><meta name="author" content="搜索作者"><meta name="description" content="搜索简介"><a href="/book/1">详情</a></li></ul><meta name="title" content="详情书名"><meta name="author" content="详情作者"><meta name="description" content="详情简介">';
+  const search = p.parseHtmlSearchResults(html, "s1", "源", "搜索", "https://books.example/search", {
+    itemSelector: "li.book",
+    titleSelector: "meta[name=title]",
+    titleAttribute: "content",
+    authorSelector: "meta[name=author]",
+    authorAttribute: "content",
+    descriptionSelector: "meta[name=description]",
+    descriptionAttribute: "content",
+    urlSelector: "a"
+  });
+  assert.equal(search.items[0].title, "搜索书名");
+  assert.equal(search.items[0].author, "搜索作者");
+  assert.equal(search.items[0].description, "搜索简介");
+  const detailHtml = '<meta name="title" content="详情书名"><meta name="author" content="详情作者"><meta name="description" content="详情简介">';
+  const detail = p.parseHtmlNovelDetail(detailHtml, search.items[0], {
+    titleSelector: "meta[name=title]",
+    titleAttribute: "content",
+    authorSelector: "meta[name=author]",
+    authorAttribute: "content",
+    descriptionSelector: "meta[name=description]",
+    descriptionAttribute: "content"
+  });
+  assert.equal(detail.title, "详情书名");
+  assert.equal(detail.author, "详情作者");
+  assert.equal(detail.description, "详情简介");
+});
+
+
+test("Legado @text metadata uses element text instead of an HTML attribute", () => {
+  const html = '<ul><li class="book"><a class="title" href="/book/1">文本书名</a><span class="author">文本作者</span><p class="intro">文本简介</p></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "s1", "源", "文本", "https://books.example/search", {
+    itemSelector: "li.book",
+    titleSelector: "a.title",
+    titleAttribute: "text",
+    authorSelector: ".author",
+    authorAttribute: "text",
+    descriptionSelector: ".intro",
+    descriptionAttribute: "text",
+    urlSelector: "a.title"
+  });
+  assert.equal(page.items[0].title, "文本书名");
+  assert.equal(page.items[0].author, "文本作者");
+  assert.equal(page.items[0].description, "文本简介");
+});
+
+test("HTML chapter titles support Legado content attributes", () => {
+  const chapters = p.parseHtmlChapterList('<ul><li><a data-title="序章" href="/c/1">占位文本</a></li></ul>', "b", "https://example.com", {
+    itemSelector: "li", titleSelector: "a", titleAttribute: "data-title", urlSelector: "a"
+  });
+  assert.equal(chapters[0].title, "序章");
+});
+
+
+test("HTML cover extraction supports data-srcset and density descriptors", () => {
+  const html = '<ul><li class="book"><a class="title" href="/book/1">data-srcset</a><img src="placeholder.png" data-srcset="/cover-small.jpg 1x, //cdn.example/cover-hd.jpg 2x"></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "s1", "源", "封面", "https://books.example/search", {
+    itemSelector: "li.book", titleSelector: "a.title", urlSelector: "a.title"
+  });
+  assert.equal(page.items[0].coverUrl, "https://cdn.example/cover-hd.jpg");
+});
+
+
+test("HTML search accepts configured alternate source origins but rejects unconfigured hosts", () => {
+  const html = '<ul><li class="book"><a class="title" href="https://www.books.example/book/1">跨域书</a></li><li class="book"><a class="title" href="https://evil.example/book/2">恶意链接</a></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "s1", "源", "跨域", "https://m.books.example/search", {
+    itemSelector: "li.book", titleSelector: "a.title", urlSelector: "a.title"
+  }, ["https://www.books.example"]);
+  assert.equal(page.items.length, 1);
+  assert.equal(page.items[0].bookUrl, "https://www.books.example/book/1");
+});
+
+test("HTML chapter links accept configured alternate source origins", () => {
+  const chapters = p.parseHtmlChapterList('<ul><li><a href="https://www.books.example/chapter/1">第一章</a></li></ul>', "b", "https://m.books.example/toc", {
+    itemSelector: "li", titleSelector: "a", urlSelector: "a"
+  }, ["https://www.books.example"]);
+  assert.equal(chapters.length, 1);
+  assert.equal(chapters[0].url, "https://www.books.example/chapter/1");
+});
+
+
+test("biquges123 live search markup extracts its cross-domain CDN cover", () => {
+  const html = '<ul><li class="hot_4_item"><a href="/34806" title="斗罗大陆"><div class="cover"><img src="https://cdn.biquge7.top/www.biquge7.top/imgs/34806.jpg"></div><div class="hot_4_rt"><div class="hot_top"><div class="hot_name">斗罗大陆</div><div class="author">唐家三少</div></div><p class="hot_des">唐门外门弟子唐三，来到斗罗大陆。</p></div></a></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "biquges123-web", "新笔趣阁", "斗罗大陆", "https://www.biquges123.com/search?keyword=斗罗大陆", {
+    itemSelector: ".hot_4_item",
+    titleSelector: ".hot_name",
+    authorSelector: ".author",
+    descriptionSelector: ".hot_des",
+    urlSelector: "a",
+    coverSelector: "img",
+    coverAttribute: "src"
+  });
+  assert.equal(page.items.length, 1);
+  assert.equal(page.items[0].title, "斗罗大陆");
+  assert.equal(page.items[0].author, "唐家三少");
+  assert.equal(page.items[0].bookUrl, "https://www.biquges123.com/34806");
+  assert.equal(page.items[0].coverUrl, "https://cdn.biquge7.top/www.biquge7.top/imgs/34806.jpg");
+});
+
+
+test("HTML detail extracts Open Graph and Twitter poster covers from CDN metadata", () => {
+  const summary = {
+    id: "book-1", sourceId: "source-1", sourceName: "测试源",
+    title: "星海来信", author: "作者甲", description: "简介",
+    bookUrl: "https://books.example/book/1"
+  };
+  const html = '<html><head><meta property="og:image" content="//cdn.books.example/covers/1.jpg"><meta name="twitter:image" content="https://cdn.books.example/covers/twitter.jpg"></head><body><h1>星海来信</h1></body></html>';
+  const detail = p.parseHtmlNovelDetail(html, summary, {});
+  assert.equal(detail.coverUrl, "https://cdn.books.example/covers/1.jpg");
+  assert.equal(detail.title, "星海来信");
+});
+
+test("HTML detail supports explicit relative cover selectors and preserves search cover fallback", () => {
+  const summary = {
+    id: "book-2", sourceId: "source-1", sourceName: "测试源",
+    title: "第二本", author: "作者乙", description: "简介",
+    coverUrl: "https://cdn.books.example/covers/search.jpg",
+    bookUrl: "https://books.example/book/2"
+  };
+  const html = '<div class="book-info"><img class="poster" data-cover="/images/detail.jpg"></div>';
+  const detail = p.parseHtmlNovelDetail(html, summary, { coverSelector: "img.poster", coverAttribute: "data-cover" });
+  assert.equal(detail.coverUrl, "https://books.example/images/detail.jpg");
+});
+
+
+test("HTML detail falls through placeholder og:image to a valid alternate poster", () => {
+  const summary = {
+    id: "book-3", sourceId: "source-1", sourceName: "测试源",
+    title: "第三本", author: "作者丙", description: "",
+    bookUrl: "https://books.example/book/3"
+  };
+  const html = '<head><meta property="og:image" content="/images/placeholder-cover.jpg"><meta name="twitter:image" content="//cdn.books.example/covers/real.jpg"></head>';
+  const detail = p.parseHtmlNovelDetail(html, summary, {});
+  assert.equal(detail.coverUrl, "https://cdn.books.example/covers/real.jpg");
+});
+
+
+test("HTML detail does not mistake an empty og:image for the book page URL", () => {
+  const summary = {
+    id: "book-4", sourceId: "source-1", sourceName: "测试源",
+    title: "第四本", author: "作者丁", description: "",
+    bookUrl: "https://books.example/book/4"
+  };
+  const detail = p.parseHtmlNovelDetail('<meta property="og:image" content="">', summary, {});
+  assert.equal(detail.coverUrl, undefined);
+});
+
+
+test("HTML detail extracts lazy-loaded cover images from common novel selectors", () => {
+  const summary = {
+    id: "book-5", sourceId: "source-1", sourceName: "测试源",
+    title: "第五本", author: "作者戊", description: "",
+    bookUrl: "https://books.example/book/5"
+  };
+  const html = '<div id="fmimg"><img src="/images/placeholder.png" data-original="//cdn.books.example/covers/book5.jpg"></div>';
+  const detail = p.parseHtmlNovelDetail(html, summary, {});
+  assert.equal(detail.coverUrl, "https://cdn.books.example/covers/book5.jpg");
+});
+
+test("HTML cover extraction rejects private network and local image URLs", () => {
+  const summary = {
+    id: "book-6", sourceId: "source-1", sourceName: "测试源",
+    title: "第六本", author: "作者己", description: "",
+    bookUrl: "https://books.example/book/6"
+  };
+  for (const url of ["http://127.0.0.1/cover.jpg", "http://192.168.1.8/cover.jpg", "http://localhost/cover.jpg", "http://169.254.169.254/latest/meta-data"]) {
+    const detail = p.parseHtmlNovelDetail('<meta property="og:image" content="' + url + '">', summary, {});
+    assert.equal(detail.coverUrl, undefined, url);
+  }
+});
+
+test("HTML cover extraction still accepts a public cross-domain CDN", () => {
+  const summary = {
+    id: "book-7", sourceId: "source-1", sourceName: "测试源",
+    title: "第七本", author: "作者庚", description: "",
+    bookUrl: "https://books.example/book/7"
+  };
+  const detail = p.parseHtmlNovelDetail('<meta property="og:image" content="https://cdn.public.example/cover.jpg">', summary, {});
+  assert.equal(detail.coverUrl, "https://cdn.public.example/cover.jpg");
+});
+
+
+test("HTML detail removes author and intro labels from common site markup", () => {
+  const summary = {
+    id: "book-8", sourceId: "source-1", sourceName: "测试源",
+    title: "第八本", author: "未知作者", description: "",
+    bookUrl: "https://books.example/book/8"
+  };
+  const html = '<h1 class="info_title">第八本</h1><div class="info_ct"><div>状态：完结</div><div>作者：作者辛</div></div><div class="des">简介：这是小说简介。</div>';
+  const detail = p.parseHtmlNovelDetail(html, summary, {
+    titleSelector: "h1.info_title",
+    authorSelector: ".info_ct > div:nth-child(2)",
+    descriptionSelector: ".des"
+  });
+  assert.equal(detail.author, "作者辛");
+  assert.equal(detail.description, "这是小说简介。");
+});
+
+
+test("HTML detail recognizes additional lazy cover attributes used by mobile novel sites", () => {
+  const summary = {
+    id: "book-attrs", sourceId: "s1", sourceName: "源", title: "懒加载封面",
+    author: "作者", description: "", bookUrl: "https://books.example/book/attrs"
+  };
+  const cases = [
+    ["data-lazy", "lazy.jpg"],
+    ["data-original-src", "original-src.jpg"],
+    ["data-img", "img.jpg"],
+    ["data-echo", "echo.jpg"],
+    ["data-url", "url.jpg"],
+    ["data-thumb", "thumb.jpg"],
+    ["data-background", "background.jpg"]
+  ];
+  for (const [attribute, file] of cases) {
+    const html = '<div id="fmimg"><img src="placeholder.png" ' + attribute + '="//cdn.books.example/' + file + '"></div>';
+    const detail = p.parseHtmlNovelDetail(html, summary, {});
+    assert.equal(detail.coverUrl, "https://cdn.books.example/" + file, attribute);
+  }
+});

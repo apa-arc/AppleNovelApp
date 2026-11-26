@@ -30,18 +30,144 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+
+function legadoSelector(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const raw = value.trim();
+  if (!raw || raw.length > 300 || /@(?:js|json|xpath|regex)/i.test(raw)) return undefined;
+  // Legado appends @text/@href/@src to a selector. The attribute is mapped
+  // separately, so remove it before converting the selector itself.
+  const selector = raw.replace(/@(text|href|src|content)$/i, "");
+  const normalized = selector
+    .replace(/(^|[\s>])class\.([\w-]+)/gi, "$1.$2")
+    .replace(/(^|[\s>])id\.([\w-]+)/gi, "$1#$2")
+    .replace(/(^|[\s>])tag\.([\w-]+)/gi, "$1$2");
+  if (!normalized || /@|(?:^|[\s>])(?:class|id|tag)\./i.test(normalized)) return undefined;
+  return /^[\w#.*\s>,\[\]="'$^~|=():-]+$/.test(normalized) ? normalized : undefined;
+}
+function legadoAttribute(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  return value.match(/@(text|href|src|content)$/i)?.[1].toLowerCase() || fallback;
+}
+function mapLegadoRules(raw: Record<string, unknown>): Record<string, unknown> | undefined {
+  const search = isRecord(raw.ruleSearch) ? raw.ruleSearch : {};
+  const toc = isRecord(raw.ruleToc) ? raw.ruleToc : {};
+  const content = isRecord(raw.ruleContent) ? raw.ruleContent : {};
+  const detail = isRecord(raw.ruleBookInfo) ? raw.ruleBookInfo : {};
+  const itemSelector = legadoSelector(search.bookList);
+  const titleSelector = legadoSelector(search.name);
+  const urlSelector = legadoSelector(search.bookUrl);
+  const chapterItem = legadoSelector(toc.chapterList);
+  const chapterTitle = legadoSelector(toc.chapterName);
+  const chapterUrl = legadoSelector(toc.chapterUrl);
+  const contentSelector = legadoSelector(content.content);
+  if (!itemSelector || !titleSelector || !urlSelector || !chapterItem || !chapterTitle || !chapterUrl || !contentSelector) return undefined;
+  const mapped: Record<string, unknown> = {
+    search: {
+      itemSelector, titleSelector, urlSelector,
+      titleAttribute: legadoAttribute(search.name, "text"),
+      urlAttribute: legadoAttribute(search.bookUrl, "href"),
+      ...(legadoSelector(search.author) ? { authorSelector: legadoSelector(search.author), authorAttribute: legadoAttribute(search.author, "text") } : {}),
+      ...(legadoSelector(search.intro) ? { descriptionSelector: legadoSelector(search.intro), descriptionAttribute: legadoAttribute(search.intro, "text") } : {}),
+      ...(legadoSelector(search.coverUrl) ? { coverSelector: legadoSelector(search.coverUrl), coverAttribute: legadoAttribute(search.coverUrl, "src") } : {})
+    },
+    chapters: { itemSelector: chapterItem, titleSelector: chapterTitle, urlSelector: chapterUrl, titleAttribute: legadoAttribute(toc.chapterName, "text"), urlAttribute: legadoAttribute(toc.chapterUrl, "href") },
+    content: { contentSelector }
+  };
+  const title = legadoSelector(detail.name);
+  const author = legadoSelector(detail.author);
+  const intro = legadoSelector(detail.intro);
+  const cover = legadoSelector(detail.coverUrl) || legadoSelector(detail.cover);
+  if (title || author || intro || cover) mapped.detail = {
+    ...(title ? { titleSelector: title, titleAttribute: legadoAttribute(detail.name, "text") } : {}),
+    ...(author ? { authorSelector: author, authorAttribute: legadoAttribute(detail.author, "text") } : {}),
+    ...(intro ? { descriptionSelector: intro, descriptionAttribute: legadoAttribute(detail.intro, "text") } : {}),
+    ...(cover ? { coverSelector: cover, coverAttribute: legadoAttribute(detail.coverUrl || detail.cover, "src") } : {})
+  };
+  return mapped;
+}
+
+function parseExternalSourceBundle(payload: unknown, subscriptionIdHint?: string): ParsedSourceSubscription | null {
+  const entries = Array.isArray(payload) ? payload : isRecord(payload) && Array.isArray(payload.sources) ? payload.sources : isRecord(payload) && (typeof payload.bookSourceName === "string" || typeof payload.name === "string") ? [payload] : null;
+  if (!entries) return null;
+  if (entries.length > 500) throw new Error("订阅书源数量超过 500 个限制。");
+  const compatible: ParsedSourceSubscription["compatible"] = [];
+  const unsupported: ParsedSourceSubscription["unsupported"] = [];
+  const seen = new Set<string>();
+  entries.forEach((raw: unknown, index: number) => {
+    if (!isRecord(raw)) {
+      unsupported.push({ id: "external-" + index, name: "未知书源", reason: "书源条目不是 JSON 对象。" });
+      return;
+    }
+    const name = typeof raw.name === "string" ? raw.name : typeof raw.bookSourceName === "string" ? raw.bookSourceName : "未命名书源";
+    const remoteId = typeof raw.id === "string" ? raw.id : typeof raw.bookSourceUrl === "string" ? raw.bookSourceUrl : "external-" + index + "-" + name;
+    if (seen.has(remoteId)) { unsupported.push({ id: remoteId, name, reason: "订阅中存在重复书源。" }); return; }
+    seen.add(remoteId);
+    const legadoSearch = isRecord(raw.ruleSearch) ? raw.ruleSearch : {};
+    let baseUrl = typeof raw.baseUrl === "string" ? raw.baseUrl : typeof raw.bookSourceUrl === "string" ? raw.bookSourceUrl : "";
+    const rawSearchUrl = typeof raw.searchUrl === "string" ? raw.searchUrl : typeof legadoSearch.url === "string" ? legadoSearch.url : "";
+    if (!baseUrl && rawSearchUrl) { try { baseUrl = new URL(rawSearchUrl.replace(/\{\{?key\}?\}/g, "keyword")).origin; } catch { baseUrl = ""; } }
+    const normalizeTemplate = (value: string) => value.replace(/\{\{?\s*(key|keyword)\s*\}?\}/gi, "{keyword}").replace(/\{\{?\s*page\s*\}?\}/gi, "{page}").replace(/\{\{\s*([^{}]+?)\s*\}\}/g, "{$1}");
+    const resolveEndpoint = (value: string) => {
+      const normalized = normalizeTemplate(value);
+      try {
+        const tokens: string[] = [];
+        const probe = normalized.replace(/\{[a-zA-Z][a-zA-Z0-9]*\}/g, (token) => {
+          const marker = "__NOVEL_TEMPLATE_" + tokens.length + "__";
+          tokens.push(token);
+          return marker;
+        });
+        let resolved = new URL(probe, baseUrl).toString();
+        tokens.forEach((token, index) => {
+          resolved = resolved.replace("__NOVEL_TEMPLATE_" + index + "__", token);
+        });
+        return resolved;
+      } catch { return normalized; }
+    };
+    const searchUrl = rawSearchUrl && baseUrl ? resolveEndpoint(rawSearchUrl) : rawSearchUrl;
+    const bookUrl = typeof raw.bookUrl === "string" ? raw.bookUrl : typeof raw.bookInfoUrl === "string" ? raw.bookInfoUrl : baseUrl;
+    const chapterListUrl = typeof raw.chapterListUrl === "string" ? raw.chapterListUrl : typeof raw.tocUrl === "string" ? raw.tocUrl : "";
+    const chapterUrl = typeof raw.chapterUrl === "string" ? raw.chapterUrl : typeof raw.contentUrl === "string" ? raw.contentUrl : baseUrl;
+    if (!searchUrl || !baseUrl || !bookUrl || !chapterListUrl || !chapterUrl) {
+      const hasRuleDsl = !!(raw.ruleSearch || raw.ruleBookInfo || raw.ruleToc || raw.ruleContent);
+      unsupported.push({ id: remoteId, name, reason: hasRuleDsl ? "已识别为阅读类规则书源，但其专属规则表达式尚未适配，暂不执行。" : "缺少完整的搜索、详情、目录或正文接口地址。" });
+      return;
+    }
+    try {
+      const hasLegadoRules = [raw.ruleSearch, raw.ruleBookInfo, raw.ruleToc, raw.ruleContent].some(isRecord);
+      const mappedRules = raw.htmlRules !== undefined ? raw.htmlRules : mapLegadoRules(raw);
+      if (raw.htmlRules === undefined && hasLegadoRules && mappedRules === undefined) {
+        throw new Error("已识别为阅读类规则书源，但规则包含暂未适配的表达式；为避免导入后搜索或正文不可用，已跳过。");
+      }
+      const externalDomains = Array.isArray(raw.domains) ? raw.domains : Array.isArray(raw.allowedDomains) ? raw.allowedDomains : undefined;
+      const normalized = parseNovelSourceJson(JSON.stringify({ name, baseUrl, searchUrl, bookUrl: resolveEndpoint(bookUrl), chapterListUrl: resolveEndpoint(chapterListUrl), chapterUrl: resolveEndpoint(chapterUrl), ...(mappedRules !== undefined ? { htmlRules: mappedRules } : {}), ...(externalDomains ? { allowedDomains: externalDomains } : {}) }));
+      compatible.push({ ...normalized, remoteId, version: typeof raw.version === "string" ? raw.version : "0.0.0" });
+    } catch (error) {
+      unsupported.push({ id: remoteId, name, reason: error instanceof Error ? error.message : "书源配置校验失败。" });
+    }
+  });
+  return { subscriptionId: isRecord(payload) && typeof payload.subscriptionId === "string" ? payload.subscriptionId : (subscriptionIdHint || "external-json-subscription"), name: isRecord(payload) && typeof payload.name === "string" ? payload.name : "外部阅读书源订阅", updatedAt: isRecord(payload) && typeof payload.updatedAt === "string" ? payload.updatedAt : "", compatible, aliasSources: [], unsupported };
+}
+
 /**
  * Parses the repository manifest format without executing its scriptUrl.
  * Normal entries require an explicit JSON endpoint appConfig; alias dictionaries
  * are validated and returned separately because they do not fetch book content.
  */
-export function parseSourceSubscription(raw: string): ParsedSourceSubscription {
+export function parseSourceSubscription(raw: string, subscriptionIdHint?: string): ParsedSourceSubscription {
   let payload: unknown;
   try { payload = JSON.parse(raw); }
-  catch { throw new Error("订阅 JSON 格式错误。"); }
+  catch {
+    const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#") && !line.startsWith("//"));
+    if (!lines.length) throw new Error("订阅 JSON/TXT 内容为空。");
+    try { payload = lines.map((line) => JSON.parse(line)); }
+    catch { throw new Error("订阅格式无法识别。TXT 暂支持逐行 JSON 书源；纯网址列表和脚本订阅暂不自动执行。"); }
+  }
   if (!isRecord(payload) || payload.schemaVersion !== 1 ||
       typeof payload.subscriptionId !== "string" || !Array.isArray(payload.sources)) {
-    throw new Error("不是受支持的小说书源订阅清单。");
+    const external = parseExternalSourceBundle(payload, subscriptionIdHint);
+    if (external) return external;
+    throw new Error("不是受支持的订阅格式。支持本软件清单、单个/批量 JSON 书源；脚本型规则暂不执行。");
   }
   if (payload.sources.length > 500) throw new Error("订阅书源数量超过 500 个限制。");
   const ids = new Set<string>();
@@ -100,6 +226,7 @@ export function parseSourceSubscription(raw: string): ParsedSourceSubscription {
         chapterListUrl: config.chapterListUrl,
         chapterUrl: config.chapterUrl,
         ...(config.htmlRules !== undefined ? { htmlRules: config.htmlRules } : {}),
+        allowedDomains: domains,
       }));
       compatible.push({
         ...normalized,

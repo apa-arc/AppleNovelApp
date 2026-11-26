@@ -10,7 +10,13 @@ on:
         options:
           - "1.1.4"
           - "1.1.5"
-        default: "1.1.5"
+          - "1.1.6"
+        default: "1.1.6"
+      publish_release:
+        description: Publish a public GitHub Release (requires main branch)
+        required: true
+        type: boolean
+        default: false
 
 concurrency:
   group: unsigned-ipa-${{ github.ref }}
@@ -31,13 +37,14 @@ jobs:
       - name: Restrict release builds to their version branch
         env:
           RELEASE_VERSION: ${{ inputs.release_version }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
         run: |
-          if [ "$RELEASE_VERSION" = "1.1.4" ]; then
+          if [ "$PUBLISH_RELEASE" = "true" ]; then
             test "$GITHUB_REF" = "refs/heads/main"
-          elif [ "$RELEASE_VERSION" = "1.1.5" ]; then
-            test "$GITHUB_REF" = "refs/heads/main"
+          elif [ "$RELEASE_VERSION" = "1.1.6" ]; then
+            test "$GITHUB_REF" = "refs/heads/v1.1.6-dev"
           else
-            echo "::error::Only protected formal releases from main are supported."
+            echo "::error::Artifact-only test builds are restricted to v1.1.6-dev; formal releases require explicit approval on main."
             exit 1
           fi
 
@@ -214,7 +221,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish formal GitHub Release
-        if: github.event_name == 'workflow_dispatch'
+        if: inputs.publish_release == true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.app-version.outputs.version }}
@@ -225,12 +232,12 @@ jobs:
           body: |
             AppleNovelApp ${{ steps.app-version.outputs.version }} 正式版。
 
-            - 书架支持 3×3 网格与列表切换
-            - 阅读器支持五种翻页方式，阅读中心点击显示/隐藏菜单
-            - 移除听书模块，保留普通阅读功能
-            - 优化章节缓存与后续五章预取
-            - 增强书源封面字段识别与封面候选回退
-            - IPA 为未签名构建产物，需要使用个人自签工具签名后安装
+            - 书架封面识别与缺失封面自动回填优化
+            - 订阅源静态规则兼容性增强，无法适配的规则明确提示
+            - 集成免费开源 Kokoro 中文离线朗读与多角色音色分配
+            - 听书悬浮球、播放队列、暂停恢复与本地音频缓存优化
+            - IPA 完整性校验：检查 ZIP 结构、Payload、App Info.plist 与 OTA channel
+            - IPA 为未签名构建产物，安装前由 SideStore 按其签名流程处理
             - Production OTA 通过独立工作流发布，并按 fingerprint runtime 校验兼容性
             - 构建提交：${{ github.sha }}
           prerelease: false
