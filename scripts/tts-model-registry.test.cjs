@@ -14,6 +14,9 @@ function createDependencies(overrides = {}) {
         calls.push("getInstalledPath");
         return null;
       },
+      async clearModelsCache() {
+        calls.push("clearModelsCache");
+      },
       async refreshModels(forceRefresh = false) {
         calls.push(forceRefresh ? "refresh:force" : "refresh");
       },
@@ -49,7 +52,7 @@ test("refreshes the registry before the first download", async () => {
   assert.deepEqual(calls, ["getInstalledPath", "refresh", "ensureModel"]);
 });
 
-test("force-refreshes once and retries only when the model ID is unknown", async () => {
+test("clears stale cache before force-refreshing an unknown model ID", async () => {
   let attempts = 0;
   const { calls, dependencies } = createDependencies({
     async ensureModel() {
@@ -67,8 +70,32 @@ test("force-refreshes once and retries only when the model ID is unknown", async
     "getInstalledPath",
     "refresh",
     "ensureModel",
+    "clearModelsCache",
     "refresh:force",
     "ensureModel",
+  ]);
+});
+
+test("surfaces registry network errors instead of falling back to a stale unknown-ID cache", async () => {
+  const networkFailure = new Error("Failed to fetch models: 403");
+  const { calls, dependencies } = createDependencies({
+    async ensureModel() {
+      calls.push("ensureModel");
+      throw new Error(`Unknown model id: ${modelId}`);
+    },
+    async refreshModels(forceRefresh = false) {
+      calls.push(forceRefresh ? "refresh:force" : "refresh");
+      if (forceRefresh) throw networkFailure;
+    },
+  });
+
+  await assert.rejects(resolveTtsModelPath(modelId, dependencies), networkFailure);
+  assert.deepEqual(calls, [
+    "getInstalledPath",
+    "refresh",
+    "ensureModel",
+    "clearModelsCache",
+    "refresh:force",
   ]);
 });
 
@@ -85,7 +112,7 @@ test("does not retry unrelated download or checksum errors", async () => {
   assert.deepEqual(calls, ["getInstalledPath", "refresh", "ensureModel"]);
 });
 
-test("surfaces an unknown-ID error if the forced refresh still cannot resolve it", async () => {
+test("surfaces an unknown-ID error if a successful forced refresh still cannot resolve it", async () => {
   const failure = new Error(`Unknown model id: ${modelId}`);
   const { calls, dependencies } = createDependencies({
     async ensureModel() {
@@ -99,6 +126,7 @@ test("surfaces an unknown-ID error if the forced refresh still cannot resolve it
     "getInstalledPath",
     "refresh",
     "ensureModel",
+    "clearModelsCache",
     "refresh:force",
     "ensureModel",
   ]);
