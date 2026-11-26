@@ -233,7 +233,6 @@ export default function App() {
       const { width, height } = Dimensions.get("window");
       const maxX = Math.max(0, width - 114);
       const maxY = Math.max(0, height - 500);
-      const rawX = Math.max(-maxX, Math.min(0, ttsFloatingPositionRef.current.x + gesture.dx));
       const rawY = Math.max(-maxY, Math.min(0, ttsFloatingPositionRef.current.y + gesture.dy));
       const snapLeft = gesture.moveX < width / 2;
       const target = { x: snapLeft ? -maxX : 0, y: rawY };
