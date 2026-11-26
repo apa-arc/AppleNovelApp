@@ -287,6 +287,7 @@ export default function App() {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [onlineResults, setOnlineResults] = useState<SearchNovelGroup[]>([]);
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, boolean>>({});
+  const [coverRecoveryPulse, setCoverRecoveryPulse] = useState(0);
   const [chapterSortOrder, setChapterSortOrder] = useState<"asc" | "desc">("asc");
   const [selectedSearchNovel, setSelectedSearchNovel] = useState<SearchNovelGroup | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
@@ -506,6 +507,7 @@ export default function App() {
   useEffect(() => {
     if (!isLoaded || !sources.length || !books.length) return;
     let active = true;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const recover = async () => {
       const needsRecovery = books.filter((book) => {
         if (!book.onlineSourceId && !book.onlineSummary) return false;
@@ -562,10 +564,20 @@ export default function App() {
           };
         }));
       }
+      // Continue in small batches so a large shelf is not blocked by the
+      // first three books when their sources temporarily return no cover.
+      if (needsRecovery.length === 3 && active) {
+        retryTimer = setTimeout(() => {
+          if (active) setCoverRecoveryPulse((value) => value + 1);
+        }, 900);
+      }
     };
     void recover();
-    return () => { active = false; };
-  }, [books, failedCoverUrls, isLoaded, sources]);
+    return () => {
+      active = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [books, coverRecoveryPulse, failedCoverUrls, isLoaded, sources]);
 
   useEffect(() => {
     if (!isLoaded) return;
