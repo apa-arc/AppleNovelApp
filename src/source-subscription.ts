@@ -134,7 +134,11 @@ function parseExternalSourceBundle(payload: unknown, subscriptionIdHint?: string
       return;
     }
     try {
+      const hasLegadoRules = [raw.ruleSearch, raw.ruleBookInfo, raw.ruleToc, raw.ruleContent].some(isRecord);
       const mappedRules = raw.htmlRules !== undefined ? raw.htmlRules : mapLegadoRules(raw);
+      if (raw.htmlRules === undefined && hasLegadoRules && mappedRules === undefined) {
+        throw new Error("已识别为阅读类规则书源，但规则包含暂未适配的表达式；为避免导入后搜索或正文不可用，已跳过。");
+      }
       const externalDomains = Array.isArray(raw.domains) ? raw.domains : Array.isArray(raw.allowedDomains) ? raw.allowedDomains : undefined;
       const normalized = parseNovelSourceJson(JSON.stringify({ name, baseUrl, searchUrl, bookUrl: resolveEndpoint(bookUrl), chapterListUrl: resolveEndpoint(chapterListUrl), chapterUrl: resolveEndpoint(chapterUrl), ...(mappedRules !== undefined ? { htmlRules: mappedRules } : {}), ...(externalDomains ? { allowedDomains: externalDomains } : {}) }));
       compatible.push({ ...normalized, remoteId, version: typeof raw.version === "string" ? raw.version : "0.0.0" });
