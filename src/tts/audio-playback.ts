@@ -181,7 +181,7 @@ export class OfflineAudioPlaybackController {
     this.assertAlive();
     if (this.tracks.length === 0) return;
     this.queueComplete = true;
-    if (this.waitingForTrack) {
+    if (this.waitingForTrack && !this.pausedByUser) {
       this.waitingForTrack = false;
       this.playing = false;
       this.finished = true;
@@ -208,6 +208,11 @@ export class OfflineAudioPlaybackController {
       if (this.currentIndex + 1 < this.tracks.length) {
         this.waitingForTrack = false;
         await this.advance();
+      } else if (this.queueComplete) {
+        this.waitingForTrack = false;
+        this.playing = false;
+        this.finished = true;
+        this.emit();
       } else {
         this.emit();
       }
