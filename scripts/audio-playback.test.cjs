@@ -4,12 +4,16 @@ const Module = require("node:module");
 
 let player;
 let audioMode;
+let audioModeGate = null;
 const originalLoad = Module._load;
 Module._load = function(request, parent, isMain) {
   if (request === "expo-audio") {
     return {
       createAudioPlayer: () => player,
-      setAudioModeAsync: async (mode) => { audioMode = mode; },
+      setAudioModeAsync: async (mode) => {
+        audioMode = mode;
+        if (audioModeGate) await audioModeGate;
+      },
     };
   }
   return originalLoad.call(this, request, parent, isMain);
@@ -189,5 +193,24 @@ test("reopens a completed queue when a late TTS batch is appended", async () => 
   assert.equal(controller.getState().chapterTitle, "补充片段");
   assert.equal(controller.getState().playing, true);
   assert.equal(controller.getState().finished, false);
+  controller.destroy();
+});
+
+
+test("does not resurrect playback when stop occurs during iOS audio-session setup", async () => {
+  player = createPlayer();
+  let releaseAudioMode;
+  audioModeGate = new Promise((resolve) => { releaseAudioMode = resolve; });
+  const controller = new OfflineAudioPlaybackController();
+  const starting = controller.start([track(0)]);
+  controller.clearQueue();
+  releaseAudioMode();
+  await starting;
+  audioModeGate = null;
+
+  assert.equal(controller.getState().trackCount, 0);
+  assert.equal(controller.getState().currentIndex, -1);
+  assert.equal(controller.getState().playing, false);
+  assert.equal(player.uri, undefined);
   controller.destroy();
 });
