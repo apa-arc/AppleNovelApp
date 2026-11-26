@@ -214,3 +214,22 @@ test("does not resurrect playback when stop occurs during iOS audio-session setu
   assert.equal(player.uri, undefined);
   controller.destroy();
 });
+
+test("a newer playback start supersedes an older pending audio-session request", async () => {
+  player = createPlayer();
+  let releaseAudioMode;
+  audioModeGate = new Promise((resolve) => { releaseAudioMode = resolve; });
+  const controller = new OfflineAudioPlaybackController();
+  const firstStart = controller.start([track(0)]);
+  const secondStart = controller.start([{ ...track(1), chapterTitle: "新章节" }]);
+  releaseAudioMode();
+  await Promise.all([firstStart, secondStart]);
+  audioModeGate = null;
+
+  assert.equal(controller.getState().trackCount, 1);
+  assert.equal(controller.getState().currentIndex, 0);
+  assert.equal(controller.getState().chapterTitle, "新章节");
+  assert.equal(player.uri, "file:///track-1.wav");
+  assert.equal(controller.getState().playing, true);
+  controller.destroy();
+});
