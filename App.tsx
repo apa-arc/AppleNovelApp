@@ -10,6 +10,7 @@ import { searchNovelSource } from "./src/source-search";
 import { rankNovelSearchResults, rankSourcesByPerformance, updateSearchPerformanceMetric, runSearchPool, type SearchPerformanceMetric } from "./src/search-ranking";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
+import { createQQCoverCacheKey, fetchQQReadingCover, type QQCoverCacheEntry } from "./src/qq-cover";
 import { compareChapterUpdates } from "./src/subscription";
 import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type PageTurnMode, type ReaderSettings, type ReaderTheme } from "./src/reader-settings";
 import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } from "./src/reading-progress";
@@ -91,6 +92,7 @@ const TTS_SPEAKER_MAP_STORAGE_KEY = "@private_novel/tts_speaker_map_v1";
 const TTS_CELLULAR_ALLOWED_STORAGE_KEY = "@private_novel/tts_cellular_allowed_v1";
 const TTS_DEFAULT_VOICE_STORAGE_KEY = "@private_novel/tts_default_voice_v1";
 const TTS_AUTO_NEXT_CHAPTER_STORAGE_KEY = "@private_novel/tts_auto_next_chapter_v1";
+const QQ_COVER_CACHE_STORAGE_KEY = "@private_novel/qq_cover_cache_v1";
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
 type SearchNovelGroup = { id: string; title: string; author: string; description: string; coverUrl?: string; sources: SearchSourceOption[] };
 type SearchLogEntry = { id: string; sourceId: string; sourceName: string; keyword: string; ok: boolean; resultCount: number; error?: string; searchedAt: number };
@@ -288,6 +290,10 @@ export default function App() {
   const [onlineResults, setOnlineResults] = useState<SearchNovelGroup[]>([]);
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, boolean>>({});
   const [coverRecoveryPulse, setCoverRecoveryPulse] = useState(0);
+  const [qqCoverCache, setQQCoverCache] = useState<Record<string, QQCoverCacheEntry>>({});
+  const [qqCoverCacheLoaded, setQQCoverCacheLoaded] = useState(false);
+  const qqCoverInFlightRef = useRef(new Map<string, Promise<string | undefined>>());
+  const qqCoverSearchAttemptsRef = useRef(new Set<string>());
   const [chapterSortOrder, setChapterSortOrder] = useState<"asc" | "desc">("asc");
   const [selectedSearchNovel, setSelectedSearchNovel] = useState<SearchNovelGroup | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
@@ -321,6 +327,53 @@ export default function App() {
   const [appUpdateCheckedAt, setAppUpdateCheckedAt] = useState<number | null>(null);
   const [appUpdateDismissed, setAppUpdateDismissed] = useState(false);
   const appUpdateOperationRef = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(QQ_COVER_CACHE_STORAGE_KEY).then((raw) => {
+      if (!active) return;
+      if (raw) {
+        try {
+          const parsed: unknown = JSON.parse(raw);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            setQQCoverCache(parsed as Record<string, QQCoverCacheEntry>);
+          }
+        } catch {
+          // Ignore an invalid old cache and rebuild it on demand.
+        }
+      }
+      setQQCoverCacheLoaded(true);
+    }).catch(() => {
+      if (active) setQQCoverCacheLoaded(true);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!qqCoverCacheLoaded) return;
+    const entries = Object.entries(qqCoverCache)
+      .sort((a, b) => b[1].checkedAt - a[1].checkedAt)
+      .slice(0, 500);
+    AsyncStorage.setItem(QQ_COVER_CACHE_STORAGE_KEY, JSON.stringify(Object.fromEntries(entries))).catch(() => undefined);
+  }, [qqCoverCache, qqCoverCacheLoaded]);
+
+  const resolveQQCover = async (title: string, author: string): Promise<string | undefined> => {
+    if (!qqCoverCacheLoaded) return undefined;
+    const key = createQQCoverCacheKey(title, author);
+    if (Object.prototype.hasOwnProperty.call(qqCoverCache, key)) return qqCoverCache[key]?.coverUrl;
+    const pending = qqCoverInFlightRef.current.get(key);
+    if (pending) return pending;
+    const request = fetchQQReadingCover(title, author).finally(() => {
+      qqCoverInFlightRef.current.delete(key);
+    });
+    qqCoverInFlightRef.current.set(key, request);
+    const coverUrl = await request;
+    setQQCoverCache((current) => current[key] ? current : {
+      ...current,
+      [key]: { ...(coverUrl ? { coverUrl } : {}), checkedAt: Date.now() },
+    });
+    return coverUrl;
+  };
 
   const checkForAppUpdate = async (silent = false) => {
     if (__DEV__) {
@@ -504,8 +557,57 @@ export default function App() {
   // Repair missing or broken covers for previously saved online books.
   // Each distinct failure set is attempted once to avoid retry loops.
   const coverRecoveryAttemptsRef = useRef(new Set<string>());
+
+  // Search results, detail view and the shelf share one strict QQ Reading fallback.
+  // Existing source covers remain first; QQ is only appended after all source covers
+  // are absent, placeholders, or have failed to load.
   useEffect(() => {
-    if (!isLoaded || !sources.length || !books.length) return;
+    if (!qqCoverCacheLoaded) return;
+    const groups = [
+      ...(selectedSearchNovel ? [selectedSearchNovel] : []),
+      ...onlineResults,
+    ];
+    const unique = new Map<string, SearchNovelGroup>();
+    for (const group of groups) unique.set(group.id, group);
+    const pending = [...unique.values()].filter((group) => {
+      const urls = [
+        group.coverUrl,
+        ...group.sources.map((entry) => entry.summary.coverUrl),
+        ...(selectedSearchNovel?.id === group.id ? [loadedNovelDetail?.coverUrl] : []),
+      ].filter((url): url is string => !!url && !/(placeholder|blank|no[-_]?cover|default[-_]?cover|loading|spacer|no[-_]?image)/i.test(url));
+      if (urls.some((url) => !failedCoverUrls[url])) return false;
+      const key = createQQCoverCacheKey(group.title, group.author);
+      return !Object.prototype.hasOwnProperty.call(qqCoverCache, key)
+        && !qqCoverSearchAttemptsRef.current.has(key);
+    }).slice(0, Math.min(3, Math.max(0, 12 - qqCoverSearchAttemptsRef.current.size)));
+
+    for (const group of pending) {
+      const key = createQQCoverCacheKey(group.title, group.author);
+      qqCoverSearchAttemptsRef.current.add(key);
+      void resolveQQCover(group.title, group.author).then((coverUrl) => {
+        if (!coverUrl) return;
+        setOnlineResults((current) => current.map((item) => item.id !== group.id
+          ? item
+          : { ...item, coverUrl: item.coverUrl && !failedCoverUrls[item.coverUrl] ? item.coverUrl : coverUrl }));
+        setSelectedSearchNovel((current) => current?.id !== group.id ? current : {
+          ...current,
+          coverUrl: current.coverUrl && !failedCoverUrls[current.coverUrl] ? current.coverUrl : coverUrl,
+        });
+        setBooks((current) => current.map((book) => {
+          if (normalizeNovelTitle(book.title) !== normalizeNovelTitle(group.title)
+            || normalizeNovelTitle(book.author) !== normalizeNovelTitle(group.author)) return book;
+          return {
+            ...book,
+            coverUrl: book.coverUrl || coverUrl,
+            coverCandidates: [...new Set([...(book.coverCandidates || []), coverUrl])],
+          };
+        }));
+      });
+    }
+  }, [onlineResults, selectedSearchNovel, loadedNovelDetail, failedCoverUrls, qqCoverCache, qqCoverCacheLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded || !qqCoverCacheLoaded || !books.length) return;
     let active = true;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const recover = async () => {
@@ -526,7 +628,16 @@ export default function App() {
           ...sources.filter((source) => source.enabled && source.id === book.onlineSourceId),
           ...sources.filter((source) => source.enabled && source.id !== book.onlineSourceId),
         ];
-        if (!orderedSources.length) continue;
+        if (!orderedSources.length) {
+          const qqCoverUrl = await resolveQQCover(book.title, book.author);
+          if (!active) return;
+          if (qqCoverUrl) setBooks((current) => current.map((savedBook) => savedBook.id !== book.id ? savedBook : ({
+            ...savedBook,
+            coverUrl: savedBook.coverUrl || qqCoverUrl,
+            coverCandidates: [...new Set([...(savedBook.coverCandidates || []), qqCoverUrl])],
+          })));
+          continue;
+        }
         const searchOutcomes = await runSearchPool(
           orderedSources,
           (source) => searchNovelSource(source, book.title, getSourceClient(source)),
@@ -556,7 +667,16 @@ export default function App() {
         const recoveredUrls = [...new Set(coverResults.flatMap((result) =>
           result.status === "fulfilled" && result.value ? [result.value] : []
         ))];
-        if (!recoveredUrls.length) continue;
+        if (!recoveredUrls.length) {
+          const qqCoverUrl = await resolveQQCover(book.title, book.author);
+          if (!active) return;
+          if (qqCoverUrl) setBooks((current) => current.map((savedBook) => savedBook.id !== book.id ? savedBook : ({
+            ...savedBook,
+            coverUrl: savedBook.coverUrl || qqCoverUrl,
+            coverCandidates: [...new Set([...(savedBook.coverCandidates || []), qqCoverUrl])],
+          })));
+          continue;
+        }
         setBooks((current) => current.map((savedBook) => {
           if (savedBook.id !== book.id) return savedBook;
           const merged = [...new Set([...(savedBook.coverCandidates || []), ...recoveredUrls])];
@@ -580,7 +700,7 @@ export default function App() {
       active = false;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [books, coverRecoveryPulse, failedCoverUrls, isLoaded, sources]);
+  }, [books, coverRecoveryPulse, failedCoverUrls, isLoaded, sources, qqCoverCacheLoaded, qqCoverCache]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -953,6 +1073,7 @@ export default function App() {
     setSearching(true);
     setSearchMessage("");
     setFailedCoverUrls({});
+    qqCoverSearchAttemptsRef.current.clear();
     setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」已匹配真实书名「" + resolvedKeyword + "」。" : "") + "正在搜索 " + prioritizedSources.length + " 个书源（最多同时 4 个，单源超时 8 秒）…");
     setOnlineResults([]);
 
@@ -1089,10 +1210,13 @@ export default function App() {
       return;
     }
     const id = getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author);
+    const qqCoverUrl = qqCoverCache[createQQCoverCacheKey(selectedSearchNovel.title, selectedSearchNovel.author)]?.coverUrl;
     const coverCandidates = [...new Set([
-      selectedSearchNovel.coverUrl,
       loadedNovelDetail?.coverUrl,
+      option.summary.coverUrl,
       ...selectedSearchNovel.sources.map((entry) => entry.summary.coverUrl),
+      selectedSearchNovel.coverUrl,
+      qqCoverUrl,
     ].filter((url): url is string => !!url))];
     setBooks((current) => {
       const existing = current.find((book) => book.id === id);
@@ -1104,7 +1228,7 @@ export default function App() {
         category: option.summary.category || "网络小说",
         progress: existing?.progress ?? 0,
         color: "#E5E9DF",
-        coverUrl: selectedSearchNovel.coverUrl || loadedNovelDetail?.coverUrl || option.summary.coverUrl || existing?.coverUrl || existing?.onlineSummary?.coverUrl,
+        coverUrl: loadedNovelDetail?.coverUrl || option.summary.coverUrl || existing?.coverUrl || existing?.onlineSummary?.coverUrl || selectedSearchNovel.coverUrl || qqCoverUrl,
         coverCandidates: [...new Set([...coverCandidates, ...(existing?.coverCandidates || [])])],
         lastChapter: existing?.lastChapter || "尚未开始",
         chapterIndex: existing?.chapterIndex ?? 0,
@@ -1182,8 +1306,14 @@ export default function App() {
         category: option.summary.category || "网络小说",
         progress: Math.round((chapter.index / Math.max(1, loadedChapters.length)) * 100),
         color: "#E5E9DF",
-        coverUrl: loadedNovelDetail?.coverUrl || option.summary.coverUrl,
-        coverCandidates: [...new Set([loadedNovelDetail?.coverUrl, option.summary.coverUrl].filter((url): url is string => !!url))],
+        coverUrl: loadedNovelDetail?.coverUrl || option.summary.coverUrl || selectedSearchNovel.coverUrl || qqCoverCache[createQQCoverCacheKey(selectedSearchNovel.title, selectedSearchNovel.author)]?.coverUrl,
+        coverCandidates: [...new Set([
+          loadedNovelDetail?.coverUrl,
+          option.summary.coverUrl,
+          ...selectedSearchNovel.sources.map((entry) => entry.summary.coverUrl),
+          selectedSearchNovel.coverUrl,
+          qqCoverCache[createQQCoverCacheKey(selectedSearchNovel.title, selectedSearchNovel.author)]?.coverUrl,
+        ].filter((url): url is string => !!url))],
         lastChapter: chapter.title,
         chapterIndex: chapter.index,
         readerParagraphIndex: 0,
@@ -1617,7 +1747,7 @@ export default function App() {
 
   if (selectedSearchNovel && !selectedBook) {
     const detailChapters = [...loadedChapters].sort((a, b) => chapterSortOrder === "asc" ? a.index - b.index : b.index - a.index);
-    const detailCoverUrl = [loadedNovelDetail?.coverUrl, selectedSearchNovel.coverUrl, ...selectedSearchNovel.sources.map((entry) => entry.summary.coverUrl)].find((url): url is string => !!url && !failedCoverUrls[url]);
+    const detailCoverUrl = [loadedNovelDetail?.coverUrl, ...selectedSearchNovel.sources.map((entry) => entry.summary.coverUrl), selectedSearchNovel.coverUrl].find((url): url is string => !!url && !failedCoverUrls[url]);
     return (
       <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
         <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
