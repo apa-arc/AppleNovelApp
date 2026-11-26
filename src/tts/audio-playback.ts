@@ -17,6 +17,7 @@ export interface OfflineAudioPlaybackState {
   currentIndex: number;
   trackCount: number;
   chapterTitle: string;
+  finished: boolean;
 }
 
 type PlaybackListener = (state: OfflineAudioPlaybackState) => void;
@@ -41,6 +42,8 @@ export class OfflineAudioPlaybackController {
   private waitingForTrack = false;
   private pausedByUser = false;
   private advancing = false;
+  private queueComplete = false;
+  private finished = false;
 
   constructor() {
     this.player = createAudioPlayer(null, {
@@ -85,6 +88,7 @@ export class OfflineAudioPlaybackController {
     this.currentIndex = index;
     this.waitingForTrack = false;
     this.pausedByUser = false;
+    this.finished = false;
     this.currentTime = 0;
     this.duration = 0;
     this.player.replace(track.uri);
@@ -102,7 +106,8 @@ export class OfflineAudioPlaybackController {
         await this.playIndex(nextIndex);
       } else {
         this.playing = false;
-        this.waitingForTrack = true;
+        this.waitingForTrack = !this.queueComplete;
+        this.finished = this.queueComplete;
         this.emit();
       }
     } finally {
@@ -118,6 +123,7 @@ export class OfflineAudioPlaybackController {
       currentIndex: this.currentIndex,
       trackCount: this.tracks.length,
       chapterTitle: this.tracks[this.currentIndex]?.chapterTitle ?? "",
+      finished: this.finished,
     };
   }
 
@@ -138,6 +144,8 @@ export class OfflineAudioPlaybackController {
     this.tracks = [...tracks];
     this.currentIndex = -1;
     this.waitingForTrack = false;
+    this.queueComplete = false;
+    this.finished = false;
     this.player.setActiveForLockScreen(
       true,
       {
@@ -157,11 +165,26 @@ export class OfflineAudioPlaybackController {
     this.assertAlive();
     if (tracks.length === 0) return;
     this.tracks.push(...tracks);
+    this.queueComplete = false;
+    this.finished = false;
     if (this.currentIndex < 0) {
       void this.playIndex(0);
     } else if (this.waitingForTrack && !this.pausedByUser) {
       this.waitingForTrack = false;
       void this.advance();
+    }
+    this.emit();
+  }
+
+  /** Mark that no more tracks will be appended; completion waits for the last track to finish. */
+  finishQueue(): void {
+    this.assertAlive();
+    if (this.tracks.length === 0) return;
+    this.queueComplete = true;
+    if (this.waitingForTrack) {
+      this.waitingForTrack = false;
+      this.playing = false;
+      this.finished = true;
     }
     this.emit();
   }
@@ -227,6 +250,8 @@ export class OfflineAudioPlaybackController {
     this.playing = false;
     this.waitingForTrack = false;
     this.pausedByUser = false;
+    this.queueComplete = false;
+    this.finished = false;
     this.player.clearLockScreenControls();
     this.emit();
   }
