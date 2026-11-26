@@ -927,15 +927,15 @@ export default function App() {
     [books, query]
   );
 
-  const recoverQQCoverForResult = async (novel: SearchNovelGroup, requestId: number) => {
+  const recoverQQCoverForResult = async (novel: SearchNovelGroup, requestId: number, replaceExisting = false) => {
     if (qqCoverLookupRef.current.has(novel.id)) return;
     qqCoverLookupRef.current.add(novel.id);
     const coverUrl = await lookupQQReaderCover(novel.title, novel.author);
     if (!coverUrl || requestId !== searchRequestIdRef.current) return;
-    setOnlineResults((current) => current.map((item) => item.id === novel.id && !item.coverUrl
+    setOnlineResults((current) => current.map((item) => item.id === novel.id && (replaceExisting || !item.coverUrl)
       ? { ...item, coverUrl }
       : item));
-    setSelectedSearchNovel((current) => current?.id === novel.id && !current.coverUrl
+    setSelectedSearchNovel((current) => current?.id === novel.id && (replaceExisting || !current.coverUrl)
       ? { ...current, coverUrl }
       : current);
   };
@@ -2474,7 +2474,7 @@ export default function App() {
                 return (
                 <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={"打开《" + item.title + "》详情"} hitSlop={6} style={styles.searchResultTile} onPress={() => openSearchNovel(item)}>
                   {coverUrl ? (
-                    <Image source={{ uri: coverUrl }} style={styles.searchResultCover} resizeMode="cover" onError={() => { setFailedCoverUrls((current) => ({ ...current, [coverUrl]: true })); void recoverQQCoverForResult(item, searchRequestIdRef.current); }} />
+                    <Image source={{ uri: coverUrl }} style={styles.searchResultCover} resizeMode="cover" onError={() => { setFailedCoverUrls((current) => ({ ...current, [coverUrl]: true })); void recoverQQCoverForResult(item, searchRequestIdRef.current, true); }} />
                   ) : (
                     <View style={[styles.searchResultCover, styles.searchResultCoverFallback]}>
                       <Text style={styles.searchResultFallbackTitle} numberOfLines={4}>{item.title}</Text>
