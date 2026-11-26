@@ -221,6 +221,7 @@ test("maps basic Legado class/id/tag selectors into the app HTML rule format", (
   assert.equal(result.compatible[0].htmlRules.search.titleSelector, "a");
   assert.equal(result.compatible[0].htmlRules.search.coverSelector, "img");
   assert.equal(result.compatible[0].htmlRules.chapters.itemSelector, ".chapter");
+  assert.equal(result.compatible[0].htmlRules.chapters.titleAttribute, "text");
   assert.equal(result.compatible[0].htmlRules.content.contentSelector, "#content");
   assert.equal(result.compatible[0].htmlRules.detail.titleSelector, "#title");
 });
