@@ -124,7 +124,7 @@ export class OfflineAudioPlaybackController {
   subscribe(listener: PlaybackListener): () => void {
     this.listeners.add(listener);
     listener(this.getState());
-    return () => this.listeners.delete(listener);
+    return () => { this.listeners.delete(listener); };
   }
 
   async start(tracks: OfflineAudioTrack[], startIndex = 0): Promise<void> {
