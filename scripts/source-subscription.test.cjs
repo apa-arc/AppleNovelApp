@@ -261,3 +261,39 @@ test("maps Legado attribute suffixes on compound CSS selectors", () => {
   assert.equal(rules.chapters.urlAttribute, "href");
   assert.equal(rules.content.contentSelector, "div.reader-content");
 });
+
+
+test("preserves Legado @content and attribute selectors for search and detail metadata", () => {
+  const source = {
+    bookSourceName: "Meta 属性源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    bookInfoUrl: "https://books.example/book/{bookUrl}",
+    tocUrl: "https://books.example/toc/{bookUrl}",
+    contentUrl: "https://books.example/content/{chapterUrl}",
+    ruleSearch: {
+      bookList: "class.book",
+      name: "tag.meta[name=title]@content",
+      bookUrl: "tag.a@href",
+      author: "tag.meta[name=author]@content",
+      intro: "tag.meta[name=description]@content"
+    },
+    ruleToc: { chapterList: "class.chapter", chapterName: "tag.a@text", chapterUrl: "tag.a@href" },
+    ruleContent: { content: "id.content" },
+    ruleBookInfo: {
+      name: "tag.meta[name=title]@content",
+      author: "tag.meta[name=author]@content",
+      intro: "tag.meta[name=description]@content"
+    }
+  };
+  const result = parseSourceSubscription(JSON.stringify([source]));
+  assert.equal(result.compatible.length, 1);
+  const rules = result.compatible[0].htmlRules;
+  assert.equal(rules.search.titleSelector, "meta[name=title]");
+  assert.equal(rules.search.titleAttribute, "content");
+  assert.equal(rules.search.authorAttribute, "content");
+  assert.equal(rules.search.descriptionAttribute, "content");
+  assert.equal(rules.detail.titleAttribute, "content");
+  assert.equal(rules.detail.authorAttribute, "content");
+  assert.equal(rules.detail.descriptionAttribute, "content");
+});
