@@ -29,4 +29,11 @@ export function assertKokoroChineseModelValid(detection: KokoroModelDetection): 
       `当前 Kokoro 模型未检测到中文词典（lexicon-zh.txt）。检测到的语言：${languages.join(", ") || "无"}。`,
     );
   }
+
+  const preferredLanguage = languages[0]?.toLowerCase() ?? "";
+  if (preferredLanguage !== "zh" && !preferredLanguage.startsWith("zh-")) {
+    throw new Error(
+      `Sherpa ONNX 未优先选择中文词典，当前首选词典为：${preferredLanguage || "无"}。请检查 iOS 原生补丁是否生效。`,
+    );
+  }
 }
