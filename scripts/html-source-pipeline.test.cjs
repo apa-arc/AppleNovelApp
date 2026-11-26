@@ -46,8 +46,8 @@ test("biquges123 completes HTML search, CDN cover, detail, chapter list and cont
   biquges.importedAt = 1;
 
   const pages = {
-    "/search": '<ul><li class="hot_4_item"><a href="/34806"><img src="https://cdn.biquge7.top/www.biquge7.top/imgs/34806.jpg"><div class="hot_name">斗罗大陆</div><span class="author">唐家三少</span><p class="hot_des">唐门外门弟子唐三。</p></a></li></ul>',
-    "/34806": '<h1 class="info_title">斗罗大陆</h1><div class="info_ct"><div>玄幻</div><div>唐家三少</div></div><p class="des">唐门外门弟子唐三，来到斗罗大陆。</p><div class="list"><ul><li><a href="/34806/1">第一章 穿越</a></li><li><a href="/34806/2">第二章 武魂</a></li></ul></div>',
+    "/search": '<ul><li class="hot_4_item"><a href="/34806"><img src="https://cdn.biquge7.top/www.biquge7.top/imgs/34806.jpg"><div class="hot_name"><mark>斗罗大陆</mark></div><span class="author">唐家三少</span><p class="hot_des">唐门外门弟子唐三。</p></a></li></ul>',
+    "/34806": '<h1 class="info_title">斗罗大陆</h1><div class="info_ct"><div>状态：完结</div><div>作者：唐家三少</div></div><div class="des">简介：唐门外门弟子唐三，来到斗罗大陆。</div><div class="list"><ul><li><a href="/34806/1" title="第一章 穿越">第一章 穿越</a></li><li><a href="/34806/2" title="第二章 武魂">第二章 武魂</a></li></ul></div>',
     "/34806/1": '<article class="article"><h1>第一章 穿越</h1><p>唐三来到了斗罗大陆。</p><p>故事从这里开始。</p></article>'
   };
   const fetchImpl = async (input) => {
