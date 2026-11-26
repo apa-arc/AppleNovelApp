@@ -50,27 +50,34 @@ function validVoiceId(value: unknown): value is number {
 function speakerFromTag(value: string): string | undefined {
   const clause = cleanSpeakerClause(value);
   const match = ADDRESSED_SPEECH_TAG.exec(clause) ?? SPEECH_TAG.exec(clause);
-  const directName = clause.match(/^([一-鿿A-Za-z·]{1,8})$/);
-  const name = (match?.[1] ?? directName?.[1])?.trim();
+  const name = match?.[1]?.trim();
   if (!name || GENERIC_SPEAKERS.has(name)) return undefined;
   return name;
 }
 
 function hasSpeechTagBeforeQuote(text: string, quoteStart: number): boolean {
   const prefix = text.slice(Math.max(0, quoteStart - 48), quoteStart);
-  const clause = cleanSpeakerClause(prefix.split(/[。！？；\n]/).pop() ?? prefix);
-  return ADDRESSED_SPEECH_TAG.test(clause) || SPEECH_TAG.test(clause);
+  const clause = prefix.split(/[。！？；\\n]/).pop() ?? prefix;
+  const cleanClause = cleanSpeakerClause(clause);
+  const directColonTag = clause.trim().match(/^([一-鿿A-Za-z·]{1,8})[：:]$/);
+  return Boolean(directColonTag) || ADDRESSED_SPEECH_TAG.test(cleanClause) || SPEECH_TAG.test(cleanClause);
 }
 
 function stripTrailingSpeakerTag(value: string): string {
-  const trimmed = value.replace(/[：:，\s]+$/g, "");
+  const directColonTag = value.match(/([一-鿿A-Za-z·]{1,8})[：:]\\s*$/);
+  if (directColonTag && directColonTag.index !== undefined) {
+    return value.slice(0, directColonTag.index).trimEnd();
+  }
+  const trimmed = value.replace(/[：:，\\s]+$/g, "");
   const match = ADDRESSED_SPEECH_TAG.exec(trimmed) ?? SPEECH_TAG.exec(trimmed);
   if (!match || match.index === undefined) return value;
   return trimmed.slice(0, match.index).trimEnd();
 }
 
 function stripLeadingSpeakerTag(value: string): string {
-  const trimmed = value.replace(/^[，。！？；：\s]+/, "");
+  const trimmed = value.replace(/^[，。！？；：\\s]+/, "");
+  const directColonTag = trimmed.match(/^([一-鿿A-Za-z·]{1,8})[：:]\\s*/);
+  if (directColonTag) return trimmed.slice(directColonTag[0].length).trimStart();
   const match = ADDRESSED_SPEECH_TAG_PREFIX.exec(trimmed) ?? SPEECH_TAG_PREFIX.exec(trimmed);
   if (!match) return value;
   return trimmed.slice(match[0].length).trimStart();
@@ -81,7 +88,10 @@ function cleanNarrationAroundDialogue(value: string): string {
 }
 function speakerBeforeQuote(text: string, quoteStart: number): string | undefined {
   const prefix = text.slice(Math.max(0, quoteStart - 48), quoteStart);
-  const clause = prefix.split(/[。！？；\n]/).pop() ?? prefix;
+  const clause = prefix.split(/[。！？；\\n]/).pop() ?? prefix;
+  const directColonTag = clause.trim().match(/^([一-鿿A-Za-z·]{1,8})[：:]$/);
+  const directName = directColonTag?.[1];
+  if (directName && !GENERIC_SPEAKERS.has(directName)) return directName;
   return speakerFromTag(clause);
 }
 
