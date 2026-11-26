@@ -79,3 +79,21 @@ test("HTML search and detail read Legado @content metadata attributes", () => {
   assert.equal(detail.author, "详情作者");
   assert.equal(detail.description, "详情简介");
 });
+
+
+test("Legado @text metadata uses element text instead of an HTML attribute", () => {
+  const html = '<ul><li class="book"><a class="title" href="/book/1">文本书名</a><span class="author">文本作者</span><p class="intro">文本简介</p></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "s1", "源", "文本", "https://books.example/search", {
+    itemSelector: "li.book",
+    titleSelector: "a.title",
+    titleAttribute: "text",
+    authorSelector: ".author",
+    authorAttribute: "text",
+    descriptionSelector: ".intro",
+    descriptionAttribute: "text",
+    urlSelector: "a.title"
+  });
+  assert.equal(page.items[0].title, "文本书名");
+  assert.equal(page.items[0].author, "文本作者");
+  assert.equal(page.items[0].description, "文本简介");
+});
