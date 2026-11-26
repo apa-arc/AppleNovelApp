@@ -155,3 +155,20 @@ test("handles a native terminal callback emitted synchronously by pause", async 
   assert.equal(controller.getState().playing, true);
   controller.destroy();
 });
+
+
+test("does not restart or advance a track when clearing synchronously finishes native playback", async () => {
+  player = createPlayer();
+  player.pause = function() {
+    this.listener?.({ currentTime: 1, duration: 1, playing: false, didJustFinish: true });
+  };
+  const controller = new OfflineAudioPlaybackController();
+  await controller.start([track(0), { ...track(1), chapterTitle: "第二章" }]);
+  controller.clearQueue();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(controller.getState().trackCount, 0);
+  assert.equal(controller.getState().currentIndex, -1);
+  assert.equal(controller.getState().playing, false);
+  assert.equal(controller.getState().finished, false);
+  controller.destroy();
+});
