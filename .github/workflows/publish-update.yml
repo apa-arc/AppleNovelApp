@@ -1,18 +1,6 @@
 name: Publish OTA update
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "app.json"
-      - "app.config.js"
-      - "package.json"
-      - "package-lock.json"
-      - ".gitignore"
-      - "App.tsx"
-      - "src/**"
-      - "assets/**"
   workflow_dispatch:
     inputs:
       message:
