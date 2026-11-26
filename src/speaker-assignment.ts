@@ -44,7 +44,10 @@ function validVoiceId(value: unknown): value is number {
 
 function speakerFromTag(value: string): string | undefined {
   const clause = cleanSpeakerClause(value);
-  const match = clause.match(SPEECH_TAG);
+  const addressed = clause.match(
+    /^([\u4e00-\u9fffA-Za-z·]{1,8})(?:看向|看着|对着|向|冲着|朝着|面对|面向|望着)([\u4e00-\u9fffA-Za-z·]{1,8})(?:轻声地?|低声地?|冷冷地|淡淡地|沉声|大声|笑着|冷声|急声)?(?:说道|问道|答道|笑道|喊道|叫道|怒道|叹道|道|说|问|答)$/,
+  );
+  const match = addressed ?? clause.match(SPEECH_TAG);
   const name = match?.[1]?.trim();
   if (!name || GENERIC_SPEAKERS.has(name)) return undefined;
   return name;
@@ -57,11 +60,8 @@ function speakerBeforeQuote(text: string, quoteStart: number): string | undefine
 }
 
 function speakerAfterQuote(text: string, quoteEnd: number): string | undefined {
-  const suffix = text.slice(quoteEnd, quoteEnd + 36).replace(/^[，。！？；：\s]+/, "");
-  const match = suffix.match(/^([\u4e00-\u9fffA-Za-z·]{1,8})(?:轻声地?|低声地?|冷冷地|淡淡地|沉声|大声|笑着)?(?:说道|问道|答道|笑道|喊道|叫道|怒道|叹道|道|说|问|答)/);
-  const name = match?.[1]?.trim();
-  if (!name || GENERIC_SPEAKERS.has(name)) return undefined;
-  return name;
+  const suffix = text.slice(quoteEnd, quoteEnd + 48).replace(/^[，。！？；：\s]+/, "");
+  return speakerFromTag(suffix);
 }
 
 /** Return character names only when an explicit speech tag identifies them. */
