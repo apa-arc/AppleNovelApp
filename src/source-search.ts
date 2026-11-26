@@ -197,7 +197,8 @@ export async function searchNovelSource(source: NovelSource, keyword: string, cl
   let page: NovelSearchPage;
   if (isHtml) {
     if (!source.htmlRules?.search) throw new Error("该书源返回 HTML，但没有配置 CSS 搜索规则。");
-    page = parseHtmlSearchResults(response.body, source.id, source.name, cleanKeyword, response.url, source.htmlRules.search);
+    const allowedOrigins = [source.baseUrl, source.searchUrl, source.bookUrl, source.chapterListUrl, source.chapterUrl].map((value) => new URL(value.replace(/\{[^}]+\}/g, "template")).origin);
+    page = parseHtmlSearchResults(response.body, source.id, source.name, cleanKeyword, response.url, source.htmlRules.search, allowedOrigins);
   } else {
     page = parseJsonSearchResults(response.body, source, cleanKeyword, response.url);
   }
