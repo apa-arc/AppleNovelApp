@@ -49,11 +49,20 @@ export function updateSearchPerformanceMetric(previous: SearchPerformanceMetric 
     lastResultCount: success ? Math.max(0, resultCount) : (previous?.lastResultCount ?? 0), updatedAt: now
   };
 }
-export function rankSourcesByPerformance<T extends { id: string }>(sources: T[], metrics: Record<string, SearchPerformanceMetric>): T[] {
+export function rankSourcesByPerformance<T extends { id: string; healthLevel?: "完全可用" | "部分可用" | "不可用" }>(sources: T[], metrics: Record<string, SearchPerformanceMetric>): T[] {
+  const healthFallbackScore = { "完全可用": 6_000, "部分可用": 12_000, "不可用": 24_000 } as const;
   return sources.map((source, index) => {
-    const metric = metrics[source.id]; const attempts = metric ? metric.successCount + metric.failureCount : 0;
+    const metric = metrics[source.id];
+    const attempts = metric ? metric.successCount + metric.failureCount : 0;
     const failureRate = attempts > 0 ? metric.failureCount / attempts : 0;
-    return { source, index, score: metric ? metric.averageLatencyMs * (1 + failureRate * 2) : Number.POSITIVE_INFINITY };
+    const measuredScore = metric
+      ? metric.averageLatencyMs * (1 + failureRate * 2)
+      : (source.healthLevel ? healthFallbackScore[source.healthLevel] : Number.POSITIVE_INFINITY);
+    const healthFactor = source.healthLevel === "完全可用" ? 0.8
+      : source.healthLevel === "部分可用" ? 1.25
+      : source.healthLevel === "不可用" ? 2
+      : 1;
+    return { source, index, score: measuredScore * healthFactor };
   }).sort((a, b) => a.score - b.score || a.index - b.index).map(({ source }) => source);
 }
 export type SearchPoolOutcome<TSource, TResult> =
