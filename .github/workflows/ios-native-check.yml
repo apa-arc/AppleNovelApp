@@ -55,6 +55,13 @@ jobs:
           APP_UPDATE_CHANNEL: production
         run: npx expo prebuild --platform ios --clean
 
+      - name: Verify iOS background download callback
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -R --include='AppDelegate*' -q 'handleEventsForBackgroundURLSession' ios
+          grep -R --include='AppDelegate*' -q 'setCompletionHandlerWithIdentifier' ios
+
       - name: Install iOS pods
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
