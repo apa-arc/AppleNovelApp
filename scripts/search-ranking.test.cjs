@@ -41,6 +41,21 @@ test("uses source health checks to prioritize usable sources before untested one
     ["healthy", "partial", "failed", "untested"]);
 });
 
+test("keeps unavailable sources behind usable ones even when old failure latency was fast", () => {
+  const sources = [
+    { id: "unavailable", healthLevel: "不可用" },
+    { id: "partial", healthLevel: "部分可用" },
+    { id: "healthy", healthLevel: "完全可用" }
+  ];
+  const metrics = {
+    unavailable: { sourceId: "unavailable", averageLatencyMs: 1, successCount: 0, failureCount: 12, lastResultCount: 0, updatedAt: 1 },
+    partial: { sourceId: "partial", averageLatencyMs: 10, successCount: 1, failureCount: 0, lastResultCount: 1, updatedAt: 1 },
+    healthy: { sourceId: "healthy", averageLatencyMs: 800, successCount: 8, failureCount: 0, lastResultCount: 3, updatedAt: 1 }
+  };
+  assert.deepEqual(rankSourcesByPerformance(sources, metrics).map(source => source.id),
+    ["healthy", "partial", "unavailable"]);
+});
+
 test("search pool emits results progressively and respects concurrency", async () => {
   const events=[]; let active=0; let maxActive=0;
   const outcomes=await runSearchPool([1,2,3,4,5],async value=>{
