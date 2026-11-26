@@ -49,10 +49,25 @@ function validVoiceId(value: unknown): value is number {
 
 function speakerFromTag(value: string): string | undefined {
   const clause = cleanSpeakerClause(value);
-  const match = ADDRESSED_SPEECH_TAG.exec(clause) ?? SPEECH_TAG.exec(clause);
-  const name = match?.[1]?.trim();
-  if (!name || GENERIC_SPEAKERS.has(name)) return undefined;
-  return name;
+  const suffixes = [
+    "开口说", "开口道", "怒气冲冲地说道", "说道", "问道", "答道", "笑道",
+    "喊道", "叫道", "怒道", "叹道", "说", "问", "答", "道",
+  ];
+  const modifiers = /(?:轻声地?|低声地?|冷冷地|淡淡地|沉声|大声|怒气冲冲地|笑着|冷声|急声)$/;
+  const namePattern = /^[一-鿿A-Za-z·]{1,8}$/;
+  const addressedPattern = /^([一-鿿A-Za-z·]{1,8}?)(?:看向|看着|对着|向|冲着|朝着|面对|面向|望着)([一-鿿A-Za-z·]{1,8})$/;
+
+  for (const suffix of suffixes) {
+    if (!clause.endsWith(suffix)) continue;
+    const prefix = clause.slice(0, -suffix.length).replace(modifiers, "").replace(/[，,]+$/g, "");
+    const addressed = prefix.match(addressedPattern);
+    const name = addressed?.[1] ?? (namePattern.test(prefix) ? prefix : undefined);
+    if (name && !GENERIC_SPEAKERS.has(name)) return name;
+    return undefined;
+  }
+
+  const directName = clause.match(/^([一-鿿A-Za-z·]{1,8})$/)?.[1];
+  return directName && !GENERIC_SPEAKERS.has(directName) ? directName : undefined;
 }
 
 function hasSpeechTagBeforeQuote(text: string, quoteStart: number): boolean {
