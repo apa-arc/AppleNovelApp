@@ -254,7 +254,6 @@ export default function App() {
         damping: 24,
         mass: 0.8,
       }).start();
-      if (snapLeft) setTtsPanelOpen(false);
     },
   })).current;
   const ttsGenerationIdRef = useRef(0);
