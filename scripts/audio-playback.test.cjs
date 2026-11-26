@@ -73,3 +73,19 @@ test("waits for more generated tracks, then finishes after the appended final tr
   assert.equal(controller.getState().finished, true);
   controller.destroy();
 });
+
+
+test("does not auto-finish a paused queue until the user resumes", async () => {
+  player = createPlayer();
+  const controller = new OfflineAudioPlaybackController();
+  await controller.start([track(0)]);
+  player.emitFinished();
+  await new Promise((resolve) => setImmediate(resolve));
+  await controller.pause();
+  controller.finishQueue();
+  assert.equal(controller.getState().finished, false);
+
+  await controller.resume();
+  assert.equal(controller.getState().finished, true);
+  controller.destroy();
+});
