@@ -72,13 +72,18 @@ def main() -> None:
         apps = [entry.filename for entry in entries if entry.filename.startswith("Payload/") and entry.filename.endswith(".app/Info.plist")]
         if len(apps) != 1:
             raise SystemExit(f"Expected exactly one app Info.plist, found: {apps}")
-        executable_modes = [entry.filename for entry in entries if (entry.external_attr >> 16) & 0o111]
-        if not executable_modes:
-            raise SystemExit("No executable file permissions were preserved")
+        executable_files = [
+            entry.filename
+            for entry in entries
+            if stat.S_ISREG((entry.external_attr >> 16) & 0xFFFF)
+            and ((entry.external_attr >> 16) & 0o111)
+        ]
+        if not executable_files:
+            raise SystemExit("No regular executable files with executable permissions were preserved")
 
     print(f"SideStore-compatible IPA verified: {output.stat().st_size} bytes")
     print(f"Entries: {len(entries)} | ZIP metadata: 2.0 | Extra fields: none | CRC: OK")
-    print(f"App plist: {apps[0]} | Executable entries: {len(executable_modes)}")
+    print(f"App plist: {apps[0]} | Executable files: {len(executable_files)}")
 
 
 if __name__ == "__main__":
