@@ -88,6 +88,7 @@ const SHELF_VIEW_STORAGE_KEY = "@private_novel/shelf_view_v1";
 const APPEARANCE_STORAGE_KEY = "@private_novel/appearance_v1";
 const TTS_SPEAKER_MAP_STORAGE_KEY = "@private_novel/tts_speaker_map_v1";
 const TTS_CELLULAR_ALLOWED_STORAGE_KEY = "@private_novel/tts_cellular_allowed_v1";
+const TTS_DEFAULT_VOICE_STORAGE_KEY = "@private_novel/tts_default_voice_v1";
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
 type SearchNovelGroup = { id: string; title: string; author: string; description: string; coverUrl?: string; sources: SearchSourceOption[] };
 type SearchLogEntry = { id: string; sourceId: string; sourceName: string; keyword: string; ok: boolean; resultCount: number; error?: string; searchedAt: number };
@@ -152,6 +153,13 @@ export default function App() {
   const autoSubscriptionCheckRef = useRef(false);
   const [query, setQuery] = useState("");
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  useEffect(() => {
+    AsyncStorage.getItem(TTS_DEFAULT_VOICE_STORAGE_KEY).then((value) => {
+      const voiceId = Number(value);
+      if (Number.isInteger(voiceId) && voiceId >= 3 && voiceId <= 102) setTtsDefaultVoiceId(voiceId);
+    }).catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     if (!selectedBook) return;
     const controller = getOfflineAudioPlaybackController();
@@ -1711,7 +1719,7 @@ export default function App() {
     const cycleDefaultVoice = async () => {
       const nextId = nextAvailableVoice(ttsDefaultVoiceId, Object.values(ttsSpeakerMap));
       setTtsDefaultVoiceId(nextId);
-      await AsyncStorage.setItem("@private_novel/tts_default_voice_v1", String(nextId));
+      await AsyncStorage.setItem(TTS_DEFAULT_VOICE_STORAGE_KEY, String(nextId));
       setTtsMessage(`旁白音色已切换为${voiceLabel(nextId)}；点击“重新生成本章”后生效`);
     };
     const previewTtsVoice = async (name: string, voiceId: number) => {
