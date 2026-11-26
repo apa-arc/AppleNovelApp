@@ -133,7 +133,8 @@ function parseExternalSourceBundle(payload: unknown, subscriptionIdHint?: string
     }
     try {
       const mappedRules = raw.htmlRules !== undefined ? raw.htmlRules : mapLegadoRules(raw);
-      const normalized = parseNovelSourceJson(JSON.stringify({ name, baseUrl, searchUrl, bookUrl: resolveEndpoint(bookUrl), chapterListUrl: resolveEndpoint(chapterListUrl), chapterUrl: resolveEndpoint(chapterUrl), ...(mappedRules !== undefined ? { htmlRules: mappedRules } : {}) }));
+      const externalDomains = Array.isArray(raw.domains) ? raw.domains : Array.isArray(raw.allowedDomains) ? raw.allowedDomains : undefined;
+      const normalized = parseNovelSourceJson(JSON.stringify({ name, baseUrl, searchUrl, bookUrl: resolveEndpoint(bookUrl), chapterListUrl: resolveEndpoint(chapterListUrl), chapterUrl: resolveEndpoint(chapterUrl), ...(mappedRules !== undefined ? { htmlRules: mappedRules } : {}), ...(externalDomains ? { allowedDomains: externalDomains } : {}) }));
       compatible.push({ ...normalized, remoteId, version: typeof raw.version === "string" ? raw.version : "0.0.0" });
     } catch (error) {
       unsupported.push({ id: remoteId, name, reason: error instanceof Error ? error.message : "书源配置校验失败。" });
@@ -219,6 +220,7 @@ export function parseSourceSubscription(raw: string, subscriptionIdHint?: string
         chapterListUrl: config.chapterListUrl,
         chapterUrl: config.chapterUrl,
         ...(config.htmlRules !== undefined ? { htmlRules: config.htmlRules } : {}),
+        allowedDomains: domains,
       }));
       compatible.push({
         ...normalized,
