@@ -1251,6 +1251,7 @@ export default function App() {
     const source = sources.find((item) => item.id === selectedSourceId);
     const option = selectedSearchNovel.sources.find((item) => item.summary.sourceId === selectedSourceId);
     if (!source || !source.enabled || !option) {
+      setLoadingOnlineChapter(false);
       setCatalogMessage("所选书源已不可用，请重新选择书源。");
       return;
     }
