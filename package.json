@@ -41,7 +41,11 @@
     "expo-status-bar": "~3.0.8",
     "expo-updates": "~29.0.20",
     "react": "19.1.0",
-    "react-native": "0.81.5"
+    "react-native": "0.81.5",
+    "expo-audio": "~1.1.1",
+    "@dr.pogodin/react-native-fs": "^2.38.2",
+    "@kesha-antonov/react-native-background-downloader": "^4.5.4",
+    "react-native-sherpa-onnx": "0.4.4"
   },
   "devDependencies": {
     "@types/react": "~19.1.10",
