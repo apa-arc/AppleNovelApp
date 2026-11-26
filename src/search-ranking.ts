@@ -62,19 +62,39 @@ export type SearchPoolOutcome<TSource, TResult> =
 export async function runSearchPool<TSource, TResult>(
   sources: TSource[], search: (source: TSource) => Promise<TResult>,
   onSettled: (outcome: SearchPoolOutcome<TSource, TResult>) => void,
-  options: { concurrency?: number; isCancelled?: () => boolean } = {}
+  options: { concurrency?: number; isCancelled?: () => boolean; deadlineMs?: number; onDeadline?: () => void } = {}
 ): Promise<SearchPoolOutcome<TSource, TResult>[]> {
   const concurrency = Math.max(1, Math.min(sources.length || 1, Math.floor(options.concurrency ?? 3)));
-  const outcomes: SearchPoolOutcome<TSource, TResult>[] = []; let nextIndex = 0;
+  const outcomes: SearchPoolOutcome<TSource, TResult>[] = [];
+  let nextIndex = 0;
+  let deadlineReached = false;
   const worker = async () => {
-    while (nextIndex < sources.length && !options.isCancelled?.()) {
-      const source = sources[nextIndex++]; const startedAt = Date.now();
+    while (nextIndex < sources.length && !deadlineReached && !options.isCancelled?.()) {
+      const source = sources[nextIndex++];
+      const startedAt = Date.now();
       let outcome: SearchPoolOutcome<TSource, TResult>;
       try { outcome = { source, ok: true, value: await search(source), latencyMs: Date.now() - startedAt }; }
       catch (error) { outcome = { source, ok: false, error, latencyMs: Date.now() - startedAt }; }
-      outcomes.push(outcome); onSettled(outcome);
+      if (deadlineReached || options.isCancelled?.()) continue;
+      outcomes.push(outcome);
+      onSettled(outcome);
     }
   };
-  await Promise.all(Array.from({ length: concurrency }, () => worker()));
-  return outcomes;
+  const workers = Promise.all(Array.from({ length: concurrency }, () => worker()));
+  const deadlineMs = options.deadlineMs;
+  if (deadlineMs === undefined || !Number.isFinite(deadlineMs) || deadlineMs <= 0) {
+    await workers;
+    return outcomes;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      deadlineReached = true;
+      options.onDeadline?.();
+      resolve();
+    }, deadlineMs);
+  });
+  await Promise.race([workers, deadline]);
+  if (timer !== undefined) clearTimeout(timer);
+  return outcomes.slice();
 }
