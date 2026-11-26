@@ -159,7 +159,14 @@ export async function synthesizeOfflineSegment(
 /** Release native model memory when the reader is closed or the app exits its TTS session. */
 export async function unloadOfflineTts(): Promise<void> {
   await generationQueue.catch(() => undefined);
-  const engine = engineInstance;
+  let engine = engineInstance;
+  if (!engine && enginePromise) {
+    try {
+      engine = await enginePromise;
+    } catch {
+      // A failed initialization has already released its partial native state.
+    }
+  }
   engineInstance = null;
   enginePromise = null;
   activeProvider = "cpu";
