@@ -6,6 +6,7 @@ import {
   ModelCategory,
   configureBackgroundDownloader,
   ensureModel,
+  getModelPath,
   refreshModels,
   type Progress,
 } from "react-native-sherpa-onnx/download";
@@ -66,6 +67,11 @@ export async function ensureOfflineTtsModel(
     allowsCellularAccess: allowCellularModelDownloads,
     showNotificationsEnabled: false,
   });
+
+  // Reuse an already installed model without depending on network access or
+  // the registry cache. This keeps narration fully offline after first setup.
+  const installedPath = await getModelPath(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+  if (installedPath) return installedPath;
 
   // ensureModel() only looks up IDs in the local model registry. It does not
   // populate that registry itself, so a fresh install otherwise fails with
