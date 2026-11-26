@@ -370,3 +370,21 @@ test("normalizes single-brace Legado key and page templates", () => {
   assert.equal(result.compatible.length, 1);
   assert.equal(result.compatible[0].searchUrl, "https://books.example/search?key={keyword}&page={page}");
 });
+
+test("maps Legado detail-page cover rules into the HTML detail parser", () => {
+  const result = parseSourceSubscription(JSON.stringify({
+    bookSourceName: "详情封面规则源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={keyword}",
+    bookInfoUrl: "https://books.example/book/{bookUrl}",
+    tocUrl: "https://books.example/toc/{bookUrl}",
+    contentUrl: "https://books.example/content/{chapterUrl}",
+    ruleSearch: { bookList: "class.book", name: "tag.a@text", bookUrl: "tag.a@href" },
+    ruleToc: { chapterList: "class.chapter", chapterName: "tag.a@text", chapterUrl: "tag.a@href" },
+    ruleContent: { content: "id.content" },
+    ruleBookInfo: { name: "id.title", coverUrl: "tag.meta[property=og:image]@content" }
+  }));
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.compatible[0].htmlRules.detail.coverSelector, "meta[property=og:image]");
+  assert.equal(result.compatible[0].htmlRules.detail.coverAttribute, "content");
+});
