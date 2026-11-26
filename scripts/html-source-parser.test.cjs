@@ -104,3 +104,12 @@ test("HTML chapter titles support Legado content attributes", () => {
   });
   assert.equal(chapters[0].title, "序章");
 });
+
+
+test("HTML cover extraction supports data-srcset and density descriptors", () => {
+  const html = '<ul><li class="book"><a class="title" href="/book/1">data-srcset</a><img src="placeholder.png" data-srcset="/cover-small.jpg 1x, //cdn.example/cover-hd.jpg 2x"></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "s1", "源", "封面", "https://books.example/search", {
+    itemSelector: "li.book", titleSelector: "a.title", urlSelector: "a.title"
+  });
+  assert.equal(page.items[0].coverUrl, "https://cdn.example/cover-hd.jpg");
+});
