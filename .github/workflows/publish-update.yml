@@ -1,6 +1,9 @@
 name: Publish OTA update
 
 on:
+  push:
+    paths:
+      - ".github/ota-release-trigger"
   workflow_dispatch:
     inputs:
       message:
@@ -90,7 +93,7 @@ jobs:
             console.log("Verified active production channel -> production branch.");
           '
       - name: Publish iOS Expo Update
-        if: inputs.target != 'v1.1.0-only'
+        if: github.event_name == 'push' || inputs.target != 'v1.1.0-only'
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID || 'b4d937a0-68db-426d-8114-c4b41cc1d9d4' }}
