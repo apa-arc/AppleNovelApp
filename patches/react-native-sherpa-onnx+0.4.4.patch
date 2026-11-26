@@ -1,5 +1,4 @@
 diff --git a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-helper.mm b/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-helper.mm
-index 0000000..0000000 100644
 --- a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-helper.mm
 +++ b/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-model-detect-helper.mm
 @@ -251,9 +251,13 @@ std::vector<LexiconCandidate> FindLexiconCandidates(
