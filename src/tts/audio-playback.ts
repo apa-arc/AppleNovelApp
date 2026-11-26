@@ -42,6 +42,7 @@ export class OfflineAudioPlaybackController {
   private waitingForTrack = false;
   private pausedByUser = false;
   private advancing = false;
+  private completionHandledIndex = -1;
   private queueComplete = false;
   private finished = false;
 
@@ -56,7 +57,15 @@ export class OfflineAudioPlaybackController {
       this.playing = status.playing;
       this.emit();
 
-      if (status.didJustFinish && !this.advancing) {
+      if (
+        status.didJustFinish &&
+        !this.advancing &&
+        this.currentIndex >= 0 &&
+        this.completionHandledIndex !== this.currentIndex
+      ) {
+        // Expo may publish the terminal status more than once for one track.
+        // Latch the index before advancing so the queue cannot skip a segment.
+        this.completionHandledIndex = this.currentIndex;
         void this.advance();
       }
     });
@@ -86,6 +95,7 @@ export class OfflineAudioPlaybackController {
     const track = this.tracks[index];
     if (!track) return;
     this.currentIndex = index;
+    this.completionHandledIndex = -1;
     this.waitingForTrack = false;
     this.pausedByUser = false;
     this.finished = false;
@@ -143,6 +153,7 @@ export class OfflineAudioPlaybackController {
     });
     this.tracks = [...tracks];
     this.currentIndex = -1;
+    this.completionHandledIndex = -1;
     this.waitingForTrack = false;
     this.queueComplete = false;
     this.finished = false;
@@ -254,6 +265,7 @@ export class OfflineAudioPlaybackController {
     this.player.pause();
     this.tracks = [];
     this.currentIndex = -1;
+    this.completionHandledIndex = -1;
     this.currentTime = 0;
     this.duration = 0;
     this.playing = false;
