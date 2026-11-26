@@ -949,6 +949,7 @@ export default function App() {
     const prioritizedSources = rankSourcesByPerformance(enabledSources, searchSourceMetrics);
     setSearching(true);
     setSearchMessage("");
+    setFailedCoverUrls({});
     setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」已匹配真实书名「" + resolvedKeyword + "」。" : "") + "正在搜索 " + prioritizedSources.length + " 个书源（最多同时 4 个，单源超时 8 秒）…");
     setOnlineResults([]);
 
