@@ -4,6 +4,7 @@ import {
 } from "react-native-sherpa-onnx";
 import {
   ModelCategory,
+  configureBackgroundDownloader,
   ensureModel,
   type Progress,
 } from "react-native-sherpa-onnx/download";
@@ -17,6 +18,17 @@ export const KOKORO_ZH_MODEL_ID = "kokoro-multi-lang-v1_1";
 export const KOKORO_ZH_EXPECTED_SPEAKERS = 103;
 
 export type OfflineTtsProgress = (progress: Progress) => void;
+
+let allowCellularModelDownloads = false;
+
+/** Model downloads are Wi-Fi-only by default because the archive is about 348 MB. */
+export function setOfflineTtsCellularDownloadsAllowed(allowed: boolean): void {
+  allowCellularModelDownloads = allowed;
+  configureBackgroundDownloader({
+    allowsCellularAccess: allowCellularModelDownloads,
+    showNotificationsEnabled: false,
+  });
+}
 
 export interface OfflineSpeechOptions {
   speakerId?: number;
@@ -49,6 +61,10 @@ function nativeFilePath(uri: string): string {
 export async function ensureOfflineTtsModel(
   onProgress?: OfflineTtsProgress,
 ): Promise<string> {
+  configureBackgroundDownloader({
+    allowsCellularAccess: allowCellularModelDownloads,
+    showNotificationsEnabled: false,
+  });
   const result = await ensureModel(ModelCategory.Tts, KOKORO_ZH_MODEL_ID, {
     onProgress,
     verifyChecksum: true,
