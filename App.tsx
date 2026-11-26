@@ -390,7 +390,8 @@ export default function App() {
       const needsRecovery = books.filter((book) => {
         if (!book.onlineSourceId && !book.onlineSummary) return false;
         const urls = [...new Set([book.coverUrl, ...(book.coverCandidates || []), book.onlineSummary?.coverUrl].filter((url): url is string => !!url))];
-        if (urls.some((url) => !failedCoverUrls[url])) return false;
+        // No cover URL is also a recovery case; otherwise only retry after every known URL failed.
+        if (urls.length > 0 && urls.some((url) => !failedCoverUrls[url])) return false;
         const attemptKey = book.id + ":" + urls.filter((url) => failedCoverUrls[url]).sort().join("|");
         if (coverRecoveryAttemptsRef.current.has(attemptKey)) return false;
         coverRecoveryAttemptsRef.current.add(attemptKey);
@@ -1950,7 +1951,7 @@ export default function App() {
                 <Text style={styles.updatePrimaryText}>下载并安装更新</Text>
               </Pressable>
             ) : null}
-            <Text style={styles.updateFootnote}>普通界面、功能逻辑和资源会自动检查并后台下载更新；确认重启即可应用，无需重新签名安装。涉及 iOS 原生组件、权限或底层依赖的改动仍需重新构建安装。</Text>
+            <Text style={styles.updateFootnote}>仅支持手动检查和下载更新。涉及 iOS 原生组件、权限或底层依赖的改动仍需重新构建并重新签名安装。</Text>
           </View>
           <View style={[styles.appearanceCard, appIsDark && styles.darkCard]}>
             <Text style={[styles.settingText, appIsDark && styles.darkPrimaryText]}>外观主题</Text>
