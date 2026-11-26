@@ -23,6 +23,8 @@ test("allocates stable distinct Kokoro voices and preserves manual choices", () 
   const second = buildSpeakerVoiceMap(text);
   assert.deepEqual(first, second);
   assert.notEqual(first["张三"], first["李四"]);
+  assert.notEqual(first["张三"], DEFAULT_KOKORO_ZH_VOICE_ID);
+  assert.notEqual(first["李四"], DEFAULT_KOKORO_ZH_VOICE_ID);
   assert.equal(buildSpeakerVoiceMap(text, { "张三": 77 })["张三"], 77);
 });
 
