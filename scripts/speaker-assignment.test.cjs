@@ -45,3 +45,12 @@ test("splits narration and dialogue while assigning the book voice map", () => {
   assert.equal(segments[2].speakerName, "李四");
   assert.equal(segments[2].speakerId, map["李四"]);
 });
+
+
+test("splits long narration into manageable sentence-sized TTS chunks", () => {
+  const text = "甲".repeat(220) + "。乙乙乙。";
+  const segments = splitTextForMultiVoice(text);
+  assert.ok(segments.length >= 2);
+  assert.ok(segments.every((segment) => segment.text.length <= 180));
+  assert.equal(segments.at(-1).text, "乙乙乙。");
+});
