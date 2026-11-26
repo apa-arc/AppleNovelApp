@@ -77,3 +77,23 @@ test("recognizes legacy cover path and small/medium image field names", () => {
   assert.equal(page.items[1].coverUrl, "https://img.cdn.example/small.jpg");
   assert.equal(page.items[2].coverUrl, "https://img.cdn.example/medium.jpg");
 });
+
+
+test("caches successful source searches briefly and returns independent result objects", async () => {
+  const cacheSource = { ...source, id: "cache-test-source" };
+  let calls = 0;
+  const client = { get: async (_endpoint, url) => {
+    calls += 1;
+    return {
+      url,
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: [{ title: "缓存测试书", author: "作者", url: "/book/cache" }] })
+    };
+  } };
+  const first = await searchNovelSource(cacheSource, "缓存测试", client);
+  first.items[0].title = "调用方修改";
+  const second = await searchNovelSource(cacheSource, "缓存测试", client);
+  assert.equal(calls, 1);
+  assert.equal(second.items[0].title, "缓存测试书");
+});
