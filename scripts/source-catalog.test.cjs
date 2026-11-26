@@ -134,3 +134,38 @@ test("HTML chapter links can use an explicitly allowed alternate source domain",
   assert.equal(chapters.length, 1);
   assert.equal(chapters[0].url, "https://cdn.books.example/chapter/1");
 });
+
+
+test("resolves Legado bookInfoUrl templates that use the {{url}} token", async () => {
+  const legadoSource = {
+    ...source,
+    bookUrl: "https://books.example/api/book-info?url={url}"
+  };
+  let requested = "";
+  const client = {
+    get: async (_endpoint, url) => {
+      requested = url;
+      return { url, contentType: "application/json", body: JSON.stringify({ title: "详情书名" }) };
+    }
+  };
+  const detail = await fetchNovelDetail(legadoSource, summary, client);
+  assert.equal(requested, "https://books.example/api/book-info?url=https%3A%2F%2Fbooks.example%2Fbook%2F1");
+  assert.equal(detail.title, "详情书名");
+});
+
+test("resolves Legado tocUrl templates that use the {{url}} token", async () => {
+  const legadoSource = {
+    ...source,
+    chapterListUrl: "https://books.example/api/toc?url={url}"
+  };
+  let requested = "";
+  const client = {
+    get: async (_endpoint, url) => {
+      requested = url;
+      return { url, contentType: "application/json", body: JSON.stringify([{ title: "第一章", url: "/chapter/1" }]) };
+    }
+  };
+  const chapters = await fetchNovelChapterList(legadoSource, summary, client);
+  assert.equal(requested, "https://books.example/api/toc?url=https%3A%2F%2Fbooks.example%2Fbook%2F1");
+  assert.equal(chapters.length, 1);
+});
