@@ -30,7 +30,12 @@ const GENERIC_SPEAKERS = new Set([
 
 const SPEECH_TAG =
   /([一-鿿A-Za-z·]{1,8}?)(?:轻声地?|低声地?|冷冷地|淡淡地|沉声|大声|怒气冲冲地|笑着|冷声|急声)?(?:说道|问道|答道|笑道|喊道|叫道|怒道|叹道|开口道|开口说|道|说|问|答)$/;
-
+const ADDRESSED_SPEECH_TAG =
+  /([一-鿿A-Za-z·]{1,8}?)(?:看向|看着|对着|向|冲着|朝着|面对|面向|望着)([一-鿿A-Za-z·]{1,8}?)(?:轻声地?|低声地?|冷冷地|淡淡地|沉声|大声|笑着|冷声|急声)?(?:说道|问道|答道|笑道|喊道|叫道|怒道|叹道|道|说|问|答)$/;
+const SPEECH_TAG_PREFIX =
+  /^([一-鿿A-Za-z·]{1,8}?)(?:轻声地?|低声地?|冷冷地|淡淡地|沉声|大声|怒气冲冲地|笑着|冷声|急声)?(?:说道|问道|答道|笑道|喊道|叫道|怒道|叹道|开口道|开口说|道|说|问|答)[：:，]?\s*/;
+const ADDRESSED_SPEECH_TAG_PREFIX =
+  /^([一-鿿A-Za-z·]{1,8}?)(?:看向|看着|对着|向|冲着|朝着|面对|面向|望着)([一-鿿A-Za-z·]{1,8}?)(?:轻声地?|低声地?|冷冷地|淡淡地|沉声|大声|笑着|冷声|急声)?(?:说道|问道|答道|笑道|喊道|叫道|怒道|叹道|道|说|问|答)[：:，]?\s*/;
 function cleanSpeakerClause(value: string): string {
   return value
     .replace(/^[，。！？；：\s]+|[，。！？；：\s]+$/g, "")
@@ -44,16 +49,35 @@ function validVoiceId(value: unknown): value is number {
 
 function speakerFromTag(value: string): string | undefined {
   const clause = cleanSpeakerClause(value);
-  const addressed = clause.match(
-    /^([\u4e00-\u9fffA-Za-z·]{1,8}?)(?:看向|看着|对着|向|冲着|朝着|面对|面向|望着)([\u4e00-\u9fffA-Za-z·]{1,8}?)(?:轻声地?|低声地?|冷冷地|淡淡地|沉声|大声|笑着|冷声|急声)?(?:说道|问道|答道|笑道|喊道|叫道|怒道|叹道|道|说|问|答)$/,
-  );
-  const match = addressed ?? clause.match(SPEECH_TAG);
-  const directName = clause.match(/^([\u4e00-\u9fffA-Za-z·]{1,8})$/);
-  const name = (match?.[1] ?? directName?.[1])?.trim();
+  const match = ADDRESSED_SPEECH_TAG.exec(clause) ?? SPEECH_TAG.exec(clause);
+  const name = match?.[1]?.trim();
   if (!name || GENERIC_SPEAKERS.has(name)) return undefined;
   return name;
 }
 
+function hasSpeechTagBeforeQuote(text: string, quoteStart: number): boolean {
+  const prefix = text.slice(Math.max(0, quoteStart - 48), quoteStart);
+  const clause = cleanSpeakerClause(prefix.split(/[。！？；\n]/).pop() ?? prefix);
+  return ADDRESSED_SPEECH_TAG.test(clause) || SPEECH_TAG.test(clause);
+}
+
+function stripTrailingSpeakerTag(value: string): string {
+  const trimmed = value.replace(/[：:，\s]+$/g, "");
+  const match = ADDRESSED_SPEECH_TAG.exec(trimmed) ?? SPEECH_TAG.exec(trimmed);
+  if (!match || match.index === undefined) return value;
+  return trimmed.slice(0, match.index).trimEnd();
+}
+
+function stripLeadingSpeakerTag(value: string): string {
+  const trimmed = value.replace(/^[，。！？；：\s]+/, "");
+  const match = ADDRESSED_SPEECH_TAG_PREFIX.exec(trimmed) ?? SPEECH_TAG_PREFIX.exec(trimmed);
+  if (!match) return value;
+  return trimmed.slice(match[0].length).trimStart();
+}
+
+function cleanNarrationAroundDialogue(value: string): string {
+  return stripLeadingSpeakerTag(stripTrailingSpeakerTag(value));
+}
 function speakerBeforeQuote(text: string, quoteStart: number): string | undefined {
   const prefix = text.slice(Math.max(0, quoteStart - 48), quoteStart);
   const clause = prefix.split(/[。！？；\n]/).pop() ?? prefix;
@@ -73,9 +97,8 @@ export function extractExplicitSpeakerNames(text: string): string[] {
   for (const match of text.matchAll(QUOTED_DIALOGUE_PATTERN)) {
     const start = match.index ?? 0;
     const end = start + match[0].length;
-    const name =
-      speakerBeforeQuote(text, start) ??
-      speakerAfterQuote(text, end);
+    const beforeName = speakerBeforeQuote(text, start);
+    const name = beforeName ?? (hasSpeechTagBeforeQuote(text, start) ? undefined : speakerAfterQuote(text, end));
     if (name && !seen.has(name)) {
       seen.add(name);
       names.push(name);
@@ -196,12 +219,11 @@ export function splitTextForMultiVoice(
     const end = start + match[0].length;
     const dialogueText = match.slice(1).find((part) => part !== undefined) ?? "";
 
-    appendChunks(text.slice(cursor, start), "narration", fallbackVoiceId);
+    appendChunks(cleanNarrationAroundDialogue(text.slice(cursor, start)), "narration", fallbackVoiceId);
 
     if (dialogueText.trim()) {
-      const speakerName =
-        speakerBeforeQuote(text, start) ??
-        speakerAfterQuote(text, end);
+      const beforeName = speakerBeforeQuote(text, start);
+      const speakerName = beforeName ?? (hasSpeechTagBeforeQuote(text, start) ? undefined : speakerAfterQuote(text, end));
       const mappedVoiceId = speakerName ? speakerVoiceMap[speakerName] : undefined;
       appendChunks(
         dialogueText,
@@ -213,7 +235,7 @@ export function splitTextForMultiVoice(
     cursor = end;
   }
 
-  appendChunks(text.slice(cursor), "narration", fallbackVoiceId);
+  appendChunks(cleanNarrationAroundDialogue(text.slice(cursor)), "narration", fallbackVoiceId);
 
   if (segments.length === 0 && text.trim()) {
     appendChunks(text, "narration", fallbackVoiceId);
