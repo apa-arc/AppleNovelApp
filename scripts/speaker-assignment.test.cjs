@@ -82,3 +82,11 @@ test("resolves the speaker in comma-separated addressed speech tags", () => {
   const text = "张三看着李四，冷冷地说：“别再跟着我。”";
   assert.deepEqual(extractExplicitSpeakerNames(text), ["张三"]);
 });
+
+
+test("does not read direct name-colon attributions as narration", () => {
+  const segments = splitTextForMultiVoice("张三：“快走！”她：“我不走。”", { "张三": 58 });
+  assert.deepEqual(segments.map((segment) => segment.text), ["快走！", "我不走。"]);
+  assert.equal(segments[0].speakerId, 58);
+  assert.equal(segments[1].speakerId, DEFAULT_KOKORO_ZH_VOICE_ID);
+});
