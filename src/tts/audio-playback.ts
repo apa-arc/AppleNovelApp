@@ -43,6 +43,7 @@ export class OfflineAudioPlaybackController {
   private pausedByUser = false;
   private advancing = false;
   private completionHandledIndex = -1;
+  private terminalWhilePaused = false;
   private queueComplete = false;
   private finished = false;
 
@@ -59,14 +60,18 @@ export class OfflineAudioPlaybackController {
 
       if (
         status.didJustFinish &&
-        !this.advancing &&
         this.currentIndex >= 0 &&
         this.completionHandledIndex !== this.currentIndex
       ) {
-        // Expo may publish the terminal status more than once for one track.
-        // Latch the index before advancing so the queue cannot skip a segment.
+        // A terminal callback can race with a user pause. Defer advancement
+        // until resume rather than unexpectedly starting the next segment.
         this.completionHandledIndex = this.currentIndex;
-        void this.advance();
+        if (this.pausedByUser) {
+          this.terminalWhilePaused = true;
+          this.emit();
+        } else if (!this.advancing) {
+          void this.advance();
+        }
       }
     });
   }
@@ -96,6 +101,7 @@ export class OfflineAudioPlaybackController {
     if (!track) return;
     this.currentIndex = index;
     this.completionHandledIndex = -1;
+    this.terminalWhilePaused = false;
     this.waitingForTrack = false;
     this.pausedByUser = false;
     this.finished = false;
@@ -154,6 +160,7 @@ export class OfflineAudioPlaybackController {
     this.tracks = [...tracks];
     this.currentIndex = -1;
     this.completionHandledIndex = -1;
+    this.terminalWhilePaused = false;
     this.waitingForTrack = false;
     this.queueComplete = false;
     this.finished = false;
@@ -211,6 +218,11 @@ export class OfflineAudioPlaybackController {
   async resume(): Promise<void> {
     this.assertAlive();
     this.pausedByUser = false;
+    if (this.terminalWhilePaused) {
+      this.terminalWhilePaused = false;
+      await this.advance();
+      return;
+    }
     if (this.currentIndex < 0 && this.tracks.length > 0) {
       await this.playIndex(0);
       return;
@@ -266,6 +278,7 @@ export class OfflineAudioPlaybackController {
     this.tracks = [];
     this.currentIndex = -1;
     this.completionHandledIndex = -1;
+    this.terminalWhilePaused = false;
     this.currentTime = 0;
     this.duration = 0;
     this.playing = false;
