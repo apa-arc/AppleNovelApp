@@ -76,8 +76,8 @@ export async function lookupQQReaderCover(
     });
     if (!detail.coverUrl) return null;
     const imageUrl = new URL(detail.coverUrl);
-    const trustedImageHost = /(^|\\.)myqcloud\\.com$/i.test(imageUrl.hostname) ||
-      /(^|\\.)qpic\\.cn$/i.test(imageUrl.hostname);
+    const trustedImageHost = /(^|\.)myqcloud\.com$/i.test(imageUrl.hostname) ||
+      /(^|\.)qpic\.cn$/i.test(imageUrl.hostname);
     if (imageUrl.protocol !== "https:" || !trustedImageHost || imageUrl.username || imageUrl.password) return null;
     return imageUrl.toString();
   } catch {
