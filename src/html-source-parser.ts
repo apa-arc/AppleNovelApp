@@ -74,7 +74,7 @@ function bestSrcsetCandidate(value:string):string {
  candidates.sort((a,b)=>b.score-a.score);
  return candidates[0]?.url||"";
 }
-function safeCoverUrl(v:string,base:string):string{try{const u=new URL(v,base);if((u.protocol!=="https:"&&u.protocol!=="http:")||u.username||u.password)return"";if(u.protocol==="http:")u.protocol="https:";return u.toString();}catch{return"";}}
+function safeCoverUrl(v:string,base:string):string{try{const raw=v.trim();if(!raw||/^(data:|blob:|javascript:|about:)/i.test(raw)||/(placeholder|blank|no[-_]?cover|default[-_]?cover|loading|spacer|no[-_]?image)/i.test(raw))return"";const u=new URL(raw,base);if((u.protocol!=="https:"&&u.protocol!=="http:")||u.username||u.password)return"";if(u.protocol==="http:")u.protocol="https:";return u.toString();}catch{return"";}}
 
 export type HtmlSearchRules={itemSelector:string;titleSelector:string;urlSelector:string;authorSelector?:string;descriptionSelector?:string;titleAttribute?:string;authorAttribute?:string;descriptionAttribute?:string;urlAttribute?:string;coverSelector?:string;coverAttribute?:string};
 export type HtmlDetailRules={titleSelector?:string;authorSelector?:string;descriptionSelector?:string;coverSelector?:string;coverAttribute?:string;titleAttribute?:string;authorAttribute?:string;descriptionAttribute?:string};
