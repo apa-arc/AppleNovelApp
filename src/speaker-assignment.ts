@@ -108,11 +108,11 @@ export function extractExplicitSpeakerNames(text: string): string[] {
 }
 
 function splitLongSpeechText(value: string, maxChars = 180): string[] {
-  const sentences = value.match(/[^。！？!?；;]+[。！？!?；;]?/g) ?? [value];
+  const sentences = value.match(/[^。！？!?；;]+[。！？!?；;]?/g) ?? [];
   const chunks: string[] = [];
   for (const sentence of sentences) {
     const cleanSentence = sentence.trim();
-    if (!cleanSentence) continue;
+    if (!cleanSentence || /^[。！？!?；;，,、：:]+$/.test(cleanSentence)) continue;
     if (cleanSentence.length <= maxChars) {
       chunks.push(cleanSentence);
       continue;
