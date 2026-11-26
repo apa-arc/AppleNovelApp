@@ -220,6 +220,7 @@ export default function App() {
   const [ttsProgress, setTtsProgress] = useState(0);
   const [ttsMessage, setTtsMessage] = useState("");
   const [ttsPanelOpen, setTtsPanelOpen] = useState(false);
+  const [ttsFloatingSide, setTtsFloatingSide] = useState<"left" | "right">("right");
   const [ttsSpeed, setTtsSpeed] = useState(1);
   const [ttsDefaultVoiceId, setTtsDefaultVoiceId] = useState(3);
   const [ttsSpeakerMap, setTtsSpeakerMap] = useState<Record<string, number>>({});
@@ -234,7 +235,7 @@ export default function App() {
     onPanResponderMove: (_event, gesture) => {
       const { width, height } = Dimensions.get("window");
       const maxX = Math.max(0, width - 114);
-      const maxY = Math.max(0, height - 500);
+      const maxY = Math.max(0, height - 560);
       const x = Math.max(-maxX, Math.min(0, ttsFloatingPositionRef.current.x + gesture.dx));
       const y = Math.max(-maxY, Math.min(0, ttsFloatingPositionRef.current.y + gesture.dy));
       ttsFloatingPosition.setValue({ x, y });
@@ -242,10 +243,11 @@ export default function App() {
     onPanResponderRelease: (_event, gesture) => {
       const { width, height } = Dimensions.get("window");
       const maxX = Math.max(0, width - 114);
-      const maxY = Math.max(0, height - 500);
+      const maxY = Math.max(0, height - 560);
       const rawY = Math.max(-maxY, Math.min(0, ttsFloatingPositionRef.current.y + gesture.dy));
       const snapLeft = gesture.moveX < width / 2;
       const target = { x: snapLeft ? -maxX : 0, y: rawY };
+      setTtsFloatingSide(snapLeft ? "left" : "right");
       ttsFloatingPositionRef.current = target;
       Animated.spring(ttsFloatingPosition, {
         toValue: target,
@@ -2077,7 +2079,7 @@ export default function App() {
           </Pressable>
         </View>}
         {!showCatalog && (
-          <Animated.View pointerEvents="box-none" {...ttsFloatingPanResponder.panHandlers} style={[{ position: "absolute", right: 16, bottom: 86, alignItems: "flex-end", zIndex: 30 }, { transform: ttsFloatingPosition.getTranslateTransform() }]}>
+          <Animated.View pointerEvents="box-none" {...ttsFloatingPanResponder.panHandlers} style={[{ position: "absolute", right: 16, bottom: 86, alignItems: ttsFloatingSide === "left" ? "flex-start" : "flex-end", zIndex: 30 }, { transform: ttsFloatingPosition.getTranslateTransform() }]}>
             {ttsPanelOpen && (
               <View style={{
                 width: 286,
