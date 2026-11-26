@@ -83,6 +83,41 @@ export function extractExplicitSpeakerNames(text: string): string[] {
   return names;
 }
 
+function splitLongSpeechText(value: string, maxChars = 180): string[] {
+  const sentences = value.match(/[^。！？!?；;]+[。！？!?；;]?/g) ?? [value];
+  const chunks: string[] = [];
+  for (const sentence of sentences) {
+    const cleanSentence = sentence.trim();
+    if (!cleanSentence) continue;
+    if (cleanSentence.length <= maxChars) {
+      chunks.push(cleanSentence);
+      continue;
+    }
+    const clauses = cleanSentence.match(/[^，,、]+[，,、]?/g) ?? [cleanSentence];
+    let pending = "";
+    for (const clause of clauses) {
+      const cleanClause = clause.trim();
+      if (!cleanClause) continue;
+      if (pending && pending.length + cleanClause.length > maxChars) {
+        chunks.push(pending);
+        pending = "";
+      }
+      if (cleanClause.length <= maxChars) {
+        pending += cleanClause;
+      } else {
+        if (pending) chunks.push(pending);
+        pending = "";
+        const codePoints = Array.from(cleanClause);
+        for (let index = 0; index < codePoints.length; index += maxChars) {
+          chunks.push(codePoints.slice(index, index + maxChars).join(""));
+        }
+      }
+    }
+    if (pending) chunks.push(pending);
+  }
+  return chunks;
+}
+
 function stableHash(value: string): number {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -134,6 +169,21 @@ export function splitTextForMultiVoice(
     : DEFAULT_KOKORO_ZH_VOICE_ID;
   const segments: SpeechSegment[] = [];
   let cursor = 0;
+  const appendChunks = (
+    value: string,
+    kind: SpeechSegment["kind"],
+    speakerId: number,
+    speakerName?: string,
+  ) => {
+    for (const chunk of splitLongSpeechText(value)) {
+      segments.push({
+        text: chunk,
+        kind,
+        ...(speakerName ? { speakerName } : {}),
+        speakerId,
+      });
+    }
+  };
 
   QUOTED_DIALOGUE_PATTERN.lastIndex = 0;
   for (const match of text.matchAll(QUOTED_DIALOGUE_PATTERN)) {
@@ -141,37 +191,27 @@ export function splitTextForMultiVoice(
     const end = start + match[0].length;
     const dialogueText = match.slice(1).find((part) => part !== undefined) ?? "";
 
-    const narration = text.slice(cursor, start).trim();
-    if (narration) {
-      segments.push({ text: narration, kind: "narration", speakerId: fallbackVoiceId });
-    }
+    appendChunks(text.slice(cursor, start), "narration", fallbackVoiceId);
 
     if (dialogueText.trim()) {
       const speakerName =
         speakerBeforeQuote(text, start) ??
         speakerAfterQuote(text, end);
       const mappedVoiceId = speakerName ? speakerVoiceMap[speakerName] : undefined;
-      segments.push({
-        text: dialogueText.trim(),
-        kind: "dialogue",
-        ...(speakerName ? { speakerName } : {}),
-        speakerId: validVoiceId(mappedVoiceId) ? mappedVoiceId : fallbackVoiceId,
-      });
+      appendChunks(
+        dialogueText,
+        "dialogue",
+        validVoiceId(mappedVoiceId) ? mappedVoiceId : fallbackVoiceId,
+        speakerName,
+      );
     }
     cursor = end;
   }
 
-  const trailingNarration = text.slice(cursor).trim();
-  if (trailingNarration) {
-    segments.push({
-      text: trailingNarration,
-      kind: "narration",
-      speakerId: fallbackVoiceId,
-    });
-  }
+  appendChunks(text.slice(cursor), "narration", fallbackVoiceId);
 
   if (segments.length === 0 && text.trim()) {
-    segments.push({ text: text.trim(), kind: "narration", speakerId: fallbackVoiceId });
+    appendChunks(text, "narration", fallbackVoiceId);
   }
   return segments;
 }
