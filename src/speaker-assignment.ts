@@ -136,7 +136,7 @@ export function buildSpeakerVoiceMap(
   existingMap: SpeakerVoiceMap = {},
 ): SpeakerVoiceMap {
   const result: SpeakerVoiceMap = {};
-  const used = new Set<number>();
+  const used = new Set<number>([DEFAULT_KOKORO_ZH_VOICE_ID]);
 
   for (const [name, voiceId] of Object.entries(existingMap)) {
     if (name.trim() && validVoiceId(voiceId)) {
