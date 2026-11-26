@@ -49,3 +49,32 @@ test("HTML cover extraction prefers the highest-resolution srcset candidate", ()
   const page = p.parseHtmlSearchResults(html, "s1", "源", "封面", "https://books.example/search", { itemSelector: "li.book", titleSelector: "a.title", urlSelector: "a.title" });
   assert.equal(page.items[0].coverUrl, "https://books.example/large.jpg");
 });
+
+
+test("HTML search and detail read Legado @content metadata attributes", () => {
+  const html = '<ul><li class="book"><meta name="title" content="搜索书名"><meta name="author" content="搜索作者"><meta name="description" content="搜索简介"><a href="/book/1">详情</a></li></ul><meta name="title" content="详情书名"><meta name="author" content="详情作者"><meta name="description" content="详情简介">';
+  const search = p.parseHtmlSearchResults(html, "s1", "源", "搜索", "https://books.example/search", {
+    itemSelector: "li.book",
+    titleSelector: "meta[name=title]",
+    titleAttribute: "content",
+    authorSelector: "meta[name=author]",
+    authorAttribute: "content",
+    descriptionSelector: "meta[name=description]",
+    descriptionAttribute: "content",
+    urlSelector: "a"
+  });
+  assert.equal(search.items[0].title, "搜索书名");
+  assert.equal(search.items[0].author, "搜索作者");
+  assert.equal(search.items[0].description, "搜索简介");
+  const detail = p.parseHtmlNovelDetail(html, search.items[0], {
+    titleSelector: "meta[name=title]",
+    titleAttribute: "content",
+    authorSelector: "meta[name=author]",
+    authorAttribute: "content",
+    descriptionSelector: "meta[name=description]",
+    descriptionAttribute: "content"
+  });
+  assert.equal(detail.title, "详情书名");
+  assert.equal(detail.author, "详情作者");
+  assert.equal(detail.description, "详情简介");
+});
