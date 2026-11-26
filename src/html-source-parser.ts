@@ -91,7 +91,7 @@ export function parseHtmlNovelDetail(body:string,summary:NovelSummary,r:HtmlDeta
  const coverNode=configuredCover||metadataCover;
  const coverAttribute=r.coverAttribute||(coverNode?.tag==="link"?"href":"content");
  const rawCover=coverNode?(attr(coverNode,coverAttribute)||attr(coverNode,"content")||attr(coverNode,"href")||attr(coverNode,"src")):"";
- const coverUrl=safeCoverUrl(rawCover,"https://cover.invalid/");
+ const coverUrl=safeCoverUrl(rawCover,summary.bookUrl);
  return{
   ...summary,
   title:textAt(root,r.titleSelector,r.titleAttribute)||summary.title,
