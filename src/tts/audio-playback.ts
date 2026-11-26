@@ -204,9 +204,13 @@ export class OfflineAudioPlaybackController {
       await this.playIndex(0);
       return;
     }
-    if (this.waitingForTrack && this.currentIndex + 1 < this.tracks.length) {
-      this.waitingForTrack = false;
-      await this.advance();
+    if (this.waitingForTrack) {
+      if (this.currentIndex + 1 < this.tracks.length) {
+        this.waitingForTrack = false;
+        await this.advance();
+      } else {
+        this.emit();
+      }
       return;
     }
     this.player.play();
