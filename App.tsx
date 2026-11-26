@@ -1915,6 +1915,124 @@ export default function App() {
             <Text style={[styles.chapterNavText, (activeChapterIndex === activeChapterCount - 1 || showCatalog || loadingOnlineChapter) && styles.disabledText]}>下一章</Text>
           </Pressable>
         </View>}
+        {!showCatalog && (
+          <View pointerEvents="box-none" style={{ position: "absolute", right: 16, bottom: 86, alignItems: "flex-end", zIndex: 30 }}>
+            {ttsPanelOpen && (
+              <View style={{
+                width: 286,
+                maxHeight: 390,
+                marginBottom: 12,
+                padding: 14,
+                borderRadius: 18,
+                backgroundColor: readerTheme === "night" ? "#2B3029" : "#FFFFFF",
+                borderWidth: 1,
+                borderColor: readerTheme === "night" ? "#424A3F" : "#E7E6DF",
+                shadowColor: "#000",
+                shadowOpacity: 0.16,
+                shadowRadius: 14,
+                shadowOffset: { width: 0, height: 5 },
+                elevation: 8,
+              }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <Text style={{ color: readerTheme === "night" ? "#F0F0E8" : "#30362D", fontSize: 15, fontWeight: "800" }}>离线多角色听书</Text>
+                  <Pressable onPress={() => setTtsPanelOpen(false)}><Text style={{ color: readerTheme === "night" ? "#C6CBBF" : "#68705F", fontSize: 20 }}>×</Text></Pressable>
+                </View>
+                <Text numberOfLines={2} style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 11, lineHeight: 16, marginBottom: 8 }}>
+                  {ttsMessage || (ttsPlaybackState.playing ? "正在朗读" : "点击悬浮球开始朗读")}
+                </Text>
+                {ttsGenerating && (
+                  <View style={{ height: 4, backgroundColor: readerTheme === "night" ? "#454D41" : "#E9ECE5", borderRadius: 4, overflow: "hidden", marginBottom: 10 }}>
+                    <View style={{ height: 4, width: `${Math.max(2, ttsProgress)}%`, backgroundColor: "#829575" }} />
+                  </View>
+                )}
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 6, marginBottom: 12 }}>
+                  <Pressable onPress={() => void getOfflineAudioPlaybackController().previous()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: readerTheme === "night" ? "#3A4237" : "#F0F2EC", alignItems: "center" }}>
+                    <Text style={{ color: readerTheme === "night" ? "#E5E9DE" : "#4B5545", fontSize: 11 }}>上一段</Text>
+                  </Pressable>
+                  <Pressable onPress={() => void toggleOfflineTts()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: "#65745D", alignItems: "center" }}>
+                    <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "700" }}>{ttsPlaybackState.playing ? "暂停" : "继续"}</Text>
+                  </Pressable>
+                  <Pressable onPress={() => void getOfflineAudioPlaybackController().next()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: readerTheme === "night" ? "#3A4237" : "#F0F2EC", alignItems: "center" }}>
+                    <Text style={{ color: readerTheme === "night" ? "#E5E9DE" : "#4B5545", fontSize: 11 }}>下一段</Text>
+                  </Pressable>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
+                  <Text style={{ color: readerTheme === "night" ? "#D7DDCF" : "#4E5648", fontSize: 12, fontWeight: "700" }}>语速</Text>
+                  <View style={{ flexDirection: "row", gap: 4 }}>
+                    {[0.8, 1, 1.2, 1.5, 1.8, 2].map((speed) => (
+                      <Pressable key={speed} onPress={() => { setTtsSpeed(speed); getOfflineAudioPlaybackController().setSpeed(speed); }} style={{ paddingHorizontal: 7, paddingVertical: 5, borderRadius: 7, backgroundColor: ttsSpeed === speed ? "#65745D" : (readerTheme === "night" ? "#3A4237" : "#F0F2EC") }}>
+                        <Text style={{ fontSize: 10, color: ttsSpeed === speed ? "#FFFFFF" : (readerTheme === "night" ? "#E5E9DE" : "#4B5545") }}>{speed}×</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+                <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 7, borderTopWidth: 1, borderTopColor: readerTheme === "night" ? "#41483C" : "#ECEDE7" }}>
+                    <View>
+                      <Text style={{ color: readerTheme === "night" ? "#E5E9DE" : "#424A3C", fontSize: 12, fontWeight: "700" }}>旁白 · {voiceLabel(ttsDefaultVoiceId)}</Text>
+                      <Text style={{ color: readerTheme === "night" ? "#AEB7A6" : "#899080", fontSize: 10 }}>未识别角色时使用</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <Pressable onPress={() => void previewTtsVoice("旁白", ttsDefaultVoiceId)}><Text style={{ color: "#829575", fontSize: 11 }}>试听</Text></Pressable>
+                      <Pressable onPress={() => void cycleDefaultVoice()}><Text style={{ color: "#829575", fontSize: 11 }}>切换</Text></Pressable>
+                    </View>
+                  </View>
+                  {Object.entries(ttsSpeakerMap).map(([name, voiceId]) => (
+                    <View key={name} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 7, borderTopWidth: 1, borderTopColor: readerTheme === "night" ? "#41483C" : "#ECEDE7" }}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text numberOfLines={1} style={{ color: readerTheme === "night" ? "#E5E9DE" : "#424A3C", fontSize: 12, fontWeight: "700" }}>{name} · {voiceLabel(voiceId)}</Text>
+                        <Text style={{ color: readerTheme === "night" ? "#AEB7A6" : "#899080", fontSize: 10 }}>本书固定角色音色</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", gap: 8 }}>
+                        <Pressable onPress={() => void previewTtsVoice(name, voiceId)}><Text style={{ color: "#829575", fontSize: 11 }}>试听</Text></Pressable>
+                        <Pressable onPress={() => void cycleRoleVoice(name)}><Text style={{ color: "#829575", fontSize: 11 }}>切换</Text></Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                  <Pressable onPress={() => void startOfflineTts()}><Text style={{ color: "#829575", fontSize: 11, fontWeight: "700" }}>重新生成本章</Text></Pressable>
+                  <Pressable onPress={() => void setTtsCellular(!ttsCellularAllowed)}><Text style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 10 }}>{ttsCellularAllowed ? "允许蜂窝下载" : "仅 Wi-Fi 下载"}</Text></Pressable>
+                  <Pressable onPress={stopOfflineTts}><Text style={{ color: "#B56F62", fontSize: 11 }}>停止</Text></Pressable>
+                </View>
+              </View>
+            )}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Pressable onPress={() => void toggleOfflineTts()} style={{
+                width: 56,
+                height: 56,
+                borderRadius: 28,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "#65745D",
+                borderWidth: 2,
+                borderColor: readerTheme === "night" ? "#A7B49A" : "#FFFFFF",
+                shadowColor: "#000",
+                shadowOpacity: 0.22,
+                shadowRadius: 9,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 7,
+              }}>
+                {ttsGenerating && !ttsPlaybackState.playing
+                  ? <ActivityIndicator color="#FFFFFF" />
+                  : <Text style={{ color: "#FFFFFF", fontSize: 17, fontWeight: "800" }}>{ttsPlaybackState.playing ? "Ⅱ" : "听"}</Text>}
+              </Pressable>
+              <Pressable onPress={() => setTtsPanelOpen((open) => !open)} style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: readerTheme === "night" ? "#3A4237" : "#FFFFFF",
+                borderWidth: 1,
+                borderColor: readerTheme === "night" ? "#596351" : "#E4E7DE",
+                elevation: 4,
+              }}>
+                <Text style={{ color: readerTheme === "night" ? "#E5E9DE" : "#65745D", fontSize: 16 }}>⚙</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
       </SafeAreaView>
     );
   }
