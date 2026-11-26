@@ -163,10 +163,24 @@ export async function synthesizeOfflineSegment(
     return engineInstance;
   })();
 
+  const temporaryUri = `${fileUri}.partial`;
   const run = generationQueue.then(async () => {
+    // Never treat an interrupted/incomplete WAV as a valid cache entry.
+    await FileSystem.deleteAsync(temporaryUri, { idempotent: true });
     const audio = await engine.generateSpeech(cleanText, { sid: speakerId, speed });
-    await saveAudioToFile(audio, nativeFilePath(fileUri));
-    return modelFileUri(fileUri);
+    try {
+      await saveAudioToFile(audio, nativeFilePath(temporaryUri));
+      const generated = await FileSystem.getInfoAsync(temporaryUri);
+      if (!generated.exists || typeof generated.size !== "number" || generated.size <= 44) {
+        throw new Error("语音文件生成不完整，请重试。");
+      }
+      await FileSystem.deleteAsync(fileUri, { idempotent: true });
+      await FileSystem.moveAsync({ from: temporaryUri, to: fileUri });
+      return modelFileUri(fileUri);
+    } catch (error) {
+      await FileSystem.deleteAsync(temporaryUri, { idempotent: true });
+      throw error;
+    }
   });
   generationQueue = run.then(() => undefined, () => undefined);
   return run;
