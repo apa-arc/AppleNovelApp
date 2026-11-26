@@ -23,5 +23,17 @@ module.exports = ({ config }) => {
     };
   }
 
-  return { ...config, extra, updates };
+  const plugins = [...(config.plugins || [])];
+  if (!plugins.some((plugin) => Array.isArray(plugin) && plugin[0] === "expo-audio")) {
+    plugins.push([
+      "expo-audio",
+      {
+        microphonePermission: false,
+        enableBackgroundPlayback: true,
+        enableBackgroundRecording: false,
+      },
+    ]);
+  }
+
+  return { ...config, plugins, extra, updates };
 };
