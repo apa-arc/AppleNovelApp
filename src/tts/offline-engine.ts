@@ -137,7 +137,7 @@ export async function loadOfflineTts(
               `中文多角色音色模型不完整：预期至少 ${KOKORO_ZH_EXPECTED_SPEAKERS} 个音色，实际检测到 ${speakerCount} 个。`,
             );
           }
-          return { engine, speakerCount };
+          return engine;
         } catch (error) {
           await engine.destroy();
           throw error;
@@ -145,15 +145,14 @@ export async function loadOfflineTts(
       };
 
       let engine: TtsEngine;
-      let speakerCount: number;
       try {
-        ({ engine, speakerCount } = await createValidatedEngine(provider));
+        engine = await createValidatedEngine(provider);
       } catch (error) {
         // Core ML can pass the generic capability probe but still fail to
         // initialize this model or expose its complete speaker table.
         if (provider !== "coreml") throw error;
         provider = "cpu";
-        ({ engine, speakerCount } = await createValidatedEngine("cpu"));
+        engine = await createValidatedEngine("cpu");
       }
 
       engineInstance = engine;
