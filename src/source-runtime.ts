@@ -45,7 +45,9 @@ function configuredOrigins(source: NovelSource): Set<string> {
     source.bookUrl,
     source.chapterListUrl,
     source.chapterUrl,
-  ].map((value) => new URL(value).origin));
+  ].map((value) => new URL(value).origin).concat(
+    (source.allowedDomains || []).map((domain) => new URL("https://" + domain).origin)
+  ));
 }
 
 /**
