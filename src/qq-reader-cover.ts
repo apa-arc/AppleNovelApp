@@ -50,10 +50,11 @@ export async function lookupQQReaderCover(
     const matches = payload.data.bookList.filter((book) =>
       typeof book.bid === "number" || (typeof book.bid === "string" && /^\d+$/.test(book.bid))
     );
-    const exact = matches.find((book) =>
-      normalize(book.title || "") === wantedTitle &&
-      (!author.trim() || !book.author || normalize(book.author) === normalize(author))
-    ) || matches.find((book) => normalize(book.title || "") === wantedTitle);
+    const exactTitleMatches = matches.filter((book) => normalize(book.title || "") === wantedTitle);
+    const exact = author.trim()
+      ? exactTitleMatches.find((book) => !!book.author && normalize(book.author) === normalize(author)) ||
+        exactTitleMatches.find((book) => !book.author)
+      : exactTitleMatches[0];
     if (!exact?.bid) return null;
 
     const bookUrl = "https://book.qq.com/book-detail/" + encodeURIComponent(String(exact.bid));
