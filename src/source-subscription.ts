@@ -65,9 +65,10 @@ function mapLegadoRules(raw: Record<string, unknown>): Record<string, unknown> |
   const mapped: Record<string, unknown> = {
     search: {
       itemSelector, titleSelector, urlSelector,
+      titleAttribute: legadoAttribute(search.name, "text"),
       urlAttribute: legadoAttribute(search.bookUrl, "href"),
-      ...(legadoSelector(search.author) ? { authorSelector: legadoSelector(search.author) } : {}),
-      ...(legadoSelector(search.intro) ? { descriptionSelector: legadoSelector(search.intro) } : {}),
+      ...(legadoSelector(search.author) ? { authorSelector: legadoSelector(search.author), authorAttribute: legadoAttribute(search.author, "text") } : {}),
+      ...(legadoSelector(search.intro) ? { descriptionSelector: legadoSelector(search.intro), descriptionAttribute: legadoAttribute(search.intro, "text") } : {}),
       ...(legadoSelector(search.coverUrl) ? { coverSelector: legadoSelector(search.coverUrl), coverAttribute: legadoAttribute(search.coverUrl, "src") } : {})
     },
     chapters: { itemSelector: chapterItem, titleSelector: chapterTitle, urlSelector: chapterUrl, urlAttribute: legadoAttribute(toc.chapterUrl, "href") },
@@ -77,9 +78,9 @@ function mapLegadoRules(raw: Record<string, unknown>): Record<string, unknown> |
   const author = legadoSelector(detail.author);
   const intro = legadoSelector(detail.intro);
   if (title || author || intro) mapped.detail = {
-    ...(title ? { titleSelector: title } : {}),
-    ...(author ? { authorSelector: author } : {}),
-    ...(intro ? { descriptionSelector: intro } : {})
+    ...(title ? { titleSelector: title, titleAttribute: legadoAttribute(detail.name, "text") } : {}),
+    ...(author ? { authorSelector: author, authorAttribute: legadoAttribute(detail.author, "text") } : {}),
+    ...(intro ? { descriptionSelector: intro, descriptionAttribute: legadoAttribute(detail.intro, "text") } : {})
   };
   return mapped;
 }
