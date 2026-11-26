@@ -185,6 +185,8 @@ export default function App() {
   const [ttsMessage, setTtsMessage] = useState("");
   const [ttsPanelOpen, setTtsPanelOpen] = useState(false);
   const [ttsSpeed, setTtsSpeed] = useState(1);
+  const [ttsDefaultVoiceId, setTtsDefaultVoiceId] = useState(3);
+  const [ttsSpeakerMap, setTtsSpeakerMap] = useState<Record<string, number>>({});
   const [ttsCellularAllowed, setTtsCellularAllowed] = useState(false);
   const ttsGenerationIdRef = useRef(0);
   const ttsBookIdRef = useRef<string | null>(null);
