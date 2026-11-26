@@ -10,7 +10,8 @@ on:
         options:
           - "1.1.4"
           - "1.1.5"
-        default: "1.1.5"
+          - "1.1.6"
+        default: "1.1.6"
 
 concurrency:
   group: unsigned-ipa-${{ github.ref }}
@@ -34,7 +35,7 @@ jobs:
         run: |
           if [ "$RELEASE_VERSION" = "1.1.4" ]; then
             test "$GITHUB_REF" = "refs/heads/main"
-          elif [ "$RELEASE_VERSION" = "1.1.5" ]; then
+          elif [ "$RELEASE_VERSION" = "1.1.5" ] || [ "$RELEASE_VERSION" = "1.1.6" ]; then
             test "$GITHUB_REF" = "refs/heads/main"
           else
             echo "::error::Only protected formal releases from main are supported."
