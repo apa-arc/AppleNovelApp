@@ -210,9 +210,11 @@ export class OfflineAudioPlaybackController {
 
   async pause(): Promise<void> {
     this.assertAlive();
+    // Set the intent before calling native pause: the player may emit a
+    // terminal status synchronously while the pause request is being handled.
+    this.pausedByUser = true;
     this.player.pause();
     this.playing = false;
-    this.pausedByUser = true;
     this.emit();
   }
 
