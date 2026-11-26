@@ -115,13 +115,17 @@ function getOnlineBookId(title: string, author: string): string {
   return "online:" + normalizeNovelTitle(title) + "::" + normalizeNovelTitle(author);
 }
 
+function isPlaceholderCoverUrl(url?: string): boolean {
+  return !!url && /(placeholder|blank|no[-_]?cover|default[-_]?cover|loading|spacer|no[-_]?image)/i.test(url);
+}
+
 function BookCover({ book, grid = false, failedCoverUrls, onCoverError }: {
   book: Book;
   grid?: boolean;
   failedCoverUrls?: Record<string, boolean>;
   onCoverError?: (url: string) => void;
 }) {
-  const coverUrl = [book.coverUrl, ...(book.coverCandidates || []), book.onlineSummary?.coverUrl].find((url): url is string => !!url && !failedCoverUrls?.[url]);
+  const coverUrl = [book.coverUrl, ...(book.coverCandidates || []), book.onlineSummary?.coverUrl].find((url): url is string => !!url && !failedCoverUrls?.[url] && !isPlaceholderCoverUrl(url));
   if (coverUrl) {
     return (
       <Image
@@ -588,10 +592,10 @@ export default function App() {
         if (!coverUrl) return;
         setOnlineResults((current) => current.map((item) => item.id !== group.id
           ? item
-          : { ...item, coverUrl: item.coverUrl && !failedCoverUrls[item.coverUrl] ? item.coverUrl : coverUrl }));
+          : { ...item, coverUrl: item.coverUrl && !failedCoverUrls[item.coverUrl] && !isPlaceholderCoverUrl(item.coverUrl) ? item.coverUrl : coverUrl }));
         setSelectedSearchNovel((current) => current?.id !== group.id ? current : {
           ...current,
-          coverUrl: current.coverUrl && !failedCoverUrls[current.coverUrl] ? current.coverUrl : coverUrl,
+          coverUrl: current.coverUrl && !failedCoverUrls[current.coverUrl] && !isPlaceholderCoverUrl(current.coverUrl) ? current.coverUrl : coverUrl,
         });
         setBooks((current) => current.map((book) => {
           if (normalizeNovelTitle(book.title) !== normalizeNovelTitle(group.title)
@@ -613,7 +617,7 @@ export default function App() {
     const recover = async () => {
       const needsRecovery = books.filter((book) => {
         if (!book.onlineSourceId && !book.onlineSummary) return false;
-        const urls = [...new Set([book.coverUrl, ...(book.coverCandidates || []), book.onlineSummary?.coverUrl].filter((url): url is string => !!url))];
+        const urls = [...new Set([book.coverUrl, ...(book.coverCandidates || []), book.onlineSummary?.coverUrl].filter((url): url is string => !!url && !isPlaceholderCoverUrl(url)))];
         // No cover URL is also a recovery case; otherwise only retry after every known URL failed.
         if (urls.length > 0 && urls.some((url) => !failedCoverUrls[url])) return false;
         const enabledSourceKey = sources.filter((source) => source.enabled).map((source) => source.id).sort().join(",");
@@ -657,7 +661,7 @@ export default function App() {
         // Many sites expose the poster only on the book detail page as og:image,
         // not in search results. Query detail metadata when search has no cover.
         const coverResults = await Promise.allSettled(candidates.map(async (item) => {
-          if (item.coverUrl && !failedCoverUrls[item.coverUrl]) return item.coverUrl;
+          if (item.coverUrl && !failedCoverUrls[item.coverUrl] && !isPlaceholderCoverUrl(item.coverUrl)) return item.coverUrl;
           const source = sources.find((entry) => entry.id === item.sourceId && entry.enabled);
           if (!source) return undefined;
           const detail = await fetchNovelDetail(source, item, getSourceClient(source));
@@ -1747,7 +1751,7 @@ export default function App() {
 
   if (selectedSearchNovel && !selectedBook) {
     const detailChapters = [...loadedChapters].sort((a, b) => chapterSortOrder === "asc" ? a.index - b.index : b.index - a.index);
-    const detailCoverUrl = [loadedNovelDetail?.coverUrl, ...selectedSearchNovel.sources.map((entry) => entry.summary.coverUrl), selectedSearchNovel.coverUrl].find((url): url is string => !!url && !failedCoverUrls[url]);
+    const detailCoverUrl = [loadedNovelDetail?.coverUrl, ...selectedSearchNovel.sources.map((entry) => entry.summary.coverUrl), selectedSearchNovel.coverUrl].find((url): url is string => !!url && !failedCoverUrls[url] && !isPlaceholderCoverUrl(url));
     return (
       <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
         <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
@@ -2514,7 +2518,7 @@ export default function App() {
           {onlineResults.length > 0 && (
             <View style={styles.searchResultGrid}>
               {onlineResults.map((item) => {
-                const coverUrl = (item.coverUrl && !failedCoverUrls[item.coverUrl] ? item.coverUrl : undefined) || item.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string])?.summary.coverUrl;
+                const coverUrl = (item.coverUrl && !failedCoverUrls[item.coverUrl] && !isPlaceholderCoverUrl(item.coverUrl) ? item.coverUrl : undefined) || item.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string] && !isPlaceholderCoverUrl(entry.summary.coverUrl))?.summary.coverUrl;
                 return (
                 <Pressable key={item.id} style={styles.searchResultTile} onPress={() => openSearchNovel(item)}>
                   {coverUrl ? (
