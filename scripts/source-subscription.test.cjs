@@ -388,3 +388,21 @@ test("maps Legado detail-page cover rules into the HTML detail parser", () => {
   assert.equal(result.compatible[0].htmlRules.detail.coverSelector, "meta[property=og:image]");
   assert.equal(result.compatible[0].htmlRules.detail.coverAttribute, "content");
 });
+
+
+test("rejects complete Legado endpoint sources when their rule DSL is not supported", () => {
+  const result = parseSourceSubscription(JSON.stringify([{
+    bookSourceName: "暂不支持的动态规则源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    bookInfoUrl: "https://books.example/book/{{url}}",
+    tocUrl: "https://books.example/toc/{{url}}",
+    contentUrl: "https://books.example/content/{{url}}",
+    ruleSearch: { bookList: "class.result", name: "xpath////a/text()", bookUrl: "tag.a@href" },
+    ruleToc: { chapterList: "class.chapter", chapterName: "tag.a@text", chapterUrl: "tag.a@href" },
+    ruleContent: { content: "id.content" }
+  }]));
+  assert.equal(result.compatible.length, 0);
+  assert.equal(result.unsupported.length, 1);
+  assert.match(result.unsupported[0].reason, /暂未适配的表达式/);
+});
