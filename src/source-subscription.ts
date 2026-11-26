@@ -127,7 +127,7 @@ function parseExternalSourceBundle(payload: unknown, subscriptionIdHint?: string
     }
     try {
       const mappedRules = raw.htmlRules !== undefined ? raw.htmlRules : mapLegadoRules(raw);
-      const normalized = parseNovelSourceJson(JSON.stringify({ name, baseUrl, searchUrl, bookUrl: normalizeTemplate(bookUrl), chapterListUrl: resolveEndpoint(chapterListUrl), chapterUrl: resolveEndpoint(chapterUrl), ...(mappedRules !== undefined ? { htmlRules: mappedRules } : {}) }));
+      const normalized = parseNovelSourceJson(JSON.stringify({ name, baseUrl, searchUrl, bookUrl: resolveEndpoint(bookUrl), chapterListUrl: resolveEndpoint(chapterListUrl), chapterUrl: resolveEndpoint(chapterUrl), ...(mappedRules !== undefined ? { htmlRules: mappedRules } : {}) }));
       compatible.push({ ...normalized, remoteId, version: typeof raw.version === "string" ? raw.version : "0.0.0" });
     } catch (error) {
       unsupported.push({ id: remoteId, name, reason: error instanceof Error ? error.message : "书源配置校验失败。" });
