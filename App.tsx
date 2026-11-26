@@ -261,6 +261,7 @@ export default function App() {
   const ttsBookIdRef = useRef<string | null>(null);
   const ttsChapterIndexRef = useRef<number | null>(null);
   const ttsAutoResumeRef = useRef(false);
+  const ttsAutoAdvanceReadyRef = useRef(false);
   const ttsAutoResumeChapterRef = useRef<number | null>(null);
   const ttsStartRef = useRef<(() => Promise<void>) | null>(null);
   const [readerChromeVisible, setReaderChromeVisible] = useState(true);
@@ -1430,7 +1431,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!ttsPlaybackState.finished || !ttsAutoNextChapter || !selectedBook) return;
+    if (!ttsPlaybackState.finished || !ttsAutoNextChapter || !selectedBook || !ttsAutoAdvanceReadyRef.current) return;
     const activeIndex = onlineReading ? onlineChapterIndex : chapterIndex;
     if (ttsBookIdRef.current !== selectedBook.id || ttsChapterIndexRef.current !== activeIndex) return;
     if (loadingOnlineChapter || showCatalog) return;
@@ -1440,6 +1441,7 @@ export default function App() {
       setTtsMessage("本书已读完");
       return;
     }
+    ttsAutoAdvanceReadyRef.current = false;
     ttsAutoResumeRef.current = true;
     ttsAutoResumeChapterRef.current = nextIndex;
     setTtsMessage("本章播放完成，正在准备下一章…");
@@ -1708,6 +1710,7 @@ export default function App() {
       return currentId;
     };
     const startOfflineTts = async () => {
+      ttsAutoAdvanceReadyRef.current = false;
       const generationId = ++ttsGenerationIdRef.current;
       const controller = getOfflineAudioPlaybackController();
       controller.clearQueue();
@@ -1781,12 +1784,14 @@ export default function App() {
           setTtsProgress(Math.round(((index + 1) / segments.length) * 100));
         }
         if (generationId === ttsGenerationIdRef.current) {
+          ttsAutoAdvanceReadyRef.current = true;
           controller.finishQueue();
           setTtsGenerating(false);
           setTtsMessage(`本章语音已准备完成 · ${Object.keys(speakerMap).length} 位角色`);
         }
       } catch (error) {
         if (generationId !== ttsGenerationIdRef.current) return;
+        ttsAutoAdvanceReadyRef.current = false;
         getOfflineAudioPlaybackController().finishQueue();
         setTtsGenerating(false);
         setTtsMessage(error instanceof Error ? error.message : "离线语音生成失败。");
@@ -1833,6 +1838,7 @@ export default function App() {
     const stopOfflineTts = () => {
       ttsAutoResumeRef.current = false;
       ttsAutoResumeChapterRef.current = null;
+      ttsAutoAdvanceReadyRef.current = false;
       ttsGenerationIdRef.current += 1;
       setTtsGenerating(false);
       getOfflineAudioPlaybackController().clearQueue();
