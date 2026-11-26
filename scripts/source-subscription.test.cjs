@@ -406,3 +406,22 @@ test("rejects complete Legado endpoint sources when their rule DSL is not suppor
   assert.equal(result.unsupported.length, 1);
   assert.match(result.unsupported[0].reason, /暂未适配的表达式/);
 });
+
+
+test("maps supported Legado nth-child selectors for detail author extraction", () => {
+  const result = parseSourceSubscription(JSON.stringify([{
+    bookSourceName: "详情复合选择器源",
+    bookSourceUrl: "https://books.example/",
+    searchUrl: "https://books.example/search?q={{key}}",
+    bookInfoUrl: "https://books.example/book/{{url}}",
+    tocUrl: "https://books.example/toc/{{url}}",
+    contentUrl: "https://books.example/content/{{url}}",
+    ruleSearch: { bookList: "class.book", name: "tag.a@text", bookUrl: "tag.a@href" },
+    ruleBookInfo: { author: "class.info_ct > tag.div:nth-child(2)@text" },
+    ruleToc: { chapterList: "class.chapter", chapterName: "tag.a@text", chapterUrl: "tag.a@href" },
+    ruleContent: { content: "id.content" }
+  }]));
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.compatible[0].htmlRules.detail.authorSelector, ".info_ct > div:nth-child(2)");
+  assert.equal(result.compatible[0].htmlRules.detail.authorAttribute, "text");
+});
