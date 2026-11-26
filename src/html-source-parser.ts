@@ -77,12 +77,29 @@ function bestSrcsetCandidate(value:string):string {
 function safeCoverUrl(v:string,base:string):string{try{const u=new URL(v,base);if((u.protocol!=="https:"&&u.protocol!=="http:")||u.username||u.password)return"";if(u.protocol==="http:")u.protocol="https:";return u.toString();}catch{return"";}}
 
 export type HtmlSearchRules={itemSelector:string;titleSelector:string;urlSelector:string;authorSelector?:string;descriptionSelector?:string;titleAttribute?:string;authorAttribute?:string;descriptionAttribute?:string;urlAttribute?:string;coverSelector?:string;coverAttribute?:string};
-export type HtmlDetailRules={titleSelector?:string;authorSelector?:string;descriptionSelector?:string;titleAttribute?:string;authorAttribute?:string;descriptionAttribute?:string};
+export type HtmlDetailRules={titleSelector?:string;authorSelector?:string;descriptionSelector?:string;coverSelector?:string;coverAttribute?:string;titleAttribute?:string;authorAttribute?:string;descriptionAttribute?:string};
 export type HtmlChapterRules={itemSelector:string;titleSelector:string;urlSelector:string;titleAttribute?:string;urlAttribute?:string};
 export type HtmlContentRules={contentSelector:string;titleSelector?:string};
 export function parseHtmlSearchResults(body:string,sourceId:string,sourceName:string,keyword:string,responseUrl:string,r:HtmlSearchRules,allowedOrigins?:string[]):{keyword:string;sourceId:string;items:NovelSummary[];hasMore:boolean}{
  const root=parseHtmlDocument(body),items=selectHtmlNodes(root,r.itemSelector).flatMap((n,i)=>{const tn=r.titleSelector===":self"?n:selectHtmlNodes(n,r.titleSelector)[0],ln=r.urlSelector===":self"?n:selectHtmlNodes(n,r.urlSelector)[0],title=tn?(r.titleAttribute&&r.titleAttribute!=="text"?attr(tn,r.titleAttribute):htmlNodeText(tn)):"",bookUrl=ln?safeUrl(attr(ln,r.urlAttribute||"href"),responseUrl,allowedOrigins):"";if(!title||!bookUrl)return[];const cv=(r.coverSelector?selectHtmlNodes(n,r.coverSelector)[0]:undefined)||selectHtmlNodes(n,"img")[0],coverNodes=[...(cv?[cv]:[]),...selectHtmlNodes(n,"img"),...selectHtmlNodes(n,"picture source")].filter((node,index,nodes)=>nodes.indexOf(node)===index),coverCandidates=coverNodes.flatMap((image)=>[attr(image,"data-src"),attr(image,"data-original"),attr(image,"data-lazy-src"),attr(image,"data-lazyload"),attr(image,"data-lazy"),attr(image,"data-actualsrc"),attr(image,"data-original-src"),attr(image,"data-img"),attr(image,"data-image"),attr(image,"data-ks-lazyload"),attr(image,"data-echo"),attr(image,"data-url"),attr(image,"data-cover"),attr(image,"data-book-cover"),attr(image,"data-thumb"),attr(image,"data-lazy-img"),attr(image,"data-bg"),attr(image,"data-background"),attr(image,r.coverAttribute||""),bestSrcsetCandidate(attr(image,"data-srcset")),bestSrcsetCandidate(attr(image,"srcset")),attr(image,"src")]).concat(selectHtmlNodes(n,"[style]").map((node)=>attr(node,"style").match(/background(?:-image)?\s*:\s*url\(['"]?([^)'"]+)/i)?.[1]||"")),coverRaw=coverCandidates.find((value)=>{const candidate=value.trim();if(!candidate||/^(data:|about:|javascript:)/i.test(candidate)||/(placeholder|blank|no[-_]?cover|default[-_]?cover|loading|spacer)/i.test(candidate))return false;return !!safeCoverUrl(candidate,responseUrl);})||"",coverUrl=coverRaw?safeCoverUrl(coverRaw,responseUrl):"";return[{id:sourceId+":"+i+":"+bookUrl,sourceId,sourceName,title,author:textAt(n,r.authorSelector,r.authorAttribute)||"未知作者",description:textAt(n,r.descriptionSelector,r.descriptionAttribute),bookUrl,...(coverUrl?{coverUrl}:{})}];});return{keyword,sourceId,items,hasMore:false};
 }
-export function parseHtmlNovelDetail(body:string,summary:NovelSummary,r:HtmlDetailRules):NovelDetail{const root=parseHtmlDocument(body);return{...summary,title:textAt(root,r.titleSelector,r.titleAttribute)||summary.title,author:textAt(root,r.authorSelector,r.authorAttribute)||summary.author,description:textAt(root,r.descriptionSelector,r.descriptionAttribute)||summary.description,chapters:[]};}
+export function parseHtmlNovelDetail(body:string,summary:NovelSummary,r:HtmlDetailRules):NovelDetail{
+ const root=parseHtmlDocument(body);
+ const metadataCoverSelectors=["meta[property='og:image:secure_url']","meta[property='og:image']","meta[name='og:image']","meta[name='twitter:image']","meta[property='twitter:image']","link[rel='image_src']"];
+ const metadataCover=metadataCoverSelectors.map((selector)=>selectHtmlNodes(root,selector)[0]).find(Boolean);
+ const configuredCover=r.coverSelector?selectHtmlNodes(root,r.coverSelector)[0]:undefined;
+ const coverNode=configuredCover||metadataCover;
+ const coverAttribute=r.coverAttribute||(coverNode?.tag==="link"?"href":"content");
+ const rawCover=coverNode?(attr(coverNode,coverAttribute)||attr(coverNode,"content")||attr(coverNode,"href")||attr(coverNode,"src")):"";
+ const coverUrl=safeCoverUrl(rawCover,"https://cover.invalid/");
+ return{
+  ...summary,
+  title:textAt(root,r.titleSelector,r.titleAttribute)||summary.title,
+  author:textAt(root,r.authorSelector,r.authorAttribute)||summary.author,
+  description:textAt(root,r.descriptionSelector,r.descriptionAttribute)||summary.description,
+  ...(coverUrl?{coverUrl}:{}),
+  chapters:[]
+ };
+}
 export function parseHtmlChapterList(body:string,novelId:string,responseUrl:string,r:HtmlChapterRules,allowedOrigins?:string[]):NovelChapter[]{const root=parseHtmlDocument(body),out:NovelChapter[]=[];selectHtmlNodes(root,r.itemSelector).forEach((n,i)=>{const tn=r.titleSelector===":self"?n:selectHtmlNodes(n,r.titleSelector)[0],ln=r.urlSelector===":self"?n:selectHtmlNodes(n,r.urlSelector)[0],title=tn?(r.titleAttribute&&r.titleAttribute!=="text"?attr(tn,r.titleAttribute):htmlNodeText(tn)):"",href=ln?safeUrl(attr(ln,r.urlAttribute||"href"),responseUrl,allowedOrigins):"";if(title&&href)out.push({id:novelId+":"+i+":"+href,novelId,title,url:href,index:out.length});});if(!out.length)throw new Error("HTML 章节规则没有匹配到有效章节。");return out;}
 export function parseHtmlChapterContent(body:string,fallbackTitle:string,r:HtmlContentRules):NovelContent{const root=parseHtmlDocument(body),node=selectHtmlNodes(root,r.contentSelector)[0];if(!node)throw new Error("HTML 正文选择器未匹配到内容："+r.contentSelector);const content=htmlNodeText(node);if(!content)throw new Error("HTML 正文为空。");return{chapterId:"",title:textAt(root,r.titleSelector)||fallbackTitle,content};}
