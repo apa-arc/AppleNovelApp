@@ -52,7 +52,7 @@ import {
 
 async function isKokoroModelDownloaded(): Promise<boolean> {
   try {
-    return await isKokoroModelDownloaded();
+    return await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
   } catch (error) {
     // Sherpa 0.4.4 may throw here before its model registry is refreshed.
     // Treat only this registry miss as "not confirmed"; the download path
