@@ -172,3 +172,22 @@ test("does not restart or advance a track when clearing synchronously finishes n
   assert.equal(controller.getState().finished, false);
   controller.destroy();
 });
+
+
+test("reopens a completed queue when a late TTS batch is appended", async () => {
+  player = createPlayer();
+  const controller = new OfflineAudioPlaybackController();
+  await controller.start([track(0)]);
+  controller.finishQueue();
+  player.emitFinished();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(controller.getState().finished, true);
+
+  controller.append([{ ...track(1), chapterTitle: "补充片段" }]);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(controller.getState().currentIndex, 1);
+  assert.equal(controller.getState().chapterTitle, "补充片段");
+  assert.equal(controller.getState().playing, true);
+  assert.equal(controller.getState().finished, false);
+  controller.destroy();
+});
