@@ -55,7 +55,8 @@ function configuredOrigins(source: NovelSource): Set<string> {
  */
 export function createSourceHttpClient(
   source: NovelSource,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = REQUEST_TIMEOUT_MS
 ): SourceHttpClient {
   const allowedOrigins = configuredOrigins(source);
 
@@ -89,7 +90,7 @@ export function createSourceHttpClient(
       const abortFromCaller = () => controller.abort();
       if (externalSignal?.aborted) controller.abort();
       else externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
-      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const timeout = setTimeout(() => controller.abort(), Math.max(500, Math.min(REQUEST_TIMEOUT_MS, timeoutMs)));
       try {
         const response = await fetchImpl(target.toString(), {
           method: "GET",
