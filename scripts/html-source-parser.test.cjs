@@ -249,3 +249,25 @@ test("HTML detail removes author and intro labels from common site markup", () =
   assert.equal(detail.author, "作者辛");
   assert.equal(detail.description, "这是小说简介。");
 });
+
+
+test("HTML detail recognizes additional lazy cover attributes used by mobile novel sites", () => {
+  const summary = {
+    id: "book-attrs", sourceId: "s1", sourceName: "源", title: "懒加载封面",
+    author: "作者", description: "", bookUrl: "https://books.example/book/attrs"
+  };
+  const cases = [
+    ["data-lazy", "lazy.jpg"],
+    ["data-original-src", "original-src.jpg"],
+    ["data-img", "img.jpg"],
+    ["data-echo", "echo.jpg"],
+    ["data-url", "url.jpg"],
+    ["data-thumb", "thumb.jpg"],
+    ["data-background", "background.jpg"]
+  ];
+  for (const [attribute, file] of cases) {
+    const html = '<div id="fmimg"><img src="placeholder.png" ' + attribute + '="//cdn.books.example/' + file + '"></div>';
+    const detail = p.parseHtmlNovelDetail(html, summary, {});
+    assert.equal(detail.coverUrl, "https://cdn.books.example/" + file, attribute);
+  }
+});
