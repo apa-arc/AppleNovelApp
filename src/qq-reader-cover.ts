@@ -51,9 +51,10 @@ export async function lookupQQReaderCover(
       typeof book.bid === "number" || (typeof book.bid === "string" && /^\d+$/.test(book.bid))
     );
     const exactTitleMatches = matches.filter((book) => normalize(book.title || "") === wantedTitle);
+    // When the source knows the requested author, an absent author is not
+    // proof of identity. Never fill a cover from a title-only match.
     const exact = author.trim()
-      ? exactTitleMatches.find((book) => !!book.author && normalize(book.author) === normalize(author)) ||
-        exactTitleMatches.find((book) => !book.author)
+      ? exactTitleMatches.find((book) => !!book.author && normalize(book.author) === normalize(author))
       : exactTitleMatches[0];
     if (!exact?.bid) return null;
 
