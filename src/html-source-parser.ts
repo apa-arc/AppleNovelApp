@@ -78,11 +78,11 @@ function safeCoverUrl(v:string,base:string):string{
  try{
   const raw=v.trim();
   if(!raw||/^(data:|blob:|javascript:|about:)/i.test(raw)||/(placeholder|blank|no[-_]?cover|default[-_]?cover|loading|spacer|no[-_]?image)/i.test(raw))return"";
-  const u=new URL(raw,base),host=u.hostname.toLowerCase().replace(/^\\[|\\]$/g,"").replace(/\\.$/,"");
+  const u=new URL(raw,base),host=u.hostname.toLowerCase().replace(/^\[|\]$/g,"").replace(/\.$/,"");
   if((u.protocol!=="https:"&&u.protocol!=="http:")||u.username||u.password)return"";
   if(host==="localhost"||host.endsWith(".localhost")||host.endsWith(".local")||host.endsWith(".internal"))return"";
   const octets=host.split(".");
-  if(octets.length===4&&octets.every((part)=>/^\\d{1,3}$/.test(part))){
+  if(octets.length===4&&octets.every((part)=>/^\d{1,3}$/.test(part))){
    const [a,b,c]=octets.map(Number);
    if([a,b,c].some((part)=>part<0||part>255)||a===0||a===10||a===127||a>=224||(a===100&&b>=64&&b<=127)||(a===169&&b===254)||(a===172&&b>=16&&b<=31)||(a===192&&b===168)||(a===192&&b===0&&c===0)||(a===198&&(b===18||b===19)))return"";
   }
@@ -98,7 +98,7 @@ function imageUrlFromNode(node:Node,base:string,preferredAttribute?:string):stri
   attr(node,"data-lazy-src"),attr(node,"data-lazyload"),attr(node,"data-actualsrc"),
   attr(node,"data-cover"),attr(node,"data-image"),bestSrcsetCandidate(attr(node,"data-srcset")),
   bestSrcsetCandidate(attr(node,"srcset")),attr(node,"src"),
-  attr(node,"style").match(/background(?:-image)?\\s*:\\s*url\\(['"]?([^)'" ]+)/i)?.[1]||""
+  attr(node,"style").match(/background(?:-image)?\s*:\s*url\(['"]?([^)'" ]+)/i)?.[1]||""
  ];
  return values.map((value)=>safeCoverUrl(value,base)).find(Boolean)||"";
 }
