@@ -121,3 +121,20 @@ test("ignores repeated terminal status events for the same audio track", async (
   assert.equal(controller.getState().finished, true);
   controller.destroy();
 });
+
+
+test("does not advance to the next TTS segment when pause races with track completion", async () => {
+  player = createPlayer();
+  const controller = new OfflineAudioPlaybackController();
+  await controller.start([track(0), { ...track(1), chapterTitle: "第二章" }]);
+  await controller.pause();
+  player.emitFinished();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(controller.getState().currentIndex, 0);
+  assert.equal(controller.getState().playing, false);
+
+  await controller.resume();
+  assert.equal(controller.getState().currentIndex, 1);
+  assert.equal(controller.getState().playing, true);
+  controller.destroy();
+});
