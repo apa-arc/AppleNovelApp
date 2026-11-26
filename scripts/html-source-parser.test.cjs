@@ -66,7 +66,8 @@ test("HTML search and detail read Legado @content metadata attributes", () => {
   assert.equal(search.items[0].title, "搜索书名");
   assert.equal(search.items[0].author, "搜索作者");
   assert.equal(search.items[0].description, "搜索简介");
-  const detail = p.parseHtmlNovelDetail(html, search.items[0], {
+  const detailHtml = '<meta name="title" content="详情书名"><meta name="author" content="详情作者"><meta name="description" content="详情简介">';
+  const detail = p.parseHtmlNovelDetail(detailHtml, search.items[0], {
     titleSelector: "meta[name=title]",
     titleAttribute: "content",
     authorSelector: "meta[name=author]",
