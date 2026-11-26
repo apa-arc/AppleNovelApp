@@ -105,13 +105,8 @@ function cleanNarrationAroundDialogue(value: string): string {
 
 function speakerBeforeQuote(text: string, quoteStart: number): string | undefined {
   const prefix = text.slice(Math.max(0, quoteStart - 48), quoteStart);
-  const clause = prefix.split(/[。！？；\n]/).pop() ?? prefix;
-  const cleanClause = cleanSpeakerClause(clause);
-  if (ADDRESSED_SPEECH_TAG.test(cleanClause) || SPEECH_TAG.test(cleanClause)) {
-    return speakerFromTag(cleanClause);
-  }
-  const directName = cleanClause.match(/^([一-鿿A-Za-z·]{1,8})$/)?.[1];
-  return directName && !GENERIC_SPEAKERS.has(directName) ? directName : undefined;
+  const clause = prefix.split(/[。！？；\\n]/).pop() ?? prefix;
+  return speakerFromTag(clause);
 }
 function speakerAfterQuote(text: string, quoteEnd: number): string | undefined {
   const suffix = text.slice(quoteEnd, quoteEnd + 48).replace(/^[，。！？；：\s]+/, "");
