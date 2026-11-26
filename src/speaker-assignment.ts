@@ -134,9 +134,13 @@ function stableHash(value: string): number {
 export function buildSpeakerVoiceMap(
   text: string,
   existingMap: SpeakerVoiceMap = {},
+  defaultVoiceId = DEFAULT_KOKORO_ZH_VOICE_ID,
 ): SpeakerVoiceMap {
   const result: SpeakerVoiceMap = {};
-  const used = new Set<number>([DEFAULT_KOKORO_ZH_VOICE_ID]);
+  const safeDefaultVoiceId = validVoiceId(defaultVoiceId)
+    ? defaultVoiceId
+    : DEFAULT_KOKORO_ZH_VOICE_ID;
+  const used = new Set<number>([safeDefaultVoiceId]);
 
   for (const [name, voiceId] of Object.entries(existingMap)) {
     if (name.trim() && validVoiceId(voiceId)) {
