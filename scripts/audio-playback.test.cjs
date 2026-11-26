@@ -138,3 +138,20 @@ test("does not advance to the next TTS segment when pause races with track compl
   assert.equal(controller.getState().playing, true);
   controller.destroy();
 });
+
+
+test("handles a native terminal callback emitted synchronously by pause", async () => {
+  player = createPlayer();
+  player.pause = function() {
+    this.listener?.({ currentTime: 1, duration: 1, playing: false, didJustFinish: true });
+  };
+  const controller = new OfflineAudioPlaybackController();
+  await controller.start([track(0), { ...track(1), chapterTitle: "第二章" }]);
+  await controller.pause();
+  assert.equal(controller.getState().currentIndex, 0);
+  assert.equal(controller.getState().playing, false);
+  await controller.resume();
+  assert.equal(controller.getState().currentIndex, 1);
+  assert.equal(controller.getState().playing, true);
+  controller.destroy();
+});
