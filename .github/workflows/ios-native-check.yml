@@ -8,6 +8,7 @@ on:
       - app.config.js
       - app.json
       - package.json
+      - patches/**
       - package-lock.json
       - src/tts/**
       - src/speaker-assignment.ts
