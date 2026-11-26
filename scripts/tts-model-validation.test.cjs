@@ -6,7 +6,7 @@ test("accepts a complete Kokoro model with Chinese lexicon", () => {
   assert.doesNotThrow(() => assertKokoroChineseModelValid({
     success: true,
     modelType: "kokoro",
-    lexiconLanguageCandidates: ["en-us", "zh"],
+    lexiconLanguageCandidates: ["zh", "en-us"],
   }));
 });
 
@@ -47,5 +47,16 @@ test("rejects a mismatched model type", () => {
       lexiconLanguageCandidates: ["zh"],
     }),
     /模型类型不匹配/,
+  );
+});
+
+test("rejects a Chinese lexicon that is present but not selected first", () => {
+  assert.throws(
+    () => assertKokoroChineseModelValid({
+      success: true,
+      modelType: "kokoro",
+      lexiconLanguageCandidates: ["gb-en", "zh", "us-en"],
+    }),
+    /未优先选择中文词典/,
   );
 });
