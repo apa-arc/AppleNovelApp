@@ -32,7 +32,8 @@
     "test:tts-speaker": "tsc src/speaker-assignment.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --rootDir src --outDir .test-build/tts-speaker && node --test scripts/speaker-assignment.test.cjs",
     "test:tts-model": "tsc src/tts/model-registry.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --rootDir src --outDir .test-build && node --test scripts/tts-model-registry.test.cjs",
     "test:tts-validation": "tsc src/tts/model-validation.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --rootDir src --outDir .test-build && node --test scripts/tts-model-validation.test.cjs",
-    "test:qq-reader-cover": "tsc src/novel.ts src/html-source-parser.ts src/qq-reader-cover.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/qq-reader-cover.test.cjs"
+    "test:qq-reader-cover": "tsc src/novel.ts src/html-source-parser.ts src/qq-reader-cover.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/qq-reader-cover.test.cjs",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -52,6 +53,7 @@
     "react-native-sherpa-onnx": "0.4.4"
   },
   "devDependencies": {
+    "patch-package": "^8.0.0",
     "@types/react": "~19.1.10",
     "typescript": "~5.9.2"
   },
