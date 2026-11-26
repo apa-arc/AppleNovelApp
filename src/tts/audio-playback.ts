@@ -110,6 +110,7 @@ export class OfflineAudioPlaybackController {
     this.player.replace(track.uri);
     this.updateLockScreenMetadata();
     this.player.play();
+    this.playing = true;
     this.emit();
   }
 
