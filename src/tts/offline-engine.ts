@@ -63,25 +63,6 @@ function nativeFilePath(uri: string): string {
   return uri.startsWith("file://") ? uri.slice("file://".length) : uri;
 }
 
-/**
- * Sherpa ONNX 0.4.4's iOS wrapper currently selects only the first detected
- * Kokoro lexicon. Its detector sorts language lexicons alphabetically, which
- * would select gb-en before zh. Keep the Chinese lexicon as the sole candidate
- * so Chinese novel narration is initialized with the correct pronunciation.
- */
-async function selectChineseKokoroLexicon(modelPath: string): Promise<void> {
-  const modelDirectory = modelPath.endsWith("/") ? modelPath.slice(0, -1) : modelPath;
-  const chineseLexiconPath = `${modelDirectory}/lexicon-zh.txt`;
-  const chineseLexicon = await FileSystem.getInfoAsync(chineseLexiconPath);
-  if (!chineseLexicon.exists) {
-    throw new Error("中文语音模型缺少 lexicon-zh.txt，无法保证中文发音。请重新下载模型。");
-  }
-
-  for (const filename of ["lexicon-gb-en.txt", "lexicon-us-en.txt"]) {
-    await FileSystem.deleteAsync(`${modelDirectory}/${filename}`, { idempotent: true });
-  }
-}
-
 /** Download and extract the Chinese Kokoro multi-speaker model on demand. */
 export async function ensureOfflineTtsModel(
   onProgress?: OfflineTtsProgress,
@@ -124,7 +105,6 @@ export async function loadOfflineTts(
   if (!enginePromise) {
     enginePromise = (async () => {
       const modelPath = await ensureOfflineTtsModel(onProgress);
-      await selectChineseKokoroLexicon(modelPath);
       const detection = await detectTtsModel(
         { type: "file", path: modelPath },
         { modelType: "kokoro" },
