@@ -29,7 +29,7 @@ const GENERIC_SPEAKERS = new Set([
 ]);
 
 const SPEECH_TAG =
-  /([一-鿿A-Za-z·]{1,8})(?:轻声地?|低声地?|冷冷地|淡淡地|沉声|大声|怒气冲冲地|笑着|冷声|急声)?(?:说道|问道|答道|笑道|喊道|叫道|怒道|叹道|开口道|开口说|道|说|问|答)$/;
+  /([一-鿿A-Za-z·]{1,8}?)(?:轻声地?|低声地?|冷冷地|淡淡地|沉声|大声|怒气冲冲地|笑着|冷声|急声)?(?:说道|问道|答道|笑道|喊道|叫道|怒道|叹道|开口道|开口说|道|说|问|答)$/;
 
 function cleanSpeakerClause(value: string): string {
   return value
@@ -48,7 +48,8 @@ function speakerFromTag(value: string): string | undefined {
     /^([\u4e00-\u9fffA-Za-z·]{1,8})(?:看向|看着|对着|向|冲着|朝着|面对|面向|望着)([\u4e00-\u9fffA-Za-z·]{1,8})(?:轻声地?|低声地?|冷冷地|淡淡地|沉声|大声|笑着|冷声|急声)?(?:说道|问道|答道|笑道|喊道|叫道|怒道|叹道|道|说|问|答)$/,
   );
   const match = addressed ?? clause.match(SPEECH_TAG);
-  const name = match?.[1]?.trim();
+  const directName = clause.match(/^([\\u4e00-\\u9fffA-Za-z·]{1,8})$/);
+  const name = (match?.[1] ?? directName?.[1])?.trim();
   if (!name || GENERIC_SPEAKERS.has(name)) return undefined;
   return name;
 }
