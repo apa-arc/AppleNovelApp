@@ -29,7 +29,7 @@ export type NovelSource = {
 };
 
 export type HtmlSourceRules = {
-  search?: { itemSelector:string; titleSelector:string; urlSelector:string; authorSelector?:string; descriptionSelector?:string; urlAttribute?:string; coverSelector?:string; coverAttribute?:string };
+  search?: { itemSelector:string; titleSelector:string; urlSelector:string; authorSelector?:string; descriptionSelector?:string; titleAttribute?:string; authorAttribute?:string; descriptionAttribute?:string; urlAttribute?:string; coverSelector?:string; coverAttribute?:string };
   detail?: { titleSelector?:string; authorSelector?:string; descriptionSelector?:string; titleAttribute?:string; authorAttribute?:string; descriptionAttribute?:string };
   chapters?: { itemSelector:string; titleSelector:string; urlSelector:string; urlAttribute?:string };
   content?: { contentSelector:string; titleSelector?:string };
@@ -58,7 +58,7 @@ function validateHtmlRules(value: unknown): HtmlSourceRules {
     for(const field of allowed){if(obj[field]===undefined)continue;if(typeof obj[field]!=="string"||!(obj[field] as string).trim()||(obj[field] as string).length>300)throw new Error("htmlRules."+key+"."+field+" 无效。");out[field]=(obj[field] as string).trim();}
     for(const field of required)if(!out[field])throw new Error("htmlRules."+key+" 缺少 "+field+"。");return out;
   };
-  const search=read("search",["itemSelector","titleSelector","urlSelector"],["itemSelector","titleSelector","urlSelector","authorSelector","descriptionSelector","urlAttribute","coverSelector","coverAttribute"]);
+  const search=read("search",["itemSelector","titleSelector","urlSelector"],["itemSelector","titleSelector","urlSelector","authorSelector","descriptionSelector","titleAttribute","authorAttribute","descriptionAttribute","urlAttribute","coverSelector","coverAttribute"]);
   const detail=read("detail",[],["titleSelector","authorSelector","descriptionSelector","titleAttribute","authorAttribute","descriptionAttribute"]);
   const chapters=read("chapters",["itemSelector","titleSelector","urlSelector"],["itemSelector","titleSelector","urlSelector","urlAttribute"]);
   const content=read("content",["contentSelector"],["contentSelector","titleSelector"]);
