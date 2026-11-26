@@ -83,8 +83,8 @@ function safeCoverUrl(v:string,base:string):string{
   if(host==="localhost"||host.endsWith(".localhost")||host.endsWith(".local")||host.endsWith(".internal"))return"";
   const octets=host.split(".");
   if(octets.length===4&&octets.every((part)=>/^\d{1,3}$/.test(part))){
-   const [a,b,c]=octets.map(Number);
-   if([a,b,c].some((part)=>part<0||part>255)||a===0||a===10||a===127||a>=224||(a===100&&b>=64&&b<=127)||(a===169&&b===254)||(a===172&&b>=16&&b<=31)||(a===192&&b===168)||(a===192&&b===0&&c===0)||(a===198&&(b===18||b===19)))return"";
+   const [a,b,c,d]=octets.map(Number);
+   if([a,b,c,d].some((part)=>part<0||part>255)||a===0||a===10||a===127||a>=224||(a===100&&b>=64&&b<=127)||(a===169&&b===254)||(a===172&&b>=16&&b<=31)||(a===192&&b===168)||(a===192&&b===0&&c===0)||(a===198&&(b===18||b===19)))return"";
   }
   if(host.includes(":")&&(host==="::"||host==="::1"||/^f[cd]/i.test(host)||/^fe[89ab]/i.test(host)||/^::ffff:/i.test(host)))return"";
   if(u.protocol==="http:")u.protocol="https:";
