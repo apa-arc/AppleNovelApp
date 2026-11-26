@@ -77,10 +77,12 @@ function mapLegadoRules(raw: Record<string, unknown>): Record<string, unknown> |
   const title = legadoSelector(detail.name);
   const author = legadoSelector(detail.author);
   const intro = legadoSelector(detail.intro);
-  if (title || author || intro) mapped.detail = {
+  const cover = legadoSelector(detail.coverUrl) || legadoSelector(detail.cover);
+  if (title || author || intro || cover) mapped.detail = {
     ...(title ? { titleSelector: title, titleAttribute: legadoAttribute(detail.name, "text") } : {}),
     ...(author ? { authorSelector: author, authorAttribute: legadoAttribute(detail.author, "text") } : {}),
-    ...(intro ? { descriptionSelector: intro, descriptionAttribute: legadoAttribute(detail.intro, "text") } : {})
+    ...(intro ? { descriptionSelector: intro, descriptionAttribute: legadoAttribute(detail.intro, "text") } : {}),
+    ...(cover ? { coverSelector: cover, coverAttribute: legadoAttribute(detail.coverUrl || detail.cover, "src") } : {})
   };
   return mapped;
 }
