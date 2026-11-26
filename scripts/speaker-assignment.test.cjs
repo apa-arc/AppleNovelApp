@@ -62,3 +62,8 @@ test("resolves the speaker rather than the person being addressed", () => {
   const text = "张三看向李四说道：“我们走吧。” “别过来！”林婉儿对着他喊道。";
   assert.deepEqual(extractExplicitSpeakerNames(text), ["张三", "林婉儿"]);
 });
+
+
+test("recognizes the common name-colon dialogue format without guessing pronouns", () => {
+  assert.deepEqual(extractExplicitSpeakerNames("张三：“快走！”她：“我不走。”"), ["张三"]);
+});
