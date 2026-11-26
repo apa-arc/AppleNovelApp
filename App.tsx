@@ -90,6 +90,7 @@ const APPEARANCE_STORAGE_KEY = "@private_novel/appearance_v1";
 const TTS_SPEAKER_MAP_STORAGE_KEY = "@private_novel/tts_speaker_map_v1";
 const TTS_CELLULAR_ALLOWED_STORAGE_KEY = "@private_novel/tts_cellular_allowed_v1";
 const TTS_DEFAULT_VOICE_STORAGE_KEY = "@private_novel/tts_default_voice_v1";
+const TTS_AUTO_NEXT_CHAPTER_STORAGE_KEY = "@private_novel/tts_auto_next_chapter_v1";
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
 type SearchNovelGroup = { id: string; title: string; author: string; description: string; coverUrl?: string; sources: SearchSourceOption[] };
 type SearchLogEntry = { id: string; sourceId: string; sourceName: string; keyword: string; ok: boolean; resultCount: number; error?: string; searchedAt: number };
@@ -155,6 +156,13 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   useEffect(() => {
+    AsyncStorage.getItem(TTS_AUTO_NEXT_CHAPTER_STORAGE_KEY).then((value) => {
+      if (value === "0") setTtsAutoNextChapter(false);
+      else if (value === "1") setTtsAutoNextChapter(true);
+    }).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     AsyncStorage.getItem(TTS_DEFAULT_VOICE_STORAGE_KEY).then((value) => {
       const voiceId = Number(value);
       if (Number.isInteger(voiceId) && voiceId >= 3 && voiceId <= 102) setTtsDefaultVoiceId(voiceId);
@@ -206,6 +214,7 @@ export default function App() {
     currentIndex: -1,
     trackCount: 0,
     chapterTitle: "",
+    finished: false,
   });
   const [ttsGenerating, setTtsGenerating] = useState(false);
   const [ttsProgress, setTtsProgress] = useState(0);
@@ -215,6 +224,7 @@ export default function App() {
   const [ttsDefaultVoiceId, setTtsDefaultVoiceId] = useState(3);
   const [ttsSpeakerMap, setTtsSpeakerMap] = useState<Record<string, number>>({});
   const [ttsCellularAllowed, setTtsCellularAllowed] = useState(false);
+  const [ttsAutoNextChapter, setTtsAutoNextChapter] = useState(true);
   const ttsFloatingPosition = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const ttsFloatingPositionRef = useRef({ x: 0, y: 0 });
   const ttsFloatingPanResponder = useRef(PanResponder.create({
@@ -250,6 +260,9 @@ export default function App() {
   const ttsGenerationIdRef = useRef(0);
   const ttsBookIdRef = useRef<string | null>(null);
   const ttsChapterIndexRef = useRef<number | null>(null);
+  const ttsAutoResumeRef = useRef(false);
+  const ttsAutoResumeChapterRef = useRef<number | null>(null);
+  const ttsStartRef = useRef<(() => Promise<void>) | null>(null);
   const [readerChromeVisible, setReaderChromeVisible] = useState(true);
   const readerTapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const [readerContentHeight, setReaderContentHeight] = useState(0);
@@ -1416,6 +1429,59 @@ export default function App() {
     setShowCatalog(false);
   };
 
+  useEffect(() => {
+    if (!ttsPlaybackState.finished || !ttsAutoNextChapter || !selectedBook) return;
+    const activeIndex = onlineReading ? onlineChapterIndex : chapterIndex;
+    if (ttsBookIdRef.current !== selectedBook.id || ttsChapterIndexRef.current !== activeIndex) return;
+    if (loadingOnlineChapter || showCatalog) return;
+    const chapterCount = onlineReading ? loadedChapters.length : localReading ? localChapters.length : SAMPLE_CHAPTERS.length;
+    const nextIndex = activeIndex + 1;
+    if (nextIndex >= chapterCount) {
+      setTtsMessage("本书已读完");
+      return;
+    }
+    ttsAutoResumeRef.current = true;
+    ttsAutoResumeChapterRef.current = nextIndex;
+    setTtsMessage("本章播放完成，正在准备下一章…");
+    changeChapter(1);
+  }, [
+    ttsPlaybackState.finished,
+    ttsAutoNextChapter,
+    selectedBook?.id,
+    onlineReading,
+    onlineChapterIndex,
+    chapterIndex,
+    loadedChapters.length,
+    localReading,
+    localChapters.length,
+    loadingOnlineChapter,
+    showCatalog,
+  ]);
+
+  useEffect(() => {
+    if (!ttsAutoResumeRef.current || !selectedBook || loadingOnlineChapter) return;
+    const currentIndex = onlineReading ? onlineChapterIndex : chapterIndex;
+    const targetIndex = ttsAutoResumeChapterRef.current;
+    if (targetIndex === null) return;
+    if (currentIndex !== targetIndex) {
+      ttsAutoResumeRef.current = false;
+      ttsAutoResumeChapterRef.current = null;
+      setTtsMessage("下一章加载失败，自动续播已暂停");
+      return;
+    }
+    if (onlineReading && !onlineChapterContent.trim()) return;
+    ttsAutoResumeRef.current = false;
+    ttsAutoResumeChapterRef.current = null;
+    void ttsStartRef.current?.();
+  }, [
+    selectedBook?.id,
+    loadingOnlineChapter,
+    onlineReading,
+    onlineChapterIndex,
+    chapterIndex,
+    onlineChapterContent,
+  ]);
+
   const updateProgress = (bookId: string, amount: number) => {
     setBooks((current) => current.map((book) => {
       if (book.id !== bookId) return book;
@@ -1715,16 +1781,19 @@ export default function App() {
           setTtsProgress(Math.round(((index + 1) / segments.length) * 100));
         }
         if (generationId === ttsGenerationIdRef.current) {
+          controller.finishQueue();
           setTtsGenerating(false);
           setTtsMessage(`本章语音已准备完成 · ${Object.keys(speakerMap).length} 位角色`);
         }
       } catch (error) {
         if (generationId !== ttsGenerationIdRef.current) return;
+        getOfflineAudioPlaybackController().finishQueue();
         setTtsGenerating(false);
         setTtsMessage(error instanceof Error ? error.message : "离线语音生成失败。");
         Alert.alert("离线听书", error instanceof Error ? error.message : "离线语音生成失败，请稍后重试。");
       }
     };
+    ttsStartRef.current = startOfflineTts;
     const toggleOfflineTts = async () => {
       const controller = getOfflineAudioPlaybackController();
       const playback = controller.getState();
@@ -1762,6 +1831,8 @@ export default function App() {
       }
     };
     const stopOfflineTts = () => {
+      ttsAutoResumeRef.current = false;
+      ttsAutoResumeChapterRef.current = null;
       ttsGenerationIdRef.current += 1;
       setTtsGenerating(false);
       getOfflineAudioPlaybackController().clearQueue();
@@ -2075,6 +2146,11 @@ export default function App() {
                   <Pressable onPress={() => void restartOfflineTts()}><Text style={{ color: "#829575", fontSize: 11, fontWeight: "700" }}>重新生成本章</Text></Pressable>
                   <Pressable onPress={() => void setTtsCellular(!ttsCellularAllowed)}><Text style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 10 }}>{ttsCellularAllowed ? "允许蜂窝下载" : "仅 Wi-Fi 下载"}</Text></Pressable>
                   <Pressable onPress={stopOfflineTts}><Text style={{ color: "#B56F62", fontSize: 11 }}>停止</Text></Pressable>
+                  <Pressable onPress={() => {
+                    const enabled = !ttsAutoNextChapter;
+                    setTtsAutoNextChapter(enabled);
+                    void AsyncStorage.setItem(TTS_AUTO_NEXT_CHAPTER_STORAGE_KEY, enabled ? "1" : "0");
+                  }}><Text style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 10 }}>自动下一章：{ttsAutoNextChapter ? "开" : "关"}</Text></Pressable>
                 </View>
               </View>
             )}
