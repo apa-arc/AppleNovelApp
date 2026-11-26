@@ -178,7 +178,11 @@ export async function fetchNovelChapterList(
   const response = await client.get("chapterListUrl", templated || source.chapterListUrl);
   if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
     if (!source.htmlRules?.chapters) throw new Error("该书源目录返回 HTML，但未配置 CSS 章节规则。");
-    const allowedOrigins = [source.baseUrl, source.searchUrl, source.bookUrl, source.chapterListUrl, source.chapterUrl].map((value) => new URL(value.replace(/\{[^}]+\}/g, "template")).origin);
+    const allowedOrigins = [
+      ...[source.baseUrl, source.searchUrl, source.bookUrl, source.chapterListUrl, source.chapterUrl]
+        .map((value) => new URL(value.replace(/\{[^}]+\}/g, "template")).origin),
+      ...(source.allowedDomains || []).map((domain) => new URL("https://" + domain).origin),
+    ];
     return parseHtmlChapterList(response.body, summary.id, response.url, source.htmlRules.chapters, allowedOrigins);
   }
   return parseJsonChapterList(response.body, summary.id, response.url);
