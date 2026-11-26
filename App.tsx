@@ -802,7 +802,7 @@ export default function App() {
     const prioritizedSources = rankSourcesByPerformance(enabledSources, searchSourceMetrics);
     setSearching(true);
     setSearchMessage("");
-    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」已匹配真实书名「" + resolvedKeyword + "」。" : "") + "正在搜索 " + prioritizedSources.length + " 个书源（最多同时 3 个）…");
+    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」已匹配真实书名「" + resolvedKeyword + "」。" : "") + "正在搜索 " + prioritizedSources.length + " 个书源（最多同时 4 个，单源超时 8 秒）…");
     setOnlineResults([]);
 
     const groups = new Map<string, SearchNovelGroup>();
@@ -855,7 +855,7 @@ export default function App() {
         setSearchLogs((current) => [...nextSearchLogs.slice(-1), ...current].slice(0, 500));
         setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + "已完成 " + completed + "/" + prioritizedSources.length + " 个书源，当前找到 " + foundCount + " 本" + (completed < prioritizedSources.length ? "，其他书源继续搜索…" : "。"));
       },
-      { concurrency: 3, isCancelled: () => requestId !== searchRequestIdRef.current }
+      { concurrency: 4, isCancelled: () => requestId !== searchRequestIdRef.current }
     );
 
     if (requestId !== searchRequestIdRef.current) return;
