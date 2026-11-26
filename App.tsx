@@ -1084,28 +1084,36 @@ export default function App() {
         const source = sources.find((item) => item.id === option.summary.sourceId && item.enabled);
         if (!source) continue;
 
-        // Fetch detail metadata independently from the chapter list. Some sites
-        // expose their only reliable poster through og:image on the detail page,
-        // while their TOC may be temporarily unavailable or use another route.
+        const applyDetail = (detail: NovelDetail | null) => {
+          if (!detail || requestId !== catalogRequestIdRef.current) return;
+          setLoadedNovelDetail(detail);
+          if (!detail.coverUrl) return;
+          setSelectedSearchNovel((current) => current?.id === novel.id ? {
+            ...current,
+            coverUrl: current.coverUrl || detail.coverUrl,
+            sources: current.sources.map((item) => item.summary.sourceId === source.id
+              ? { ...item, summary: { ...item.summary, coverUrl: item.summary.coverUrl || detail.coverUrl } }
+              : item),
+          } : current);
+          setOnlineResults((current) => current.map((item) => item.id !== novel.id ? item : ({
+            ...item,
+            coverUrl: item.coverUrl || detail.coverUrl,
+            sources: item.sources.map((entry) => entry.summary.sourceId === source.id
+              ? { ...entry, summary: { ...entry.summary, coverUrl: entry.summary.coverUrl || detail.coverUrl } }
+              : entry),
+          })));
+        };
+
+        // Fetch detail metadata independently from the chapter list. This lets
+        // og:image render as soon as it arrives, even if a site's TOC is slow.
         const detailPromise = fetchNovelDetail(source, option.summary, getSourceClient(source))
+          .then((detail) => { applyDetail(detail); return detail; })
           .catch(() => null);
 
         try {
           const chapters = await fetchNovelChapterList(source, option.summary, getSourceClient(source));
           const detail = await detailPromise;
           if (requestId !== catalogRequestIdRef.current) return;
-          if (detail) {
-            setLoadedNovelDetail(detail);
-            if (detail.coverUrl) {
-              setOnlineResults((current) => current.map((item) => item.id !== novel.id ? item : ({
-                ...item,
-                coverUrl: item.coverUrl || detail.coverUrl,
-                sources: item.sources.map((entry) => entry.summary.sourceId === source.id
-                  ? { ...entry, summary: { ...entry.summary, coverUrl: entry.summary.coverUrl || detail.coverUrl } }
-                  : entry),
-              })));
-            }
-          }
           if (!chapters.length) throw new Error("该书源没有返回章节目录。");
           setSelectedSourceId(source.id);
           setLoadedChapters(chapters);
@@ -1123,29 +1131,10 @@ export default function App() {
           } : current);
           return;
         } catch (error) {
-          const detail = await detailPromise;
+          await detailPromise;
           if (requestId !== catalogRequestIdRef.current) return;
           // Keep usable detail metadata and its poster even when this source's
           // chapter-list endpoint fails; the detail screen can still open.
-          if (detail) {
-            setLoadedNovelDetail(detail);
-            setSelectedSearchNovel((current) => current?.id === novel.id ? {
-              ...current,
-              coverUrl: current.coverUrl || detail.coverUrl,
-              sources: current.sources.map((item) => item.summary.sourceId === source.id
-                ? { ...item, summary: { ...item.summary, coverUrl: item.summary.coverUrl || detail.coverUrl } }
-                : item),
-            } : current);
-            if (detail.coverUrl) {
-              setOnlineResults((current) => current.map((item) => item.id !== novel.id ? item : ({
-                ...item,
-                coverUrl: item.coverUrl || detail.coverUrl,
-                sources: item.sources.map((entry) => entry.summary.sourceId === source.id
-                  ? { ...entry, summary: { ...entry.summary, coverUrl: entry.summary.coverUrl || detail.coverUrl } }
-                  : entry),
-              })));
-            }
-          }
           lastError = error instanceof Error ? error.message : "书源目录读取失败。";
         }
       }
