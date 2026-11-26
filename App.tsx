@@ -1061,8 +1061,17 @@ export default function App() {
     if (selectedSearchNovel) await loadNovelCatalogFor(selectedSearchNovel);
   };
 
+  const cancelTtsForChapterSwitch = () => {
+    ttsGenerationIdRef.current += 1;
+    setTtsGenerating(false);
+    getOfflineAudioPlaybackController().clearQueue();
+    ttsBookIdRef.current = null;
+    ttsChapterIndexRef.current = null;
+  };
+
   const openOnlineChapter = async (chapter: NovelChapter) => {
     if (!selectedSearchNovel || !selectedSourceId) return;
+    cancelTtsForChapterSwitch();
     const source = sources.find((item) => item.id === selectedSourceId);
     const option = selectedSearchNovel.sources.find((item) => item.summary.sourceId === selectedSourceId);
     if (!source || !source.enabled || !option) {
@@ -1362,10 +1371,14 @@ export default function App() {
     }
     const next = chapterIndex + delta;
     if (localReading) {
-      if (next >= 0 && next < localChapters.length) saveReadingPosition(selectedBook.id, next);
+      if (next >= 0 && next < localChapters.length) {
+        cancelTtsForChapterSwitch();
+        saveReadingPosition(selectedBook.id, next);
+      }
       return;
     }
     if (next < 0 || next >= SAMPLE_CHAPTERS.length) return;
+    cancelTtsForChapterSwitch();
     saveReadingPosition(selectedBook.id, next);
     setShowCatalog(false);
   };
