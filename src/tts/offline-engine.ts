@@ -152,10 +152,10 @@ export async function synthesizeOfflineSegment(
   const cacheDirectory = FileSystem.cacheDirectory;
   if (!cacheDirectory) throw new Error("当前设备无法访问语音缓存目录。");
 
-  const fileName = `novel-tts-${stableHash(`${speakerId}| ${speed}| ${cleanText}`)}.wav`;
+  const fileName = `novel-tts-${stableHash(`${KOKORO_ZH_MODEL_ID}|${speakerId}|${speed}|${cleanText}`)}.wav`;
   const fileUri = `${cacheDirectory.replace(/\/?$/, "/")}${fileName}`;
   const cached = await FileSystem.getInfoAsync(fileUri);
-  if (cached.exists) return modelFileUri(fileUri);
+  if (cached.exists && typeof cached.size === "number" && cached.size > 44) return modelFileUri(fileUri);
 
   const engine = engineInstance ?? await (async () => {
     await loadOfflineTts();
