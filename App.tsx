@@ -50,6 +50,20 @@ import {
   PanResponder,
 } from "react-native";
 
+async function isKokoroModelDownloaded(): Promise<boolean> {
+  try {
+    return await isKokoroModelDownloaded();
+  } catch (error) {
+    // Sherpa 0.4.4 may throw here before its model registry is refreshed.
+    // Treat only this registry miss as "not confirmed"; the download path
+    // performs the real refresh and installed-model resolution.
+    if (error instanceof Error && error.message.includes(`Unknown model id: ${KOKORO_ZH_MODEL_ID}`)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 type Tab = "书架" | "搜索" | "源" | "我的";
 type Book = {
   id: string;
@@ -1935,7 +1949,7 @@ export default function App() {
       }
       if (ttsGenerating) return;
       try {
-        const ready = await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+        const ready = await isKokoroModelDownloaded();
         if (ready) {
           await startOfflineTts();
           return;
@@ -1982,7 +1996,7 @@ export default function App() {
     };
     const previewTtsVoice = async (name: string, voiceId: number) => {
       try {
-        const ready = await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+        const ready = await isKokoroModelDownloaded();
         if (!ready) {
           Alert.alert("音色试听", "请先点击听书按钮下载中文语音模型。");
           return;
@@ -2010,7 +2024,7 @@ export default function App() {
     };
     const restartOfflineTts = async () => {
       try {
-        const ready = await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+        const ready = await isKokoroModelDownloaded();
         if (!ready) {
           Alert.alert("离线听书", "请先点击听书按钮下载中文多角色语音模型。");
           return;
