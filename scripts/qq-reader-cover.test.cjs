@@ -53,3 +53,16 @@ test("QQ Reading cover fallback rejects non-QQ image hosts", async () => {
   const cover = await lookupQQReaderCover("目标小说", "目标作者", fetchMock);
   assert.equal(cover, null);
 });
+
+test("QQ Reading cover fallback rejects an exact-title result with no author when author is required", async () => {
+  let detailRequested = false;
+  const fetchMock = async (...args) => {
+    if (String(args[0]).includes("/book-detail/")) detailRequested = true;
+    return new Response(JSON.stringify({ code: 0, data: { bookList: [
+      { bid: 88, title: "同名书" }
+    ] } }), { status: 200 });
+  };
+  const cover = await lookupQQReaderCover("同名书", "目标作者", fetchMock);
+  assert.equal(cover, null);
+  assert.equal(detailRequested, false);
+});
