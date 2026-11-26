@@ -14,7 +14,7 @@ const MAX_RESPONSE_LENGTH = 2 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 8_000;
 
 export function normalizeQQMatchText(value: string): string {
-  return value.trim().replace(/\\s+/g, "").toLocaleLowerCase();
+  return value.trim().replace(/\s+/g, "").toLocaleLowerCase();
 }
 
 export function createQQCoverCacheKey(title: string, author: string): string {
