@@ -1,5 +1,6 @@
 import * as FileSystem from "expo-file-system/legacy";
 import { resolveTtsModelPath } from "./model-registry";
+import { assertKokoroChineseModelValid } from "./model-validation";
 import {
   getCoreMlSupport,
 } from "react-native-sherpa-onnx";
@@ -14,6 +15,7 @@ import {
 } from "react-native-sherpa-onnx/download";
 import {
   createTTS,
+  detectTtsModel,
   saveAudioToFile,
   type TtsEngine,
 } from "react-native-sherpa-onnx/tts";
@@ -103,6 +105,12 @@ export async function loadOfflineTts(
   if (!enginePromise) {
     enginePromise = (async () => {
       const modelPath = await ensureOfflineTtsModel(onProgress);
+      const detection = await detectTtsModel(
+        { type: "file", path: modelPath },
+        { modelType: "kokoro" },
+      );
+      assertKokoroChineseModelValid(detection);
+
       let provider: "coreml" | "cpu" = "cpu";
       try {
         const support = await getCoreMlSupport();
