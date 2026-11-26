@@ -113,3 +113,21 @@ test("HTML cover extraction supports data-srcset and density descriptors", () =>
   });
   assert.equal(page.items[0].coverUrl, "https://cdn.example/cover-hd.jpg");
 });
+
+
+test("HTML search accepts configured alternate source origins but rejects unconfigured hosts", () => {
+  const html = '<ul><li class="book"><a class="title" href="https://www.books.example/book/1">跨域书</a></li><li class="book"><a class="title" href="https://evil.example/book/2">恶意链接</a></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "s1", "源", "跨域", "https://m.books.example/search", {
+    itemSelector: "li.book", titleSelector: "a.title", urlSelector: "a.title"
+  }, ["https://www.books.example"]);
+  assert.equal(page.items.length, 1);
+  assert.equal(page.items[0].bookUrl, "https://www.books.example/book/1");
+});
+
+test("HTML chapter links accept configured alternate source origins", () => {
+  const chapters = p.parseHtmlChapterList('<ul><li><a href="https://www.books.example/chapter/1">第一章</a></li></ul>', "b", "https://m.books.example/toc", {
+    itemSelector: "li", titleSelector: "a", urlSelector: "a"
+  }, ["https://www.books.example"]);
+  assert.equal(chapters.length, 1);
+  assert.equal(chapters[0].url, "https://www.books.example/chapter/1");
+});
