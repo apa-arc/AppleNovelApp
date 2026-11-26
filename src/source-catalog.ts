@@ -156,8 +156,9 @@ export async function fetchNovelDetail(
 ): Promise<NovelDetail> {
   const response = await client.get("bookUrl", summary.bookUrl);
   if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
-    if (!source.htmlRules?.detail) throw new Error("该书源详情返回 HTML，但未配置 CSS 详情规则。");
-    return parseHtmlNovelDetail(response.body, summary, source.htmlRules.detail);
+    // Detail pages often expose a standard og:image even when no custom
+    // CSS detail rules are configured. Always parse metadata as a cover fallback.
+    return parseHtmlNovelDetail(response.body, summary, source.htmlRules?.detail || {});
   }
   return parseJsonNovelDetail(response.body, summary);
 }
