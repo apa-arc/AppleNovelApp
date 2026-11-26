@@ -11,12 +11,13 @@ on:
           - "1.1.4"
           - "1.1.5"
           - "1.1.6"
-        default: "1.1.6"
+          - "1.1.7"
+        default: "1.1.7"
       publish_release:
         description: Publish a public GitHub Release (requires main branch)
         required: true
         type: boolean
-        default: false
+        default: true
 
 concurrency:
   group: unsigned-ipa-${{ github.ref }}
@@ -234,6 +235,7 @@ jobs:
 
             - 书架封面识别与缺失封面自动回填优化
             - 订阅源静态规则兼容性增强，无法适配的规则明确提示
+            - 修复 Kokoro 中文离线语音模型注册表加载，已安装模型可离线启动
             - 集成免费开源 Kokoro 中文离线朗读与多角色音色分配
             - 听书悬浮球、播放队列、暂停恢复与本地音频缓存优化
             - IPA 完整性校验：检查 ZIP 结构、Payload、App Info.plist 与 OTA channel
