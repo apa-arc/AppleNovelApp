@@ -310,6 +310,7 @@ export default function App() {
   const [searchSourceMetrics, setSearchSourceMetrics] = useState<Record<string, SearchPerformanceMetric>>({});
   const searchRequestIdRef = useRef(0);
   const catalogRequestIdRef = useRef(0);
+  const chapterContentRequestIdRef = useRef(0);
   const qqCoverLookupRef = useRef(new Set<string>());
   const searchRequestControllerRef = useRef<AbortController | null>(null);
   const [searchLogs, setSearchLogs] = useState<SearchLogEntry[]>([]);
@@ -1245,6 +1246,7 @@ export default function App() {
 
   const openOnlineChapter = async (chapter: NovelChapter) => {
     if (!selectedSearchNovel || !selectedSourceId) return;
+    const requestId = ++chapterContentRequestIdRef.current;
     cancelTtsForChapterSwitch();
     const source = sources.find((item) => item.id === selectedSourceId);
     const option = selectedSearchNovel.sources.find((item) => item.summary.sourceId === selectedSourceId);
@@ -1259,6 +1261,7 @@ export default function App() {
       const novelCacheId = selectedSearchNovel.id;
       const fetchChapter = (target: NovelChapter) => fetchNovelChapterContent(source, target, getSourceClient(source));
       const result = await getOrFetchChapterContent(novelCacheId, chapter.id, () => fetchChapter(chapter));
+      if (requestId !== chapterContentRequestIdRef.current) return;
       void prefetchNextChapters(novelCacheId, loadedChapters, chapter.index, fetchChapter, 5);
       setOnlineChapterIndex(chapter.index);
       setReaderParagraphIndex(0);
@@ -1308,9 +1311,11 @@ export default function App() {
       setShowCatalog(false);
       setShowReaderSettings(false);
     } catch (error) {
-      setCatalogMessage(error instanceof Error ? error.message : "章节正文获取失败，请尝试其他书源。");
+      if (requestId === chapterContentRequestIdRef.current) {
+        setCatalogMessage(error instanceof Error ? error.message : "章节正文获取失败，请尝试其他书源。");
+      }
     } finally {
-      setLoadingOnlineChapter(false);
+      if (requestId === chapterContentRequestIdRef.current) setLoadingOnlineChapter(false);
     }
   };
 
