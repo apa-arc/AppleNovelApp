@@ -62,7 +62,7 @@ function speakerFromTag(value: string): string | undefined {
     const prefix = clause.slice(0, -suffix.length).replace(modifiers, "").replace(/[，,]+$/g, "");
     const addressed = prefix.match(addressedPattern);
     const name = addressed?.[1] ?? (namePattern.test(prefix) ? prefix : undefined);
-    if (name && !GENERIC_SPEAKERS.has(name)) return name;
+    if (name) return GENERIC_SPEAKERS.has(name) ? undefined : name;
     return undefined;
   }
 
