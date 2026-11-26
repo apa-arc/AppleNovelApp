@@ -28,7 +28,7 @@
     "test:book-alias-dictionary": "tsc src/book-alias-dictionary.ts --target ES2020 --module commonjs --moduleResolution node --lib ES2020,DOM --skipLibCheck --strict --outDir .test-build && node --test scripts/book-alias-dictionary.test.cjs",
     "test:chapter-cache": "tsc src/novel.ts src/chapter-cache.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/chapter-cache.test.cjs",
     "test:search-ranking": "tsc src/search-ranking.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/search-ranking.test.cjs",
-    "test:tts-speaker": "tsc src/speaker-assignment.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --outDir .test-build && node --test scripts/speaker-assignment.test.cjs"
+    "test:tts-speaker": "tsc src/speaker-assignment.ts --target ES2020 --module commonjs --lib ES2020,DOM --strict --rootDir src --outDir .test-build/tts-speaker && node --test scripts/speaker-assignment.test.cjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
