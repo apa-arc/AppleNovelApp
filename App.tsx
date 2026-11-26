@@ -16,6 +16,18 @@ import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } fr
 import { getOrFetchChapterContent, prefetchNextChapters } from "./src/chapter-cache";
 import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
+import { buildSpeakerVoiceMap, splitTextForMultiVoice } from "./src/speaker-assignment";
+import { isModelDownloaded, ModelCategory } from "react-native-sherpa-onnx/download";
+import {
+  KOKORO_ZH_MODEL_ID,
+  loadOfflineTts,
+  setOfflineTtsCellularDownloadsAllowed,
+  synthesizeOfflineSegment,
+} from "./src/tts/offline-engine";
+import {
+  getOfflineAudioPlaybackController,
+  type OfflineAudioPlaybackState,
+} from "./src/tts/audio-playback";
 import {
   AppState,
   SafeAreaView,
@@ -74,6 +86,8 @@ const SEARCH_SOURCE_METRICS_STORAGE_KEY = "@private_novel/search_source_metrics_
 const SEARCH_HISTORY_STORAGE_KEY = "@private_novel/search_history_v1";
 const SHELF_VIEW_STORAGE_KEY = "@private_novel/shelf_view_v1";
 const APPEARANCE_STORAGE_KEY = "@private_novel/appearance_v1";
+const TTS_SPEAKER_MAP_STORAGE_KEY = "@private_novel/tts_speaker_map_v1";
+const TTS_CELLULAR_ALLOWED_STORAGE_KEY = "@private_novel/tts_cellular_allowed_v1";
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
 type SearchNovelGroup = { id: string; title: string; author: string; description: string; coverUrl?: string; sources: SearchSourceOption[] };
 type SearchLogEntry = { id: string; sourceId: string; sourceName: string; keyword: string; ok: boolean; resultCount: number; error?: string; searchedAt: number };
@@ -126,6 +140,19 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("书架");
   const [appearanceMode, setAppearanceMode] = useState<"light" | "dark">("light");
   const appIsDark = appearanceMode === "dark";
+  useEffect(() => {
+    AsyncStorage.getItem(TTS_CELLULAR_ALLOWED_STORAGE_KEY).then((value) => {
+      const allowed = value === "1";
+      setTtsCellularAllowed(allowed);
+      setOfflineTtsCellularDownloadsAllowed(allowed);
+    }).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedBook) return;
+    const controller = getOfflineAudioPlaybackController();
+    return controller.subscribe(setTtsPlaybackState);
+  }, [selectedBook?.id]);
   const [shelfView, setShelfView] = useState<"list" | "grid">("grid");
   const autoSubscriptionCheckRef = useRef(false);
   const [query, setQuery] = useState("");
@@ -145,6 +172,23 @@ export default function App() {
   const [readerHorizontalPadding, setReaderHorizontalPadding] = useState(DEFAULT_READER_SETTINGS.horizontalPadding);
   const [readerMode, setReaderMode] = useState<PageTurnMode>(DEFAULT_READER_SETTINGS.pageTurnMode);
   const [readerParagraphIndex, setReaderParagraphIndex] = useState(0);
+  const [ttsPlaybackState, setTtsPlaybackState] = useState<OfflineAudioPlaybackState>({
+    playing: false,
+    currentTime: 0,
+    duration: 0,
+    currentIndex: -1,
+    trackCount: 0,
+    chapterTitle: "",
+  });
+  const [ttsGenerating, setTtsGenerating] = useState(false);
+  const [ttsProgress, setTtsProgress] = useState(0);
+  const [ttsMessage, setTtsMessage] = useState("");
+  const [ttsPanelOpen, setTtsPanelOpen] = useState(false);
+  const [ttsSpeed, setTtsSpeed] = useState(1);
+  const [ttsCellularAllowed, setTtsCellularAllowed] = useState(false);
+  const ttsGenerationIdRef = useRef(0);
+  const ttsBookIdRef = useRef<string | null>(null);
+  const ttsChapterIndexRef = useRef<number | null>(null);
   const [readerChromeVisible, setReaderChromeVisible] = useState(true);
   const readerTapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const [readerContentHeight, setReaderContentHeight] = useState(0);
