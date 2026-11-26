@@ -1062,6 +1062,7 @@ export default function App() {
     const id = getOnlineBookId(selectedSearchNovel.title, selectedSearchNovel.author);
     const coverCandidates = [...new Set([
       selectedSearchNovel.coverUrl,
+      loadedNovelDetail?.coverUrl,
       ...selectedSearchNovel.sources.map((entry) => entry.summary.coverUrl),
     ].filter((url): url is string => !!url))];
     setBooks((current) => {
@@ -1074,7 +1075,7 @@ export default function App() {
         category: option.summary.category || "网络小说",
         progress: existing?.progress ?? 0,
         color: "#E5E9DF",
-        coverUrl: selectedSearchNovel.coverUrl || option.summary.coverUrl || existing?.coverUrl || existing?.onlineSummary?.coverUrl,
+        coverUrl: selectedSearchNovel.coverUrl || loadedNovelDetail?.coverUrl || option.summary.coverUrl || existing?.coverUrl || existing?.onlineSummary?.coverUrl,
         coverCandidates: [...new Set([...coverCandidates, ...(existing?.coverCandidates || [])])],
         lastChapter: existing?.lastChapter || "尚未开始",
         chapterIndex: existing?.chapterIndex ?? 0,
@@ -1152,6 +1153,8 @@ export default function App() {
         category: option.summary.category || "网络小说",
         progress: Math.round((chapter.index / Math.max(1, loadedChapters.length)) * 100),
         color: "#E5E9DF",
+        coverUrl: loadedNovelDetail?.coverUrl || option.summary.coverUrl,
+        coverCandidates: [...new Set([loadedNovelDetail?.coverUrl, option.summary.coverUrl].filter((url): url is string => !!url))],
         lastChapter: chapter.title,
         chapterIndex: chapter.index,
         readerParagraphIndex: 0,
@@ -1172,6 +1175,8 @@ export default function App() {
         onlineSourceId: source.id,
         onlineSourceName: source.name,
         onlineSummary: option.summary,
+        coverUrl: book.coverUrl || loadedNovelDetail?.coverUrl || option.summary.coverUrl,
+        coverCandidates: [...new Set([...(book.coverCandidates || []), loadedNovelDetail?.coverUrl, option.summary.coverUrl].filter((url): url is string => !!url))],
         onlineChapters: loadedChapters,
         onlineChapterId: chapter.id,
       })));
@@ -1583,7 +1588,7 @@ export default function App() {
 
   if (selectedSearchNovel && !selectedBook) {
     const detailChapters = [...loadedChapters].sort((a, b) => chapterSortOrder === "asc" ? a.index - b.index : b.index - a.index);
-    const detailCoverUrl = (selectedSearchNovel.coverUrl && !failedCoverUrls[selectedSearchNovel.coverUrl] ? selectedSearchNovel.coverUrl : undefined) || selectedSearchNovel.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string])?.summary.coverUrl;
+    const detailCoverUrl = [loadedNovelDetail?.coverUrl, selectedSearchNovel.coverUrl, ...selectedSearchNovel.sources.map((entry) => entry.summary.coverUrl)].find((url): url is string => !!url && !failedCoverUrls[url]);
     return (
       <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
         <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
