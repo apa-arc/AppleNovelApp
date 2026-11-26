@@ -10,6 +10,7 @@ import { searchNovelSource } from "./src/source-search";
 import { rankNovelSearchResults, rankSourcesByPerformance, updateSearchPerformanceMetric, runSearchPool, type SearchPerformanceMetric } from "./src/search-ranking";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
+import { lookupQQReaderCover } from "./src/qq-reader-cover";
 import { compareChapterUpdates } from "./src/subscription";
 import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type PageTurnMode, type ReaderSettings, type ReaderTheme } from "./src/reader-settings";
 import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } from "./src/reading-progress";
@@ -1028,6 +1029,37 @@ export default function App() {
       sources: [...group.sources].sort((a, b) => a.latencyMs - b.latencyMs),
     })), resolvedKeyword);
     setOnlineResults(groupedResults);
+
+    // Some sources omit search-page covers but QQ Reading exposes an official
+    // og:image on the exact-matched public book detail page. Recover only a
+    // small first batch so this remains a lightweight cover-only fallback.
+    const missingCoverResults = groupedResults.filter((item) => !item.coverUrl).slice(0, 6);
+    if (missingCoverResults.length > 0) {
+      void (async () => {
+        for (let offset = 0; offset < missingCoverResults.length; offset += 3) {
+          if (requestId !== searchRequestIdRef.current) return;
+          const batch = missingCoverResults.slice(offset, offset + 3);
+          const recovered = await Promise.all(batch.map(async (item) => ({
+            id: item.id,
+            coverUrl: await lookupQQReaderCover(item.title, item.author),
+          })));
+          if (requestId !== searchRequestIdRef.current) return;
+          const valid = recovered.filter((item): item is { id: string; coverUrl: string } => !!item.coverUrl);
+          if (valid.length === 0) continue;
+          setOnlineResults((current) => current.map((item) => {
+            const found = valid.find((candidate) => candidate.id === item.id);
+            if (!found || item.coverUrl) return item;
+            return { ...item, coverUrl: found.coverUrl };
+          }));
+          setSelectedSearchNovel((current) => {
+            if (!current) return current;
+            const found = valid.find((candidate) => candidate.id === current.id);
+            return found && !current.coverUrl ? { ...current, coverUrl: found.coverUrl } : current;
+          });
+        }
+      })();
+    }
+
     const skipped = prioritizedSources.length - completed;
     setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + (deadlineReached
       ? "搜索达到 18 秒上限：成功 " + success + " 个，失败 " + failed + " 个，跳过 " + skipped + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。"
