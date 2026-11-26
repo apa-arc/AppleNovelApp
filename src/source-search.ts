@@ -193,16 +193,14 @@ export async function searchNovelSource(source: NovelSource, keyword: string, cl
   const cachedPage = getCachedSearchPage(cacheKey);
   if (cachedPage) return cachedPage;
   const response = await client.get("searchUrl", buildSearchRequestUrl(source.searchUrl, cleanKeyword), signal);
-  if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
+  const isHtml = /html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["));
+  let page: NovelSearchPage;
+  if (isHtml) {
     if (!source.htmlRules?.search) throw new Error("该书源返回 HTML，但没有配置 CSS 搜索规则。");
-    return parseHtmlSearchResults(response.body, source.id, source.name, cleanKeyword, response.url, source.htmlRules.search);
+    page = parseHtmlSearchResults(response.body, source.id, source.name, cleanKeyword, response.url, source.htmlRules.search);
+  } else {
+    page = parseJsonSearchResults(response.body, source, cleanKeyword, response.url);
   }
-  const page = /html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))
-    ? (() => {
-        if (!source.htmlRules?.search) throw new Error("该书源返回 HTML，但没有配置 CSS 搜索规则。");
-        return parseHtmlSearchResults(response.body, source.id, source.name, cleanKeyword, response.url, source.htmlRules.search);
-      })()
-    : parseJsonSearchResults(response.body, source, cleanKeyword, response.url);
   if (!signal?.aborted) cacheSearchPage(cacheKey, page);
   return page;
 }
