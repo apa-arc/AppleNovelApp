@@ -811,6 +811,7 @@ export default function App() {
     let completed = 0;
     let failed = 0;
     let foundCount = 0;
+    let deadlineReached = false;
     const mergePage = (items: NovelSummary[], latencyMs: number) => {
       items.forEach((item) => {
         const key = [normalizeNovelTitle(item.title), normalizeNovelTitle(item.author)].join("::");
@@ -856,20 +857,31 @@ export default function App() {
         setSearchLogs((current) => [...nextSearchLogs.slice(-1), ...current].slice(0, 500));
         setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + "已完成 " + completed + "/" + prioritizedSources.length + " 个书源，当前找到 " + foundCount + " 本" + (completed < prioritizedSources.length ? "，其他书源继续搜索…" : "。"));
       },
-      { concurrency: 4, isCancelled: () => requestId !== searchRequestIdRef.current }
+      {
+        concurrency: 4,
+        deadlineMs: 18_000,
+        isCancelled: () => requestId !== searchRequestIdRef.current,
+        onDeadline: () => {
+          deadlineReached = true;
+          requestController.abort();
+        },
+      }
     );
 
     if (requestId !== searchRequestIdRef.current) return;
     setSearching(false);
     searchRequestControllerRef.current = null;
-    const success = prioritizedSources.length - failed;
+    const success = completed - failed;
     const groupedResults = rankNovelSearchResults([...groups.values()].map((group) => ({
       ...group,
       sources: [...group.sources].sort((a, b) => a.latencyMs - b.latencyMs),
     })), resolvedKeyword);
     setOnlineResults(groupedResults);
-    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + "搜索完成：成功 " + success + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。");
-    setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（支持常见 JSON 与已配置规则的 HTML）。" : "已优先展示匹配度较高的结果；其他书源结果已合并。点击小说名称即可获取章节目录。");
+    const skipped = prioritizedSources.length - completed;
+    setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + (deadlineReached
+      ? "搜索达到 18 秒上限：成功 " + success + " 个，失败 " + failed + " 个，跳过 " + skipped + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。"
+      : "搜索完成：成功 " + success + " 个，失败 " + failed + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。"));
+    setSearchMessage(groupedResults.length === 0 ? "没有找到结果。可能是书源暂不可用，或该书源返回的格式暂不支持（支持常见 JSON 与已配置规则的 HTML）。" : (deadlineReached ? "已先展示 18 秒内返回的结果；超时书源已停止请求。 " : "") + "已优先展示匹配度较高的结果；其他书源结果已合并。点击小说名称即可获取章节目录。");
   };
 
   const loadNovelCatalogFor = async (novel: SearchNovelGroup) => {
