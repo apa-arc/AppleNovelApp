@@ -46,6 +46,7 @@ export class OfflineAudioPlaybackController {
   private terminalWhilePaused = false;
   private queueComplete = false;
   private finished = false;
+  private startRequestId = 0;
 
   constructor() {
     this.player = createAudioPlayer(null, {
@@ -153,11 +154,15 @@ export class OfflineAudioPlaybackController {
   async start(tracks: OfflineAudioTrack[], startIndex = 0): Promise<void> {
     this.assertAlive();
     if (tracks.length === 0) throw new Error("当前章节还没有生成可播放的语音。");
+    const requestId = ++this.startRequestId;
     await setAudioModeAsync({
       playsInSilentMode: true,
       shouldPlayInBackground: true,
       interruptionMode: "doNotMix",
     });
+    // A stop or a newer start may happen while iOS configures the audio
+    // session. Never let this stale request resurrect an old chapter.
+    if (this.destroyed || requestId !== this.startRequestId) return;
     this.tracks = [...tracks];
     this.currentIndex = -1;
     this.completionHandledIndex = -1;
@@ -280,6 +285,7 @@ export class OfflineAudioPlaybackController {
 
   clearQueue(): void {
     this.assertAlive();
+    this.startRequestId += 1;
     // Treat clearing as an explicit stop before calling native pause. Some
     // players synchronously emit didJustFinish from pause(), which must never
     // advance the old queue while it is being discarded.
@@ -302,6 +308,7 @@ export class OfflineAudioPlaybackController {
 
   destroy(): void {
     if (this.destroyed) return;
+    this.startRequestId += 1;
     this.destroyed = true;
     this.player.clearLockScreenControls();
     this.player.remove();
