@@ -12,6 +12,11 @@ on:
           - "1.1.5"
           - "1.1.6"
         default: "1.1.6"
+      publish_release:
+        description: Publish a public GitHub Release (requires main branch)
+        required: true
+        type: boolean
+        default: false
 
 concurrency:
   group: unsigned-ipa-${{ github.ref }}
@@ -32,13 +37,14 @@ jobs:
       - name: Restrict release builds to their version branch
         env:
           RELEASE_VERSION: ${{ inputs.release_version }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
         run: |
-          if [ "$RELEASE_VERSION" = "1.1.4" ]; then
+          if [ "$PUBLISH_RELEASE" = "true" ]; then
             test "$GITHUB_REF" = "refs/heads/main"
-          elif [ "$RELEASE_VERSION" = "1.1.5" ] || [ "$RELEASE_VERSION" = "1.1.6" ]; then
-            test "$GITHUB_REF" = "refs/heads/main"
+          elif [ "$RELEASE_VERSION" = "1.1.6" ]; then
+            test "$GITHUB_REF" = "refs/heads/v1.1.6-dev"
           else
-            echo "::error::Only protected formal releases from main are supported."
+            echo "::error::Artifact-only test builds are restricted to v1.1.6-dev; formal releases require explicit approval on main."
             exit 1
           fi
 
@@ -215,7 +221,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish formal GitHub Release
-        if: github.event_name == 'workflow_dispatch'
+        if: inputs.publish_release == true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.app-version.outputs.version }}
