@@ -95,8 +95,12 @@ function imageUrlFromNode(node:Node,base:string,preferredAttribute?:string):stri
  const values=[
   preferredAttribute?attr(node,preferredAttribute):"",
   attr(node,"content"),attr(node,"href"),attr(node,"data-src"),attr(node,"data-original"),
-  attr(node,"data-lazy-src"),attr(node,"data-lazyload"),attr(node,"data-actualsrc"),
-  attr(node,"data-cover"),attr(node,"data-image"),bestSrcsetCandidate(attr(node,"data-srcset")),
+  attr(node,"data-lazy-src"),attr(node,"data-lazyload"),attr(node,"data-lazy"),
+  attr(node,"data-actualsrc"),attr(node,"data-original-src"),attr(node,"data-img"),
+  attr(node,"data-ks-lazyload"),attr(node,"data-echo"),attr(node,"data-url"),
+  attr(node,"data-cover"),attr(node,"data-book-cover"),attr(node,"data-thumb"),
+  attr(node,"data-lazy-img"),attr(node,"data-bg"),attr(node,"data-background"),
+  attr(node,"data-image"),bestSrcsetCandidate(attr(node,"data-srcset")),
   bestSrcsetCandidate(attr(node,"srcset")),attr(node,"src"),
   attr(node,"style").match(/background(?:-image)?\s*:\s*url\(['"]?([^)'" ]+)/i)?.[1]||""
  ];
