@@ -30,6 +30,17 @@ test("ranks fast and reliable sources before slow and unreliable sources", () =>
   };
   assert.deepEqual(rankSourcesByPerformance(sources,metrics).map(x=>x.id),["fast","slow","new"]);
 });
+test("uses source health checks to prioritize usable sources before untested ones", () => {
+  const sources = [
+    { id: "untested" },
+    { id: "failed", healthLevel: "不可用" },
+    { id: "partial", healthLevel: "部分可用" },
+    { id: "healthy", healthLevel: "完全可用" }
+  ];
+  assert.deepEqual(rankSourcesByPerformance(sources, {}).map(source => source.id),
+    ["healthy", "partial", "failed", "untested"]);
+});
+
 test("search pool emits results progressively and respects concurrency", async () => {
   const events=[]; let active=0; let maxActive=0;
   const outcomes=await runSearchPool([1,2,3,4,5],async value=>{
