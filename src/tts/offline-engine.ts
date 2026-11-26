@@ -70,7 +70,7 @@ function nativeFilePath(uri: string): string {
  * so Chinese novel narration is initialized with the correct pronunciation.
  */
 async function selectChineseKokoroLexicon(modelPath: string): Promise<void> {
-  const modelDirectory = modelPath.replace(/\\/+$/, "");
+  const modelDirectory = modelPath.endsWith("/") ? modelPath.slice(0, -1) : modelPath;
   const chineseLexiconPath = `${modelDirectory}/lexicon-zh.txt`;
   const chineseLexicon = await FileSystem.getInfoAsync(chineseLexiconPath);
   if (!chineseLexicon.exists) {
