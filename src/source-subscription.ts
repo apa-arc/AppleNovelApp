@@ -218,6 +218,31 @@ export function parseSourceSubscription(raw: string, subscriptionIdHint?: string
           throw new Error("接口地址超出 HTTPS 域名白名单：" + key);
         }
       }
+      let htmlRules = config.htmlRules;
+      // Keep already-installed subscriptions compatible while the remote
+      // xinbiquge-info metadata rolls forward to the corrected live selectors.
+      if (entry.id === "xinbiquge-info") {
+        const currentRules = isRecord(htmlRules) ? htmlRules : {};
+        const currentSearch = isRecord(currentRules.search) ? currentRules.search : {};
+        const currentDetail = isRecord(currentRules.detail) ? currentRules.detail : {};
+        htmlRules = {
+          ...currentRules,
+          search: {
+            ...currentSearch,
+            itemSelector: "dl",
+            titleSelector: "h3",
+            urlSelector: "a",
+            authorSelector: "dd:nth-of-type(2)",
+            coverSelector: "img",
+            coverAttribute: "src",
+          },
+          detail: {
+            ...currentDetail,
+            coverSelector: "meta[property='og:image']",
+            coverAttribute: "content",
+          },
+        };
+      }
       const normalized = parseNovelSourceJson(JSON.stringify({
         name: entry.name,
         baseUrl,
@@ -225,7 +250,7 @@ export function parseSourceSubscription(raw: string, subscriptionIdHint?: string
         bookUrl: config.bookUrl,
         chapterListUrl: config.chapterListUrl,
         chapterUrl: config.chapterUrl,
-        ...(config.htmlRules !== undefined ? { htmlRules: config.htmlRules } : {}),
+        ...(htmlRules !== undefined ? { htmlRules } : {}),
         allowedDomains: domains,
       }));
       compatible.push({
