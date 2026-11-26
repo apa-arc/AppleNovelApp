@@ -525,14 +525,17 @@ export default function App() {
         const orderedSources = [
           ...sources.filter((source) => source.enabled && source.id === book.onlineSourceId),
           ...sources.filter((source) => source.enabled && source.id !== book.onlineSourceId),
-        ].slice(0, 3);
+        ];
         if (!orderedSources.length) continue;
-        const pages = await Promise.allSettled(orderedSources.map((source) =>
-          searchNovelSource(source, book.title, undefined, undefined)
-        ));
+        const searchOutcomes = await runSearchPool(
+          orderedSources,
+          (source) => searchNovelSource(source, book.title, getSourceClient(source)),
+          () => undefined,
+          { concurrency: 4, deadlineMs: 18_000, isCancelled: () => !active },
+        );
         if (!active) return;
         const targetTitle = normalizeNovelTitle(book.title);
-        const candidates = pages.flatMap((result) => result.status === "fulfilled" ? result.value.items : [])
+        const candidates = searchOutcomes.flatMap((outcome) => outcome.ok ? outcome.value.items : [])
           .filter((item) => normalizeNovelTitle(item.title) === targetTitle)
           .sort((a, b) => {
             const authorA = normalizeNovelTitle(a.author) === normalizeNovelTitle(book.author) ? 1 : 0;
