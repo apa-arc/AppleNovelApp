@@ -198,3 +198,37 @@ test("HTML detail does not mistake an empty og:image for the book page URL", () 
   const detail = p.parseHtmlNovelDetail('<meta property="og:image" content="">', summary, {});
   assert.equal(detail.coverUrl, undefined);
 });
+
+
+test("HTML detail extracts lazy-loaded cover images from common novel selectors", () => {
+  const summary = {
+    id: "book-5", sourceId: "source-1", sourceName: "测试源",
+    title: "第五本", author: "作者戊", description: "",
+    bookUrl: "https://books.example/book/5"
+  };
+  const html = '<div id="fmimg"><img src="/images/placeholder.png" data-original="//cdn.books.example/covers/book5.jpg"></div>';
+  const detail = p.parseHtmlNovelDetail(html, summary, {});
+  assert.equal(detail.coverUrl, "https://cdn.books.example/covers/book5.jpg");
+});
+
+test("HTML cover extraction rejects private network and local image URLs", () => {
+  const summary = {
+    id: "book-6", sourceId: "source-1", sourceName: "测试源",
+    title: "第六本", author: "作者己", description: "",
+    bookUrl: "https://books.example/book/6"
+  };
+  for (const url of ["http://127.0.0.1/cover.jpg", "http://192.168.1.8/cover.jpg", "http://localhost/cover.jpg", "http://169.254.169.254/latest/meta-data"]) {
+    const detail = p.parseHtmlNovelDetail('<meta property="og:image" content="' + url + '">', summary, {});
+    assert.equal(detail.coverUrl, undefined, url);
+  }
+});
+
+test("HTML cover extraction still accepts a public cross-domain CDN", () => {
+  const summary = {
+    id: "book-7", sourceId: "source-1", sourceName: "测试源",
+    title: "第七本", author: "作者庚", description: "",
+    bookUrl: "https://books.example/book/7"
+  };
+  const detail = p.parseHtmlNovelDetail('<meta property="og:image" content="https://cdn.public.example/cover.jpg">', summary, {});
+  assert.equal(detail.coverUrl, "https://cdn.public.example/cover.jpg");
+});
