@@ -156,7 +156,7 @@ export function buildSearchRequestUrl(searchUrl: string, keyword: string): strin
 }
 
 /** JSON-only MVP adapter; it never executes source-provided JavaScript. */
-export async function searchNovelSource(source: NovelSource, keyword: string, client: SourceHttpClient = createSourceHttpClient(source), signal?: AbortSignal): Promise<NovelSearchPage> {
+export async function searchNovelSource(source: NovelSource, keyword: string, client: SourceHttpClient = createSourceHttpClient(source, fetch, 8_000), signal?: AbortSignal): Promise<NovelSearchPage> {
   const cleanKeyword = keyword.trim();
   if (!cleanKeyword) throw new Error("请输入小说名称。");
   const response = await client.get("searchUrl", buildSearchRequestUrl(source.searchUrl, cleanKeyword), signal);
