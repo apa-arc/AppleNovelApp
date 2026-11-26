@@ -62,7 +62,10 @@ export function rankSourcesByPerformance<T extends { id: string; healthLevel?: "
       : source.healthLevel === "部分可用" ? 1.25
       : source.healthLevel === "不可用" ? 2
       : 1;
-    return { source, index, score: measuredScore * healthFactor };
+    // A fast failed response is still a failed source. Keep health penalties as
+    // a score floor so stale latency metrics cannot promote an unavailable source.
+    const healthFloor = source.healthLevel ? healthFallbackScore[source.healthLevel] : 0;
+    return { source, index, score: Math.max(measuredScore, healthFloor) * healthFactor };
   }).sort((a, b) => a.score - b.score || a.index - b.index).map(({ source }) => source);
 }
 export type SearchPoolOutcome<TSource, TResult> =
