@@ -76,3 +76,9 @@ test("does not read a speaker attribution following a quoted line", () => {
   assert.equal(segments[0].speakerName, "张三");
   assert.equal(segments[0].speakerId, 58);
 });
+
+
+test("resolves the speaker in comma-separated addressed speech tags", () => {
+  const text = "张三看着李四，冷冷地说：“别再跟着我。”";
+  assert.deepEqual(extractExplicitSpeakerNames(text), ["张三"]);
+});
