@@ -101,21 +101,33 @@ function parseExternalSourceBundle(payload: unknown, subscriptionIdHint?: string
     const remoteId = typeof raw.id === "string" ? raw.id : typeof raw.bookSourceUrl === "string" ? raw.bookSourceUrl : "external-" + index + "-" + name;
     if (seen.has(remoteId)) { unsupported.push({ id: remoteId, name, reason: "订阅中存在重复书源。" }); return; }
     seen.add(remoteId);
-    const searchUrl = typeof raw.searchUrl === "string" ? raw.searchUrl : "";
+    const legadoSearch = isRecord(raw.ruleSearch) ? raw.ruleSearch : {};
     let baseUrl = typeof raw.baseUrl === "string" ? raw.baseUrl : typeof raw.bookSourceUrl === "string" ? raw.bookSourceUrl : "";
-    if (!baseUrl && searchUrl) { try { baseUrl = new URL(searchUrl.replace(/\{\{?key\}?\}/g, "keyword")).origin; } catch { baseUrl = ""; } }
-    const bookUrl = typeof raw.bookUrl === "string" ? raw.bookUrl : typeof raw.bookInfoUrl === "string" ? raw.bookInfoUrl : "";
+    const rawSearchUrl = typeof raw.searchUrl === "string" ? raw.searchUrl : typeof legadoSearch.url === "string" ? legadoSearch.url : "";
+    if (!baseUrl && rawSearchUrl) { try { baseUrl = new URL(rawSearchUrl.replace(/\{\{?key\}?\}/g, "keyword")).origin; } catch { baseUrl = ""; } }
+    const normalizeTemplate = (value: string) => value.replace(/\{\{\s*(key|keyword)\s*\}\}/gi, "{keyword}").replace(/\{\{\s*page\s*\}\}/gi, "{page}").replace(/\{\{\s*([^{}]+?)\s*\}\}/g, "{$1}");
+    const resolveEndpoint = (value: string) => {
+      const normalized = normalizeTemplate(value);
+      try {
+        const probe = normalized.replace(/\{[a-zA-Z][a-zA-Z0-9]*\}/g, "template-value");
+        return new URL(probe, baseUrl).toString().replace(/template-value/g, (match, offset, full) => {
+          const token = normalized.match(/\{[a-zA-Z][a-zA-Z0-9]*\}/);
+          return token?.[0] || match;
+        });
+      } catch { return normalized; }
+    };
+    const searchUrl = rawSearchUrl && baseUrl ? resolveEndpoint(rawSearchUrl) : rawSearchUrl;
+    const bookUrl = typeof raw.bookUrl === "string" ? raw.bookUrl : typeof raw.bookInfoUrl === "string" ? raw.bookInfoUrl : baseUrl;
     const chapterListUrl = typeof raw.chapterListUrl === "string" ? raw.chapterListUrl : typeof raw.tocUrl === "string" ? raw.tocUrl : "";
-    const chapterUrl = typeof raw.chapterUrl === "string" ? raw.chapterUrl : typeof raw.contentUrl === "string" ? raw.contentUrl : "";
+    const chapterUrl = typeof raw.chapterUrl === "string" ? raw.chapterUrl : typeof raw.contentUrl === "string" ? raw.contentUrl : baseUrl;
     if (!searchUrl || !baseUrl || !bookUrl || !chapterListUrl || !chapterUrl) {
       const hasRuleDsl = !!(raw.ruleSearch || raw.ruleBookInfo || raw.ruleToc || raw.ruleContent);
       unsupported.push({ id: remoteId, name, reason: hasRuleDsl ? "已识别为阅读类规则书源，但其专属规则表达式尚未适配，暂不执行。" : "缺少完整的搜索、详情、目录或正文接口地址。" });
       return;
     }
-    const normalizeTemplate = (value: string) => value.replace(/\{\{\s*(key|keyword)\s*\}\}/gi, "{keyword}").replace(/\{\{\s*page\s*\}\}/gi, "{page}").replace(/\{\{\s*([^{}]+?)\s*\}\}/g, "{$1}");
     try {
       const mappedRules = raw.htmlRules !== undefined ? raw.htmlRules : mapLegadoRules(raw);
-      const normalized = parseNovelSourceJson(JSON.stringify({ name, baseUrl, searchUrl: normalizeTemplate(searchUrl), bookUrl: normalizeTemplate(bookUrl), chapterListUrl: normalizeTemplate(chapterListUrl), chapterUrl: normalizeTemplate(chapterUrl), ...(mappedRules !== undefined ? { htmlRules: mappedRules } : {}) }));
+      const normalized = parseNovelSourceJson(JSON.stringify({ name, baseUrl, searchUrl, bookUrl: normalizeTemplate(bookUrl), chapterListUrl: resolveEndpoint(chapterListUrl), chapterUrl: resolveEndpoint(chapterUrl), ...(mappedRules !== undefined ? { htmlRules: mappedRules } : {}) }));
       compatible.push({ ...normalized, remoteId, version: typeof raw.version === "string" ? raw.version : "0.0.0" });
     } catch (error) {
       unsupported.push({ id: remoteId, name, reason: error instanceof Error ? error.message : "书源配置校验失败。" });
