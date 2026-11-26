@@ -148,15 +148,15 @@ export default function App() {
     }).catch(() => undefined);
   }, []);
 
+  const [shelfView, setShelfView] = useState<"list" | "grid">("grid");
+  const autoSubscriptionCheckRef = useRef(false);
+  const [query, setQuery] = useState("");
+  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   useEffect(() => {
     if (!selectedBook) return;
     const controller = getOfflineAudioPlaybackController();
     return controller.subscribe(setTtsPlaybackState);
   }, [selectedBook?.id]);
-  const [shelfView, setShelfView] = useState<"list" | "grid">("grid");
-  const autoSubscriptionCheckRef = useRef(false);
-  const [query, setQuery] = useState("");
-  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [readingHistory, setReadingHistory] = useState<ReadingHistoryEntry[]>([]);
   const [showReadingHistory, setShowReadingHistory] = useState(false);
