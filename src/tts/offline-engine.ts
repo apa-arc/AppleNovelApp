@@ -5,6 +5,7 @@ import {
 } from "react-native-sherpa-onnx";
 import {
   ModelCategory,
+  clearModelsCache,
   configureBackgroundDownloader,
   ensureModel,
   getModelPath,
@@ -71,6 +72,7 @@ export async function ensureOfflineTtsModel(
 
   return resolveTtsModelPath(KOKORO_ZH_MODEL_ID, {
     getInstalledPath: () => getModelPath(ModelCategory.Tts, KOKORO_ZH_MODEL_ID),
+    clearModelsCache: () => clearModelsCache(ModelCategory.Tts),
     refreshModels: async (forceRefresh = false) => {
       if (forceRefresh) {
         await refreshModels(ModelCategory.Tts, { forceRefresh: true });
