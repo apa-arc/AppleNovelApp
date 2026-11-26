@@ -56,3 +56,9 @@ test("splits long narration into manageable sentence-sized TTS chunks", () => {
   assert.ok(segments.every((segment) => segment.text.length <= 180));
   assert.equal(segments.at(-1).text, "乙乙乙。");
 });
+
+
+test("resolves the speaker rather than the person being addressed", () => {
+  const text = "张三看向李四说道：“我们走吧。” “别过来！”林婉儿对着他喊道。";
+  assert.deepEqual(extractExplicitSpeakerNames(text), ["张三", "林婉儿"]);
+});
