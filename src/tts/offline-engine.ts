@@ -72,7 +72,7 @@ export async function ensureOfflineTtsModel(
   // "Unknown model id" before the first model download can even begin.
   await refreshModels(ModelCategory.Tts);
 
-  let result;
+  let result: Awaited<ReturnType<typeof ensureModel>>;
   try {
     result = await ensureModel(ModelCategory.Tts, KOKORO_ZH_MODEL_ID, {
       onProgress,
