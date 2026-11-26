@@ -5,7 +5,7 @@ const {
   buildSpeakerVoiceMap,
   extractExplicitSpeakerNames,
   splitTextForMultiVoice,
-} = require("../.test-build/speaker-assignment.js");
+} = require("../.test-build/tts-speaker/speaker-assignment.js");
 
 test("detects explicitly named speakers before and after dialogue", () => {
   const text = "张三说道：“我们走吧。”李四问道：“去哪儿？”“马上出发。”王五答道。";
