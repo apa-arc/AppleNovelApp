@@ -1078,15 +1078,18 @@ export default function App() {
       .filter((option) => sources.some((source) => source.id === option.summary.sourceId && source.enabled))
       .sort((a, b) => a.latencyMs - b.latencyMs);
     let lastError = "没有可用的已启用书源。";
+    let fallbackDetail: NovelDetail | null = null;
     try {
       for (const option of candidates) {
         if (requestId !== catalogRequestIdRef.current) return;
         const source = sources.find((item) => item.id === option.summary.sourceId && item.enabled);
         if (!source) continue;
 
+        setLoadedNovelDetail(fallbackDetail);
         const applyDetail = (detail: NovelDetail | null) => {
           if (!detail || requestId !== catalogRequestIdRef.current) return;
-          setLoadedNovelDetail(detail);
+          if (detail.coverUrl || !fallbackDetail) fallbackDetail = detail;
+          setLoadedNovelDetail(detail.coverUrl ? detail : fallbackDetail);
           if (!detail.coverUrl) return;
           setSelectedSearchNovel((current) => current?.id === novel.id ? {
             ...current,
@@ -1114,6 +1117,8 @@ export default function App() {
           const chapters = await fetchNovelChapterList(source, option.summary, getSourceClient(source));
           const detail = await detailPromise;
           if (requestId !== catalogRequestIdRef.current) return;
+          if (detail && (detail.coverUrl || !fallbackDetail)) fallbackDetail = detail;
+          if (!detail && fallbackDetail) setLoadedNovelDetail(fallbackDetail);
           if (!chapters.length) throw new Error("该书源没有返回章节目录。");
           setSelectedSourceId(source.id);
           setLoadedChapters(chapters);
@@ -1131,8 +1136,10 @@ export default function App() {
           } : current);
           return;
         } catch (error) {
-          await detailPromise;
+          const detail = await detailPromise;
           if (requestId !== catalogRequestIdRef.current) return;
+          if (detail && (detail.coverUrl || !fallbackDetail)) fallbackDetail = detail;
+          if (fallbackDetail) setLoadedNovelDetail(fallbackDetail);
           // Keep usable detail metadata and its poster even when this source's
           // chapter-list endpoint fails; the detail screen can still open.
           lastError = error instanceof Error ? error.message : "书源目录读取失败。";
