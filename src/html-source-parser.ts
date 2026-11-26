@@ -86,12 +86,9 @@ export function parseHtmlSearchResults(body:string,sourceId:string,sourceName:st
 export function parseHtmlNovelDetail(body:string,summary:NovelSummary,r:HtmlDetailRules):NovelDetail{
  const root=parseHtmlDocument(body);
  const metadataCoverSelectors=["meta[property='og:image:secure_url']","meta[property='og:image']","meta[name='og:image']","meta[name='twitter:image']","meta[property='twitter:image']","link[rel='image_src']"];
- const metadataCover=metadataCoverSelectors.map((selector)=>selectHtmlNodes(root,selector)[0]).find(Boolean);
- const configuredCover=r.coverSelector?selectHtmlNodes(root,r.coverSelector)[0]:undefined;
- const coverNode=configuredCover||metadataCover;
- const coverAttribute=r.coverAttribute||(coverNode?.tag==="link"?"href":"content");
- const rawCover=coverNode?(attr(coverNode,coverAttribute)||attr(coverNode,"content")||attr(coverNode,"href")||attr(coverNode,"src")):"";
- const coverUrl=safeCoverUrl(rawCover,summary.bookUrl);
+ const configuredCovers=r.coverSelector?selectHtmlNodes(root,r.coverSelector).map((node)=>attr(node,r.coverAttribute||"content")||attr(node,"content")||attr(node,"href")||attr(node,"src")):[];
+ const metadataCovers=metadataCoverSelectors.flatMap((selector)=>selectHtmlNodes(root,selector).map((node)=>attr(node,node.tag==="link"?"href":"content")||attr(node,"content")||attr(node,"href")||attr(node,"src")));
+ const coverUrl=[...configuredCovers,...metadataCovers].map((raw)=>safeCoverUrl(raw,summary.bookUrl)).find(Boolean)||"";
  return{
   ...summary,
   title:textAt(root,r.titleSelector,r.titleAttribute)||summary.title,
