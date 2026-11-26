@@ -50,7 +50,8 @@ function validVoiceId(value: unknown): value is number {
 function speakerFromTag(value: string): string | undefined {
   const clause = cleanSpeakerClause(value);
   const match = ADDRESSED_SPEECH_TAG.exec(clause) ?? SPEECH_TAG.exec(clause);
-  const name = match?.[1]?.trim();
+  const directName = clause.match(/^([一-鿿A-Za-z·]{1,8})$/);
+  const name = (match?.[1] ?? directName?.[1])?.trim();
   if (!name || GENERIC_SPEAKERS.has(name)) return undefined;
   return name;
 }
