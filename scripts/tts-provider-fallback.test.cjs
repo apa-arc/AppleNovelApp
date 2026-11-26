@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createValidatedTtsEngine } = require("../.test-build/tts/provider-fallback.js");
+const { createValidatedTtsEngine } = require("../.test-build/provider-fallback.js");
 
 function createDependencies(overrides = {}) {
   const calls = [];
