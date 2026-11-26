@@ -123,8 +123,8 @@ export function parseHtmlNovelDetail(body:string,summary:NovelSummary,r:HtmlDeta
  return{
   ...summary,
   title:textAt(root,r.titleSelector,r.titleAttribute)||summary.title,
-  author:rawAuthor.replace(/^(?:作者|Author)\\s*[:：]\\s*/i,"").trim(),
-  description:rawDescription.replace(/^(?:简介|内容简介|作品简介)\\s*[:：]\\s*/i,"").trim(),
+  author:rawAuthor.replace(/^(?:作者|Author)\s*[:：]\s*/i,"").trim(),
+  description:rawDescription.replace(/^(?:简介|内容简介|作品简介)\s*[:：]\s*/i,"").trim(),
   ...(coverUrl?{coverUrl}:{}),
   chapters:[]
  };
