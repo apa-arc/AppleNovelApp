@@ -89,3 +89,18 @@ test("does not auto-finish a paused queue until the user resumes", async () => {
   assert.equal(controller.getState().finished, true);
   controller.destroy();
 });
+test("ignores repeated terminal status events for the same audio track", async () => {
+  player = createPlayer();
+  const controller = new OfflineAudioPlaybackController();
+  await controller.start([track(0)]);
+  controller.finishQueue();
+
+  player.emitFinished();
+  await new Promise((resolve) => setImmediate(resolve));
+  player.emitFinished();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(controller.getState().currentIndex, 0);
+  assert.equal(controller.getState().finished, true);
+  controller.destroy();
+});
