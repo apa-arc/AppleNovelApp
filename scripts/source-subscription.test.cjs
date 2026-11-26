@@ -425,3 +425,39 @@ test("maps supported Legado nth-child selectors for detail author extraction", (
   assert.equal(result.compatible[0].htmlRules.detail.authorSelector, ".info_ct > div:nth-child(2)");
   assert.equal(result.compatible[0].htmlRules.detail.authorAttribute, "text");
 });
+
+
+test("legacy xinbiquge subscription rules are normalized to the current poster selectors", () => {
+  const payload = {
+    schemaVersion: 1,
+    subscriptionId: "test",
+    name: "测试",
+    sources: [{
+      id: "xinbiquge-info",
+      name: "新笔趣阁小说网",
+      kind: "public-web",
+      version: "1.0.8",
+      baseUrl: "https://www.xbiquge.info/",
+      domains: ["www.xbiquge.info"],
+      appConfig: {
+        searchUrl: "https://www.xbiquge.info/search.php?q={keyword}",
+        bookUrl: "https://www.xbiquge.info/{bookUrl}",
+        chapterListUrl: "https://www.xbiquge.info/{bookUrl}",
+        chapterUrl: "https://www.xbiquge.info/{chapterUrl}",
+        htmlRules: {
+          search: { itemSelector: "div.col-12.col-md-6 > list", titleSelector: "listitem > heading > a", urlSelector: "listitem > heading > a" },
+          detail: { titleSelector: "h1" }
+        }
+      }
+    }]
+  };
+  const parsed = parseSourceSubscription(JSON.stringify(payload));
+  assert.equal(parsed.compatible.length, 1);
+  const rules = parsed.compatible[0].htmlRules;
+  assert.equal(rules.search.itemSelector, "dl");
+  assert.equal(rules.search.titleSelector, "h3");
+  assert.equal(rules.search.urlSelector, "a");
+  assert.equal(rules.search.coverSelector, "img");
+  assert.equal(rules.detail.coverSelector, "meta[property='og:image']");
+  assert.equal(rules.detail.coverAttribute, "content");
+});
