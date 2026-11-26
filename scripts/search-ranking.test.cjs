@@ -45,3 +45,26 @@ test("search pool stops scheduling after cancellation", async () => {
   },()=>{cancelled=true;},{concurrency:1,isCancelled:()=>cancelled});
   assert.deepEqual(seen,[1]); assert.equal(outcomes.length,1);
 });
+
+test("search pool returns partial results at its deadline and ignores late completions", async () => {
+  let active = 0;
+  let deadlineCalled = false;
+  const settled = [];
+  const started = Date.now();
+  const outcomes = await runSearchPool([1,2,3,4], async value => {
+    active++;
+    await new Promise(resolve => setTimeout(resolve, value === 1 ? 5 : 120));
+    active--;
+    return value;
+  }, outcome => settled.push(outcome.source), {
+    concurrency: 2,
+    deadlineMs: 25,
+    onDeadline: () => { deadlineCalled = true; }
+  });
+  assert.equal(deadlineCalled, true);
+  assert.deepEqual(outcomes.map(item => item.source), [1]);
+  assert.deepEqual(settled, [1]);
+  assert.ok(Date.now() - started < 100);
+  await new Promise(resolve => setTimeout(resolve, 130));
+  assert.deepEqual(settled, [1]);
+});
