@@ -7,6 +7,7 @@
     "userInterfaceStyle": "automatic",
     "scheme": "applenovelapp",
     "icon": "./assets/icon.png",
+    "plugins": ["@kesha-antonov/react-native-background-downloader"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.apaarc.applenovelapp",
