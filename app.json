@@ -7,7 +7,15 @@
     "userInterfaceStyle": "automatic",
     "scheme": "applenovelapp",
     "icon": "./assets/icon.png",
-    "plugins": ["@kesha-antonov/react-native-background-downloader"],
+    "plugins": [
+      "@kesha-antonov/react-native-background-downloader",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": true
+        }
+      ]
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.apaarc.applenovelapp",
