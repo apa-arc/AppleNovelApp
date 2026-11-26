@@ -232,3 +232,20 @@ test("HTML cover extraction still accepts a public cross-domain CDN", () => {
   const detail = p.parseHtmlNovelDetail('<meta property="og:image" content="https://cdn.public.example/cover.jpg">', summary, {});
   assert.equal(detail.coverUrl, "https://cdn.public.example/cover.jpg");
 });
+
+
+test("HTML detail removes author and intro labels from common site markup", () => {
+  const summary = {
+    id: "book-8", sourceId: "source-1", sourceName: "测试源",
+    title: "第八本", author: "未知作者", description: "",
+    bookUrl: "https://books.example/book/8"
+  };
+  const html = '<h1 class="info_title">第八本</h1><div class="info_ct"><div>状态：完结</div><div>作者：作者辛</div></div><div class="des">简介：这是小说简介。</div>';
+  const detail = p.parseHtmlNovelDetail(html, summary, {
+    titleSelector: "h1.info_title",
+    authorSelector: ".info_ct > div:nth-child(2)",
+    descriptionSelector: ".des"
+  });
+  assert.equal(detail.author, "作者辛");
+  assert.equal(detail.description, "这是小说简介。");
+});
