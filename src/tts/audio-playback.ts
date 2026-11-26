@@ -183,12 +183,15 @@ export class OfflineAudioPlaybackController {
   append(tracks: OfflineAudioTrack[]): void {
     this.assertAlive();
     if (tracks.length === 0) return;
+    const wasFinished = this.finished;
     this.tracks.push(...tracks);
     this.queueComplete = false;
     this.finished = false;
     if (this.currentIndex < 0) {
       void this.playIndex(0);
-    } else if (this.waitingForTrack && !this.pausedByUser) {
+    } else if ((this.waitingForTrack || wasFinished) && !this.pausedByUser) {
+      // A late producer may append after finishQueue() marked the previous
+      // batch complete. Re-open the queue and start the newly appended track.
       this.waitingForTrack = false;
       void this.advance();
     }
