@@ -131,3 +131,22 @@ test("HTML chapter links accept configured alternate source origins", () => {
   assert.equal(chapters.length, 1);
   assert.equal(chapters[0].url, "https://www.books.example/chapter/1");
 });
+
+
+test("biquges123 live search markup extracts its cross-domain CDN cover", () => {
+  const html = '<ul><li class="hot_4_item"><a href="/34806" title="斗罗大陆"><div class="cover"><img src="https://cdn.biquge7.top/www.biquge7.top/imgs/34806.jpg"></div><div class="hot_4_rt"><div class="hot_top"><div class="hot_name">斗罗大陆</div><div class="author">唐家三少</div></div><p class="hot_des">唐门外门弟子唐三，来到斗罗大陆。</p></div></a></li></ul>';
+  const page = p.parseHtmlSearchResults(html, "biquges123-web", "新笔趣阁", "斗罗大陆", "https://www.biquges123.com/search?keyword=斗罗大陆", {
+    itemSelector: ".hot_4_item",
+    titleSelector: ".hot_name",
+    authorSelector: ".author",
+    descriptionSelector: ".hot_des",
+    urlSelector: "a",
+    coverSelector: "img",
+    coverAttribute: "src"
+  });
+  assert.equal(page.items.length, 1);
+  assert.equal(page.items[0].title, "斗罗大陆");
+  assert.equal(page.items[0].author, "唐家三少");
+  assert.equal(page.items[0].bookUrl, "https://www.biquges123.com/34806");
+  assert.equal(page.items[0].coverUrl, "https://cdn.biquge7.top/www.biquge7.top/imgs/34806.jpg");
+});
