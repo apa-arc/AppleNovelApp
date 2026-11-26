@@ -541,7 +541,7 @@ export default function App() {
         // Many sites expose the poster only on the book detail page as og:image,
         // not in search results. Query detail metadata when search has no cover.
         const coverResults = await Promise.allSettled(candidates.map(async (item) => {
-          if (item.coverUrl) return item.coverUrl;
+          if (item.coverUrl && !failedCoverUrls[item.coverUrl]) return item.coverUrl;
           const source = sources.find((entry) => entry.id === item.sourceId && entry.enabled);
           if (!source) return undefined;
           const detail = await fetchNovelDetail(source, item, getSourceClient(source));
