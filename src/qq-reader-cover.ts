@@ -74,7 +74,12 @@ export async function lookupQQReaderCover(
       coverSelector: "meta[property='og:image']",
       coverAttribute: "content",
     });
-    return detail.coverUrl || null;
+    if (!detail.coverUrl) return null;
+    const imageUrl = new URL(detail.coverUrl);
+    const trustedImageHost = /(^|\\.)myqcloud\\.com$/i.test(imageUrl.hostname) ||
+      /(^|\\.)qpic\\.cn$/i.test(imageUrl.hostname);
+    if (imageUrl.protocol !== "https:" || !trustedImageHost || imageUrl.username || imageUrl.password) return null;
+    return imageUrl.toString();
   } catch {
     // Cover fallback must never block ordinary source search or detail navigation.
     return null;
