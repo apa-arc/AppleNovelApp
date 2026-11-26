@@ -126,3 +126,11 @@ test("caller abort signal cancels an in-flight source request", async () => {
   controller.abort();
   await assert.rejects(pending, (error) => error instanceof SourceHttpError && error.code === "cancelled");
 });
+
+
+test("search request timeout can be shorter than catalog default", async () => {
+  const client = createSourceHttpClient(source(), async (_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+  }), 500);
+  await assert.rejects(client.get("searchUrl"), (error) => error instanceof SourceHttpError && error.code === "timeout");
+});
