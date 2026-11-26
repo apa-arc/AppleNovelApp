@@ -71,7 +71,7 @@ function mapLegadoRules(raw: Record<string, unknown>): Record<string, unknown> |
       ...(legadoSelector(search.intro) ? { descriptionSelector: legadoSelector(search.intro), descriptionAttribute: legadoAttribute(search.intro, "text") } : {}),
       ...(legadoSelector(search.coverUrl) ? { coverSelector: legadoSelector(search.coverUrl), coverAttribute: legadoAttribute(search.coverUrl, "src") } : {})
     },
-    chapters: { itemSelector: chapterItem, titleSelector: chapterTitle, urlSelector: chapterUrl, urlAttribute: legadoAttribute(toc.chapterUrl, "href") },
+    chapters: { itemSelector: chapterItem, titleSelector: chapterTitle, urlSelector: chapterUrl, titleAttribute: legadoAttribute(toc.chapterName, "text"), urlAttribute: legadoAttribute(toc.chapterUrl, "href") },
     content: { contentSelector }
   };
   const title = legadoSelector(detail.name);
