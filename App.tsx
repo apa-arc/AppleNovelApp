@@ -531,13 +531,26 @@ export default function App() {
         if (!active) return;
         const targetTitle = normalizeNovelTitle(book.title);
         const candidates = pages.flatMap((result) => result.status === "fulfilled" ? result.value.items : [])
-          .filter((item) => normalizeNovelTitle(item.title) === targetTitle && !!item.coverUrl)
+          .filter((item) => normalizeNovelTitle(item.title) === targetTitle)
           .sort((a, b) => {
             const authorA = normalizeNovelTitle(a.author) === normalizeNovelTitle(book.author) ? 1 : 0;
             const authorB = normalizeNovelTitle(b.author) === normalizeNovelTitle(book.author) ? 1 : 0;
             return authorB - authorA;
-          });
-        const recoveredUrls = [...new Set(candidates.map((item) => item.coverUrl).filter((url): url is string => !!url))];
+          })
+          .slice(0, 5);
+        // Many sites expose the poster only on the book detail page as og:image,
+        // not in search results. Query detail metadata when search has no cover.
+        const coverResults = await Promise.allSettled(candidates.map(async (item) => {
+          if (item.coverUrl) return item.coverUrl;
+          const source = sources.find((entry) => entry.id === item.sourceId && entry.enabled);
+          if (!source) return undefined;
+          const detail = await fetchNovelDetail(source, item, getSourceClient(source));
+          return detail.coverUrl;
+        }));
+        if (!active) return;
+        const recoveredUrls = [...new Set(coverResults.flatMap((result) =>
+          result.status === "fulfilled" && result.value ? [result.value] : []
+        ))];
         if (!recoveredUrls.length) continue;
         setBooks((current) => current.map((savedBook) => {
           if (savedBook.id !== book.id) return savedBook;
