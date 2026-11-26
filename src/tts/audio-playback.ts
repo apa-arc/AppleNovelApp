@@ -146,8 +146,6 @@ export class OfflineAudioPlaybackController {
       {
         showSeekBackward: true,
         showSeekForward: true,
-        showNextTrack: false,
-        showPreviousTrack: false,
       },
     );
     await this.playIndex(Math.max(0, Math.min(startIndex, tracks.length - 1)));
