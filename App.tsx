@@ -294,6 +294,7 @@ export default function App() {
   const [searching, setSearching] = useState(false);
   const [searchSourceMetrics, setSearchSourceMetrics] = useState<Record<string, SearchPerformanceMetric>>({});
   const searchRequestIdRef = useRef(0);
+  const catalogRequestIdRef = useRef(0);
   const searchRequestControllerRef = useRef<AbortController | null>(null);
   const [searchLogs, setSearchLogs] = useState<SearchLogEntry[]>([]);
   const [showSearchLogs, setShowSearchLogs] = useState(false);
@@ -1035,6 +1036,7 @@ export default function App() {
   };
 
   const loadNovelCatalogFor = async (novel: SearchNovelGroup) => {
+    const requestId = ++catalogRequestIdRef.current;
     setLoadingCatalog(true);
     setCatalogMessage("");
     setSelectedSourceId(null);
@@ -1046,34 +1048,64 @@ export default function App() {
     let lastError = "没有可用的已启用书源。";
     try {
       for (const option of candidates) {
+        if (requestId !== catalogRequestIdRef.current) return;
         const source = sources.find((item) => item.id === option.summary.sourceId && item.enabled);
         if (!source) continue;
+
+        // Fetch detail metadata independently from the chapter list. Some sites
+        // expose their only reliable poster through og:image on the detail page,
+        // while their TOC may be temporarily unavailable or use another route.
+        const detailPromise = fetchNovelDetail(source, option.summary, getSourceClient(source))
+          .catch(() => null);
+
         try {
           const chapters = await fetchNovelChapterList(source, option.summary, getSourceClient(source));
+          const detail = await detailPromise;
+          if (requestId !== catalogRequestIdRef.current) return;
+          if (detail) setLoadedNovelDetail(detail);
           if (!chapters.length) throw new Error("该书源没有返回章节目录。");
-          let detail: NovelDetail | null = null;
-          try { detail = await fetchNovelDetail(source, option.summary, getSourceClient(source)); } catch {
-            // Description is optional; a valid chapter list is enough to read.
-          }
           setSelectedSourceId(source.id);
-          setLoadedNovelDetail(detail);
           setLoadedChapters(chapters);
           setSelectedSearchNovel((current) => current?.id === novel.id ? {
             ...current,
+            coverUrl: current.coverUrl || detail?.coverUrl,
             sources: current.sources.map((item) => item.summary.sourceId === source.id
-              ? { ...item, chapterCount: chapters.length, chapterError: undefined }
+              ? {
+                  ...item,
+                  summary: { ...item.summary, coverUrl: item.summary.coverUrl || detail?.coverUrl },
+                  chapterCount: chapters.length,
+                  chapterError: undefined,
+                }
               : item),
           } : current);
           return;
         } catch (error) {
+          const detail = await detailPromise;
+          if (requestId !== catalogRequestIdRef.current) return;
+          // Keep usable detail metadata and its poster even when this source's
+          // chapter-list endpoint fails; the detail screen can still open.
+          if (detail) {
+            setLoadedNovelDetail(detail);
+            setSelectedSearchNovel((current) => current?.id === novel.id ? {
+              ...current,
+              coverUrl: current.coverUrl || detail.coverUrl,
+              sources: current.sources.map((item) => item.summary.sourceId === source.id
+                ? { ...item, summary: { ...item.summary, coverUrl: item.summary.coverUrl || detail.coverUrl } }
+                : item),
+            } : current);
+          }
           lastError = error instanceof Error ? error.message : "书源目录读取失败。";
         }
       }
+      if (requestId !== catalogRequestIdRef.current) return;
       setCatalogMessage(candidates.length ? "暂时无法自动获取小说目录，请稍后重试。" : lastError);
-    } finally { setLoadingCatalog(false); }
+    } finally {
+      if (requestId === catalogRequestIdRef.current) setLoadingCatalog(false);
+    }
   };
 
   const openSearchNovel = (novel: SearchNovelGroup) => {
+    catalogRequestIdRef.current += 1;
     setSelectedSearchNovel(novel);
     setSelectedSourceId(null);
     setCatalogMessage("");
@@ -1128,6 +1160,7 @@ export default function App() {
   };
 
   const closeSearchNovel = () => {
+    catalogRequestIdRef.current += 1;
     setSelectedSearchNovel(null);
     setSelectedSourceId(null);
     setLoadedNovelDetail(null);
@@ -2386,7 +2419,7 @@ export default function App() {
               {onlineResults.map((item) => {
                 const coverUrl = (item.coverUrl && !failedCoverUrls[item.coverUrl] ? item.coverUrl : undefined) || item.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string])?.summary.coverUrl;
                 return (
-                <Pressable key={item.id} style={styles.searchResultTile} onPress={() => openSearchNovel(item)}>
+                <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={"打开《" + item.title + "》详情"} hitSlop={6} style={styles.searchResultTile} onPress={() => openSearchNovel(item)}>
                   {coverUrl ? (
                     <Image source={{ uri: coverUrl }} style={styles.searchResultCover} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [coverUrl]: true }))} />
                   ) : (
