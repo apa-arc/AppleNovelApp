@@ -309,7 +309,7 @@ test("imports Legado sources that keep the search URL inside ruleSearch.url", ()
       bookUrl: "tag.a@href",
       author: "class.author@text"
     },
-    tocUrl: "/toc/{bookUrl}",
+    tocUrl: "/toc/{bookUrl}?id={bookId}",
     contentUrl: "/content/{chapterUrl}",
     ruleToc: {
       chapterList: "class.chapter",
@@ -324,7 +324,7 @@ test("imports Legado sources that keep the search URL inside ruleSearch.url", ()
   const source = result.compatible[0];
   assert.equal(source.searchUrl, "https://books.example/search?key={keyword}&page={page}");
   assert.equal(source.bookUrl, "https://books.example/");
-  assert.equal(source.chapterListUrl, "https://books.example/toc/{bookUrl}");
+  assert.equal(source.chapterListUrl, "https://books.example/toc/{bookUrl}?id={bookId}");
   assert.equal(source.chapterUrl, "https://books.example/content/{chapterUrl}");
   assert.equal(source.htmlRules.search.titleSelector, "a");
   assert.equal(source.htmlRules.chapters.itemSelector, ".chapter");
