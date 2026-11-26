@@ -175,3 +175,15 @@ test("HTML detail supports explicit relative cover selectors and preserves searc
   const detail = p.parseHtmlNovelDetail(html, summary, { coverSelector: "img.poster", coverAttribute: "data-cover" });
   assert.equal(detail.coverUrl, "https://books.example/images/detail.jpg");
 });
+
+
+test("HTML detail falls through placeholder og:image to a valid alternate poster", () => {
+  const summary = {
+    id: "book-3", sourceId: "source-1", sourceName: "测试源",
+    title: "第三本", author: "作者丙", description: "",
+    bookUrl: "https://books.example/book/3"
+  };
+  const html = '<head><meta property="og:image" content="/images/placeholder-cover.jpg"><meta name="twitter:image" content="//cdn.books.example/covers/real.jpg"></head>';
+  const detail = p.parseHtmlNovelDetail(html, summary, {});
+  assert.equal(detail.coverUrl, "https://cdn.books.example/covers/real.jpg");
+});
