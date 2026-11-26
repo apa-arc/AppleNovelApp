@@ -116,7 +116,7 @@ function getOnlineBookId(title: string, author: string): string {
 }
 
 function isPlaceholderCoverUrl(url?: string): boolean {
-  return !!url && /(placeholder|blank|no[-_]?cover|default[-_]?cover|loading|spacer|no[-_]?image)/i.test(url);
+  return !!url && /(placeholder|blank|no[-_]?cover|default[-_]?cover|default[-_]?img|loading|spacer|no[-_]?image)/i.test(url);
 }
 
 function BookCover({ book, grid = false, failedCoverUrls, onCoverError }: {
@@ -578,7 +578,7 @@ export default function App() {
         group.coverUrl,
         ...group.sources.map((entry) => entry.summary.coverUrl),
         ...(selectedSearchNovel?.id === group.id ? [loadedNovelDetail?.coverUrl] : []),
-      ].filter((url): url is string => !!url && !/(placeholder|blank|no[-_]?cover|default[-_]?cover|loading|spacer|no[-_]?image)/i.test(url));
+      ].filter((url): url is string => !!url && !/(placeholder|blank|no[-_]?cover|default[-_]?cover|default[-_]?img|loading|spacer|no[-_]?image)/i.test(url));
       if (urls.some((url) => !failedCoverUrls[url])) return false;
       const key = createQQCoverCacheKey(group.title, group.author);
       return !Object.prototype.hasOwnProperty.call(qqCoverCache, key)
