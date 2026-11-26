@@ -18,7 +18,7 @@ import { getOrFetchChapterContent, prefetchNextChapters } from "./src/chapter-ca
 import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
 import { buildSpeakerVoiceMap, splitTextForMultiVoice } from "./src/speaker-assignment";
-import { isModelDownloaded, ModelCategory } from "react-native-sherpa-onnx/download";
+import { getModelPath, ModelCategory } from "react-native-sherpa-onnx/download";
 import {
   KOKORO_ZH_MODEL_ID,
   loadOfflineTts,
@@ -52,11 +52,11 @@ import {
 
 async function isKokoroModelDownloaded(): Promise<boolean> {
   try {
-    return await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+    // Check the local ready-marked model directory directly. This lookup does
+    // not depend on the remote model registry and therefore works offline.
+    const installedPath = await getModelPath(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+    return typeof installedPath === "string" && installedPath.length > 0;
   } catch (error) {
-    // Sherpa 0.4.4 may throw here before its model registry is refreshed.
-    // Treat only this registry miss as "not confirmed"; the download path
-    // performs the real refresh and installed-model resolution.
     if (error instanceof Error && error.message.includes(`Unknown model id: ${KOKORO_ZH_MODEL_ID}`)) {
       return false;
     }
