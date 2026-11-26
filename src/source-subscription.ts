@@ -109,10 +109,16 @@ function parseExternalSourceBundle(payload: unknown, subscriptionIdHint?: string
     const resolveEndpoint = (value: string) => {
       const normalized = normalizeTemplate(value);
       try {
-        const tokens = normalized.match(/\{[a-zA-Z][a-zA-Z0-9]*\}/g) || [];
-        const probe = normalized.replace(/\{[a-zA-Z][a-zA-Z0-9]*\}/g, "template-value");
+        const tokens: string[] = [];
+        const probe = normalized.replace(/\{[a-zA-Z][a-zA-Z0-9]*\}/g, (token) => {
+          const marker = "__NOVEL_TEMPLATE_" + tokens.length + "__";
+          tokens.push(token);
+          return marker;
+        });
         let resolved = new URL(probe, baseUrl).toString();
-        for (const token of tokens) resolved = resolved.replace("template-value", token);
+        tokens.forEach((token, index) => {
+          resolved = resolved.replace("__NOVEL_TEMPLATE_" + index + "__", token);
+        });
         return resolved;
       } catch { return normalized; }
     };
