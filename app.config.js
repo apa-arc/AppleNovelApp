@@ -29,11 +29,20 @@ module.exports = ({ config }) => {
       "expo-audio",
       {
         microphonePermission: false,
-        enableBackgroundPlayback: true,
+        recordAudioAndroid: false,
         enableBackgroundRecording: false,
       },
     ]);
   }
 
-  return { ...config, plugins, extra, updates };
+  const ios = { ...(config.ios || {}) };
+  const infoPlist = { ...(ios.infoPlist || {}) };
+  const backgroundModes = Array.isArray(infoPlist.UIBackgroundModes)
+    ? [...infoPlist.UIBackgroundModes]
+    : [];
+  if (!backgroundModes.includes("audio")) backgroundModes.push("audio");
+  infoPlist.UIBackgroundModes = backgroundModes;
+  ios.infoPlist = infoPlist;
+
+  return { ...config, ios, plugins, extra, updates };
 };
