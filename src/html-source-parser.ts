@@ -118,11 +118,13 @@ export function parseHtmlNovelDetail(body:string,summary:NovelSummary,r:HtmlDeta
  const commonCoverSelectors=["#fmimg img",".bookimg img",".book-img img",".book-cover img",".cover img",".novel-cover img","img#cover","img.cover","[data-cover]"];
  const pageCovers=commonCoverSelectors.flatMap((selector)=>selectHtmlNodes(root,selector).map((node)=>imageUrlFromNode(node,summary.bookUrl)));
  const coverUrl=[...configuredCovers,...metadataCovers,...pageCovers].find(Boolean)||"";
+ const rawAuthor=textAt(root,r.authorSelector,r.authorAttribute)||summary.author;
+ const rawDescription=textAt(root,r.descriptionSelector,r.descriptionAttribute)||summary.description;
  return{
   ...summary,
   title:textAt(root,r.titleSelector,r.titleAttribute)||summary.title,
-  author:textAt(root,r.authorSelector,r.authorAttribute)||summary.author,
-  description:textAt(root,r.descriptionSelector,r.descriptionAttribute)||summary.description,
+  author:rawAuthor.replace(/^(?:作者|Author)\\s*[:：]\\s*/i,"").trim(),
+  description:rawDescription.replace(/^(?:简介|内容简介|作品简介)\\s*[:：]\\s*/i,"").trim(),
   ...(coverUrl?{coverUrl}:{}),
   chapters:[]
  };
