@@ -330,3 +330,27 @@ test("imports Legado sources that keep the search URL inside ruleSearch.url", ()
   assert.equal(source.htmlRules.search.titleSelector, "a");
   assert.equal(source.htmlRules.chapters.itemSelector, ".chapter");
 });
+
+
+test("normalizes single-brace Legado key and page templates", () => {
+  const result = parseSourceSubscription(JSON.stringify({
+    bookSourceName: "单花括号模板源",
+    bookSourceUrl: "https://books.example/",
+    ruleSearch: {
+      url: "/search?key={key}&page={page}",
+      bookList: "class.book",
+      name: "tag.a@text",
+      bookUrl: "tag.a@href"
+    },
+    tocUrl: "/toc/{bookUrl}",
+    contentUrl: "/content/{chapterUrl}",
+    ruleToc: {
+      chapterList: "class.chapter",
+      chapterName: "tag.a@text",
+      chapterUrl: "tag.a@href"
+    },
+    ruleContent: { content: "id.content" }
+  }));
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.compatible[0].searchUrl, "https://books.example/search?key={keyword}&page={page}");
+});
