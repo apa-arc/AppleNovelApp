@@ -3,12 +3,13 @@ const assert = require("node:assert/strict");
 const Module = require("node:module");
 
 let player;
+let audioMode;
 const originalLoad = Module._load;
 Module._load = function(request, parent, isMain) {
   if (request === "expo-audio") {
     return {
       createAudioPlayer: () => player,
-      setAudioModeAsync: async () => undefined,
+      setAudioModeAsync: async (mode) => { audioMode = mode; },
     };
   }
   return originalLoad.call(this, request, parent, isMain);
@@ -24,7 +25,7 @@ function createPlayer() {
     play() {},
     pause() {},
     updateLockScreenMetadata() {},
-    setActiveForLockScreen() {},
+    setActiveForLockScreen(active, metadata, controls) { this.lockScreen = { active, metadata, controls }; },
     clearLockScreenControls() {},
     remove() {},
     async seekTo() {},
@@ -40,6 +41,22 @@ const track = (index) => ({
   bookTitle: "测试小说",
   chapterTitle: "第一章",
   segmentIndex: index,
+});
+
+
+test("enables background playback and lock-screen media controls", async () => {
+  player = createPlayer();
+  audioMode = undefined;
+  const controller = new OfflineAudioPlaybackController();
+  await controller.start([track(0)]);
+  assert.equal(audioMode.playsInSilentMode, true);
+  assert.equal(audioMode.shouldPlayInBackground, true);
+  assert.equal(audioMode.interruptionMode, "doNotMix");
+  assert.equal(player.lockScreen.active, true);
+  assert.equal(player.lockScreen.metadata.title, "第一章");
+  assert.equal(player.lockScreen.controls.showSeekBackward, true);
+  assert.equal(player.lockScreen.controls.showSeekForward, true);
+  controller.destroy();
 });
 
 test("marks a streamed queue finished only after the final audio track ends", async () => {
