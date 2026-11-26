@@ -64,11 +64,11 @@ function hasSpeechTagBeforeQuote(text: string, quoteStart: number): boolean {
 }
 
 function stripTrailingSpeakerTag(value: string): string {
-  const directColonTag = value.match(/([一-鿿A-Za-z·]{1,8})[：:]\\s*$/);
+  const directColonTag = value.match(/([一-鿿A-Za-z·]{1,8})[：:]\s*$/);
   if (directColonTag && directColonTag.index !== undefined) {
     return value.slice(0, directColonTag.index).trimEnd();
   }
-  const trimmed = value.replace(/[：:，\\s]+$/g, "");
+  const trimmed = value.replace(/[：:，\s]+$/g, "");
   const match = ADDRESSED_SPEECH_TAG.exec(trimmed) ?? SPEECH_TAG.exec(trimmed);
   if (!match || match.index === undefined) return value;
   return trimmed.slice(0, match.index).trimEnd();
