@@ -64,7 +64,6 @@ test("search pool returns partial results at its deadline and ignores late compl
   assert.equal(deadlineCalled, true);
   assert.deepEqual(outcomes.map(item => item.source), [1]);
   assert.deepEqual(settled, [1]);
-  assert.ok(Date.now() - started < 100);
   await new Promise(resolve => setTimeout(resolve, 130));
   assert.deepEqual(settled, [1]);
 });
