@@ -1,4 +1,5 @@
 import * as FileSystem from "expo-file-system/legacy";
+import { resolveTtsModelPath } from "./model-registry";
 import {
   getCoreMlSupport,
 } from "react-native-sherpa-onnx";
@@ -68,39 +69,20 @@ export async function ensureOfflineTtsModel(
     showNotificationsEnabled: false,
   });
 
-  // Reuse an already installed model without depending on network access or
-  // the registry cache. This keeps narration fully offline after first setup.
-  const installedPath = await getModelPath(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
-  if (installedPath) return installedPath;
-
-  // ensureModel() only looks up IDs in the local model registry. It does not
-  // populate that registry itself, so a fresh install otherwise fails with
-  // "Unknown model id" before the first model download can even begin.
-  await refreshModels(ModelCategory.Tts);
-
-  let result: Awaited<ReturnType<typeof ensureModel>>;
-  try {
-    result = await ensureModel(ModelCategory.Tts, KOKORO_ZH_MODEL_ID, {
+  return resolveTtsModelPath(KOKORO_ZH_MODEL_ID, {
+    getInstalledPath: () => getModelPath(ModelCategory.Tts, KOKORO_ZH_MODEL_ID),
+    refreshModels: async (forceRefresh = false) => {
+      if (forceRefresh) {
+        await refreshModels(ModelCategory.Tts, { forceRefresh: true });
+      } else {
+        await refreshModels(ModelCategory.Tts);
+      }
+    },
+    ensureModel: () => ensureModel(ModelCategory.Tts, KOKORO_ZH_MODEL_ID, {
       onProgress,
       verifyChecksum: true,
-    });
-  } catch (error) {
-    // A recently cached catalog may predate Kokoro v1.1. Refresh it once before
-    // surfacing an unknown-ID error; do not retry unrelated download failures.
-    if (
-      !(error instanceof Error) ||
-      !error.message.includes(`Unknown model id: ${KOKORO_ZH_MODEL_ID}`)
-    ) {
-      throw error;
-    }
-    await refreshModels(ModelCategory.Tts, { forceRefresh: true });
-    result = await ensureModel(ModelCategory.Tts, KOKORO_ZH_MODEL_ID, {
-      onProgress,
-      verifyChecksum: true,
-    });
-  }
-
-  return result.localPath;
+    }),
+  });
 }
 
 /**
