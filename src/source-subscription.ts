@@ -43,7 +43,7 @@ function legadoSelector(value: unknown): string | undefined {
     .replace(/(^|[\s>])id\.([\w-]+)/gi, "$1#$2")
     .replace(/(^|[\s>])tag\.([\w-]+)/gi, "$1$2");
   if (!normalized || /@|(?:^|[\s>])(?:class|id|tag)\./i.test(normalized)) return undefined;
-  return /^[\w#.*\s>,\[\]="'$^~|=:-]+$/.test(normalized) ? normalized : undefined;
+  return /^[\w#.*\s>,\[\]="'$^~|=():-]+$/.test(normalized) ? normalized : undefined;
 }
 function legadoAttribute(value: unknown, fallback: string): string {
   if (typeof value !== "string") return fallback;
