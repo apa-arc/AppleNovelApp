@@ -1864,18 +1864,22 @@ export default function App() {
           Alert.alert("音色试听", "请先点击听书按钮下载中文语音模型。");
           return;
         }
-        ttsGenerationIdRef.current += 1;
+        const previewId = ++ttsGenerationIdRef.current;
         setTtsGenerating(false);
         ttsBookIdRef.current = null;
         ttsChapterIndexRef.current = null;
+        const controller = getOfflineAudioPlaybackController();
+        controller.clearQueue();
         const uri = await synthesizeOfflineSegment(`你好，我是${name}。`, { speakerId: voiceId });
-        await getOfflineAudioPlaybackController().start([{
+        if (previewId !== ttsGenerationIdRef.current) return;
+        await controller.start([{
           uri,
           bookTitle: currentBook.title,
           chapterTitle: `${name} · 音色试听`,
           segmentIndex: 0,
         }]);
-        getOfflineAudioPlaybackController().setSpeed(ttsSpeed);
+        controller.finishQueue();
+        controller.setSpeed(ttsSpeed);
         setTtsMessage(`正在试听${name}的${voiceLabel(voiceId)}`);
       } catch (error) {
         Alert.alert("音色试听", error instanceof Error ? error.message : "试听失败。");
