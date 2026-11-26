@@ -187,3 +187,14 @@ test("HTML detail falls through placeholder og:image to a valid alternate poster
   const detail = p.parseHtmlNovelDetail(html, summary, {});
   assert.equal(detail.coverUrl, "https://cdn.books.example/covers/real.jpg");
 });
+
+
+test("HTML detail does not mistake an empty og:image for the book page URL", () => {
+  const summary = {
+    id: "book-4", sourceId: "source-1", sourceName: "测试源",
+    title: "第四本", author: "作者丁", description: "",
+    bookUrl: "https://books.example/book/4"
+  };
+  const detail = p.parseHtmlNovelDetail('<meta property="og:image" content="">', summary, {});
+  assert.equal(detail.coverUrl, undefined);
+});
