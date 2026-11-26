@@ -102,3 +102,17 @@ test("keeps absolute chapter URLs encoded when a source uses a query parameter",
   await fetchNovelChapterContent(querySource, chapter, client);
   assert.equal(requested, "https://books.example/read?url=https%3A%2F%2Fbooks.example%2Fchapter%2F1");
 });
+
+test("fetches detail-page og:image even when a source has no CSS detail rules", async () => {
+  const htmlSource = { ...source, htmlRules: undefined };
+  const client = {
+    get: async () => ({
+      url: summary.bookUrl,
+      contentType: "text/html; charset=utf-8",
+      body: '<html><head><meta property="og:image" content="//cdn.books.example/poster.jpg"></head><body><h1>测试小说</h1></body></html>'
+    })
+  };
+  const detail = await fetchNovelDetail(htmlSource, summary, client);
+  assert.equal(detail.coverUrl, "https://cdn.books.example/poster.jpg");
+  assert.equal(detail.title, summary.title);
+});
