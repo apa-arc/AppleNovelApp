@@ -6,7 +6,7 @@ type QQReaderSearchResponse = {
   data?: { bookList?: Array<{ bid?: number | string; title?: string; author?: string }> };
 };
 
-const normalize = (value: string) => value.trim().replace(/\\s+/g, "").toLocaleLowerCase();
+const normalize = (value: string) => value.trim().replace(/\s+/g, "").toLocaleLowerCase();
 
 /**
  * Optional cover-only fallback. It never imports QQ Reading text or chapters:
@@ -48,7 +48,7 @@ export async function lookupQQReaderCover(
     if (payload.code !== 0 || !Array.isArray(payload.data?.bookList)) return null;
 
     const matches = payload.data.bookList.filter((book) =>
-      typeof book.bid === "number" || (typeof book.bid === "string" && /^\\d+$/.test(book.bid))
+      typeof book.bid === "number" || (typeof book.bid === "string" && /^\d+$/.test(book.bid))
     );
     const exact = matches.find((book) =>
       normalize(book.title || "") === wantedTitle &&
