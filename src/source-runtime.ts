@@ -59,6 +59,7 @@ export function createSourceHttpClient(
   timeoutMs = REQUEST_TIMEOUT_MS
 ): SourceHttpClient {
   const allowedOrigins = configuredOrigins(source);
+  const effectiveTimeoutMs = effectiveTimeoutMs;
 
   return {
     async get(endpoint, urlOverride, externalSignal) {
@@ -133,7 +134,7 @@ export function createSourceHttpClient(
           throw new SourceHttpError("搜索已取消。", "cancelled");
         }
         if (controller.signal.aborted) {
-          throw new SourceHttpError("书源请求超时（12 秒）。", "timeout");
+          throw new SourceHttpError("书源请求超时（${Math.ceil(effectiveTimeoutMs / 1000)} 秒）。", "timeout");
         }
         const message = error instanceof Error ? error.message : "";
         if (/redirect/i.test(message)) {
