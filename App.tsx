@@ -1062,7 +1062,18 @@ export default function App() {
           const chapters = await fetchNovelChapterList(source, option.summary, getSourceClient(source));
           const detail = await detailPromise;
           if (requestId !== catalogRequestIdRef.current) return;
-          if (detail) setLoadedNovelDetail(detail);
+          if (detail) {
+            setLoadedNovelDetail(detail);
+            if (detail.coverUrl) {
+              setOnlineResults((current) => current.map((item) => item.id !== novel.id ? item : ({
+                ...item,
+                coverUrl: item.coverUrl || detail.coverUrl,
+                sources: item.sources.map((entry) => entry.summary.sourceId === source.id
+                  ? { ...entry, summary: { ...entry.summary, coverUrl: entry.summary.coverUrl || detail.coverUrl } }
+                  : entry),
+              })));
+            }
+          }
           if (!chapters.length) throw new Error("该书源没有返回章节目录。");
           setSelectedSourceId(source.id);
           setLoadedChapters(chapters);
@@ -1093,6 +1104,15 @@ export default function App() {
                 ? { ...item, summary: { ...item.summary, coverUrl: item.summary.coverUrl || detail.coverUrl } }
                 : item),
             } : current);
+            if (detail.coverUrl) {
+              setOnlineResults((current) => current.map((item) => item.id !== novel.id ? item : ({
+                ...item,
+                coverUrl: item.coverUrl || detail.coverUrl,
+                sources: item.sources.map((entry) => entry.summary.sourceId === source.id
+                  ? { ...entry, summary: { ...entry.summary, coverUrl: entry.summary.coverUrl || detail.coverUrl } }
+                  : entry),
+              })));
+            }
           }
           lastError = error instanceof Error ? error.message : "书源目录读取失败。";
         }
@@ -1161,6 +1181,7 @@ export default function App() {
 
   const closeSearchNovel = () => {
     catalogRequestIdRef.current += 1;
+    setLoadingCatalog(false);
     setSelectedSearchNovel(null);
     setSelectedSourceId(null);
     setLoadedNovelDetail(null);
