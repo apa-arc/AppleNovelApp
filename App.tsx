@@ -1559,6 +1559,185 @@ export default function App() {
       inputRange: [-1, 0, 1],
       outputRange: ["-8deg", "0deg", "8deg"],
     });
+    const voiceLabel = (voiceId: number) =>
+      voiceId >= 58 ? `男声 ${voiceId - 57}` : `女声 ${voiceId - 2}`;
+    const nextAvailableVoice = (currentId: number, reserved: number[]) => {
+      let nextId = currentId;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        nextId = nextId >= 102 ? 3 : nextId + 1;
+        if (!reserved.includes(nextId)) return nextId;
+      }
+      return currentId;
+    };
+    const startOfflineTts = async () => {
+      const generationId = ++ttsGenerationIdRef.current;
+      const controller = getOfflineAudioPlaybackController();
+      controller.clearQueue();
+      ttsBookIdRef.current = currentBook.id;
+      ttsChapterIndexRef.current = activeChapterIndex;
+      setTtsPanelOpen(true);
+      setTtsGenerating(true);
+      setTtsProgress(0);
+      setTtsMessage("正在准备离线语音模型…");
+      try {
+        const engine = await loadOfflineTts((progress) => {
+          if (generationId !== ttsGenerationIdRef.current) return;
+          setTtsProgress(progress.percent);
+          setTtsMessage(
+            progress.phase === "downloading"
+              ? `正在下载中文语音模型 ${progress.percent}%`
+              : `正在解压语音模型 ${progress.percent}%`,
+          );
+        });
+        if (generationId !== ttsGenerationIdRef.current) return;
+
+        const storageKey = `${TTS_SPEAKER_MAP_STORAGE_KEY}:${currentBook.id}`;
+        const savedMap = await AsyncStorage.getItem(storageKey);
+        let existingMap: Record<string, number> = {};
+        if (savedMap) {
+          try {
+            const parsed = JSON.parse(savedMap);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) existingMap = parsed;
+          } catch {
+            existingMap = {};
+          }
+        }
+        const speakerMap = buildSpeakerVoiceMap(activeReadingText, existingMap, ttsDefaultVoiceId);
+        await AsyncStorage.setItem(storageKey, JSON.stringify(speakerMap));
+        if (generationId !== ttsGenerationIdRef.current) return;
+        setTtsSpeakerMap(speakerMap);
+
+        const segments = splitTextForMultiVoice(activeReadingText, speakerMap, ttsDefaultVoiceId);
+        if (segments.length === 0) throw new Error("当前章节没有可朗读的正文。");
+        setTtsProgress(0);
+        setTtsMessage(`正在生成语音 · ${engine.provider === "coreml" ? "Apple Core ML" : "CPU"}`);
+        const initialCount = Math.min(3, segments.length);
+        const initialTracks = [];
+        for (let index = 0; index < initialCount; index += 1) {
+          const segment = segments[index];
+          const uri = await synthesizeOfflineSegment(segment.text, { speakerId: segment.speakerId });
+          if (generationId !== ttsGenerationIdRef.current) return;
+          initialTracks.push({
+            uri,
+            bookTitle: currentBook.title,
+            chapterTitle: activeChapter.title,
+            segmentIndex: index,
+          });
+          setTtsProgress(Math.round(((index + 1) / segments.length) * 100));
+        }
+        await controller.start(initialTracks);
+        controller.setSpeed(ttsSpeed);
+        setTtsMessage(`已识别 ${Object.keys(speakerMap).length} 位角色，正在准备后续语音`);
+
+        for (let index = initialCount; index < segments.length; index += 1) {
+          if (generationId !== ttsGenerationIdRef.current) return;
+          const segment = segments[index];
+          const uri = await synthesizeOfflineSegment(segment.text, { speakerId: segment.speakerId });
+          if (generationId !== ttsGenerationIdRef.current) return;
+          controller.append([{
+            uri,
+            bookTitle: currentBook.title,
+            chapterTitle: activeChapter.title,
+            segmentIndex: index,
+          }]);
+          setTtsProgress(Math.round(((index + 1) / segments.length) * 100));
+        }
+        if (generationId === ttsGenerationIdRef.current) {
+          setTtsGenerating(false);
+          setTtsMessage(`本章语音已准备完成 · ${Object.keys(speakerMap).length} 位角色`);
+        }
+      } catch (error) {
+        if (generationId !== ttsGenerationIdRef.current) return;
+        setTtsGenerating(false);
+        setTtsMessage(error instanceof Error ? error.message : "离线语音生成失败。");
+        Alert.alert("离线听书", error instanceof Error ? error.message : "离线语音生成失败，请稍后重试。");
+      }
+    };
+    const toggleOfflineTts = async () => {
+      const controller = getOfflineAudioPlaybackController();
+      const playback = controller.getState();
+      const sameChapter =
+        ttsBookIdRef.current === currentBook.id &&
+        ttsChapterIndexRef.current === activeChapterIndex &&
+        playback.trackCount > 0;
+      if (sameChapter) {
+        if (playback.playing) {
+          await controller.pause();
+        } else if (playback.currentIndex >= playback.trackCount - 1 && !ttsGenerating) {
+          await startOfflineTts();
+        } else {
+          await controller.resume();
+        }
+        return;
+      }
+      if (ttsGenerating) return;
+      try {
+        const ready = await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+        if (ready) {
+          await startOfflineTts();
+          return;
+        }
+        Alert.alert(
+          "首次使用离线听书",
+          "需要下载约 348 MB 的中文多角色语音模型。下载完成后可完全离线朗读，不使用苹果原生语音或收费接口。默认仅使用 Wi-Fi。",
+          [
+            { text: "暂不下载", style: "cancel" },
+            { text: "下载并开始", onPress: () => { void startOfflineTts(); } },
+          ],
+        );
+      } catch (error) {
+        Alert.alert("离线听书", error instanceof Error ? error.message : "无法检查本地语音模型。");
+      }
+    };
+    const stopOfflineTts = () => {
+      ttsGenerationIdRef.current += 1;
+      setTtsGenerating(false);
+      getOfflineAudioPlaybackController().clearQueue();
+      ttsBookIdRef.current = null;
+      ttsChapterIndexRef.current = null;
+      setTtsMessage("已停止听书");
+    };
+    const cycleRoleVoice = async (name: string) => {
+      const currentId = ttsSpeakerMap[name] ?? 58;
+      const reserved = [ttsDefaultVoiceId, ...Object.entries(ttsSpeakerMap)
+        .filter(([otherName]) => otherName !== name)
+        .map(([, voiceId]) => voiceId)];
+      const nextId = nextAvailableVoice(currentId, reserved);
+      const updated = { ...ttsSpeakerMap, [name]: nextId };
+      setTtsSpeakerMap(updated);
+      await AsyncStorage.setItem(`${TTS_SPEAKER_MAP_STORAGE_KEY}:${currentBook.id}`, JSON.stringify(updated));
+      setTtsMessage(`${name} 已切换为${voiceLabel(nextId)}；点击“重新生成本章”后生效`);
+    };
+    const cycleDefaultVoice = async () => {
+      const nextId = nextAvailableVoice(ttsDefaultVoiceId, Object.values(ttsSpeakerMap));
+      setTtsDefaultVoiceId(nextId);
+      await AsyncStorage.setItem("@private_novel/tts_default_voice_v1", String(nextId));
+      setTtsMessage(`旁白音色已切换为${voiceLabel(nextId)}；点击“重新生成本章”后生效`);
+    };
+    const previewTtsVoice = async (name: string, voiceId: number) => {
+      try {
+        ttsGenerationIdRef.current += 1;
+        setTtsGenerating(false);
+        ttsBookIdRef.current = null;
+        ttsChapterIndexRef.current = null;
+        const uri = await synthesizeOfflineSegment(`你好，我是${name}。`, { speakerId: voiceId });
+        await getOfflineAudioPlaybackController().start([{
+          uri,
+          bookTitle: currentBook.title,
+          chapterTitle: `${name} · 音色试听`,
+          segmentIndex: 0,
+        }]);
+        getOfflineAudioPlaybackController().setSpeed(ttsSpeed);
+        setTtsMessage(`正在试听${name}的${voiceLabel(voiceId)}`);
+      } catch (error) {
+        Alert.alert("音色试听", error instanceof Error ? error.message : "试听失败。");
+      }
+    };
+    const setTtsCellular = async (allowed: boolean) => {
+      setTtsCellularAllowed(allowed);
+      setOfflineTtsCellularDownloadsAllowed(allowed);
+      await AsyncStorage.setItem(TTS_CELLULAR_ALLOWED_STORAGE_KEY, allowed ? "1" : "0");
+    };
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: readerBackground }]}>
         <StatusBar barStyle={readerTheme === "night" ? "light-content" : "dark-content"} />
