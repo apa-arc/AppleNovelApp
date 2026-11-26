@@ -25,6 +25,7 @@ export interface OfflineSpeechOptions {
 
 let enginePromise: Promise<TtsEngine> | null = null;
 let engineInstance: TtsEngine | null = null;
+let activeProvider: "coreml" | "cpu" = "cpu";
 let generationQueue: Promise<unknown> = Promise.resolve();
 
 function stableHash(value: string): string {
@@ -65,7 +66,7 @@ export async function loadOfflineTts(
   if (engineInstance) {
     return {
       speakerCount: await engineInstance.getNumSpeakers(),
-      provider: "coreml",
+      provider: activeProvider,
     };
   }
   if (!enginePromise) {
@@ -105,6 +106,7 @@ export async function loadOfflineTts(
         );
       }
       engineInstance = engine;
+      activeProvider = provider;
       return engine;
     })().catch((error) => {
       enginePromise = null;
@@ -115,8 +117,7 @@ export async function loadOfflineTts(
 
   const engine = await enginePromise;
   const speakerCount = await engine.getNumSpeakers();
-  // The provider is recorded by the successful initialization path below.
-  return { speakerCount, provider: "coreml" };
+  return { speakerCount, provider: activeProvider };
 }
 
 /** Synthesize one narration/dialogue segment and return a playable local WAV URI. */
@@ -161,5 +162,6 @@ export async function unloadOfflineTts(): Promise<void> {
   const engine = engineInstance;
   engineInstance = null;
   enginePromise = null;
+  activeProvider = "cpu";
   if (engine) await engine.destroy();
 }
