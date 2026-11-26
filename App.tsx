@@ -553,13 +553,12 @@ export default function App() {
         );
         if (!active) return;
         const targetTitle = normalizeNovelTitle(book.title);
+        const targetAuthor = normalizeNovelTitle(book.author);
         const candidates = searchOutcomes.flatMap((outcome) => outcome.ok ? outcome.value.items : [])
-          .filter((item) => normalizeNovelTitle(item.title) === targetTitle)
-          .sort((a, b) => {
-            const authorA = normalizeNovelTitle(a.author) === normalizeNovelTitle(book.author) ? 1 : 0;
-            const authorB = normalizeNovelTitle(b.author) === normalizeNovelTitle(book.author) ? 1 : 0;
-            return authorB - authorA;
-          })
+          .filter((item) =>
+            normalizeNovelTitle(item.title) === targetTitle &&
+            (!targetAuthor || normalizeNovelTitle(item.author) === targetAuthor)
+          )
           .slice(0, 5);
         // Many sites expose the poster only on the book detail page as og:image,
         // not in search results. Query detail metadata when search has no cover.
