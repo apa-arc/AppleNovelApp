@@ -150,3 +150,28 @@ test("biquges123 live search markup extracts its cross-domain CDN cover", () => 
   assert.equal(page.items[0].bookUrl, "https://www.biquges123.com/34806");
   assert.equal(page.items[0].coverUrl, "https://cdn.biquge7.top/www.biquge7.top/imgs/34806.jpg");
 });
+
+
+test("HTML detail extracts Open Graph and Twitter poster covers from CDN metadata", () => {
+  const summary = {
+    id: "book-1", sourceId: "source-1", sourceName: "测试源",
+    title: "星海来信", author: "作者甲", description: "简介",
+    bookUrl: "https://books.example/book/1"
+  };
+  const html = '<html><head><meta property="og:image" content="//cdn.books.example/covers/1.jpg"><meta name="twitter:image" content="https://cdn.books.example/covers/twitter.jpg"></head><body><h1>星海来信</h1></body></html>';
+  const detail = p.parseHtmlNovelDetail(html, summary, {});
+  assert.equal(detail.coverUrl, "https://cdn.books.example/covers/1.jpg");
+  assert.equal(detail.title, "星海来信");
+});
+
+test("HTML detail supports explicit relative cover selectors and preserves search cover fallback", () => {
+  const summary = {
+    id: "book-2", sourceId: "source-1", sourceName: "测试源",
+    title: "第二本", author: "作者乙", description: "简介",
+    coverUrl: "https://cdn.books.example/covers/search.jpg",
+    bookUrl: "https://books.example/book/2"
+  };
+  const html = '<div class="book-info"><img class="poster" data-cover="/images/detail.jpg"></div>';
+  const detail = p.parseHtmlNovelDetail(html, summary, { coverSelector: "img.poster", coverAttribute: "data-cover" });
+  assert.equal(detail.coverUrl, "https://books.example/images/detail.jpg");
+});
