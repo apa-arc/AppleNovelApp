@@ -57,16 +57,17 @@ function speakerFromTag(value: string): string | undefined {
 
 function hasSpeechTagBeforeQuote(text: string, quoteStart: number): boolean {
   const prefix = text.slice(Math.max(0, quoteStart - 48), quoteStart);
-  const clause = prefix.split(/[。！？；\\n]/).pop() ?? prefix;
+  const clause = prefix.split(/[。！？；\n]/).pop() ?? prefix;
   const cleanClause = cleanSpeakerClause(clause);
-  const directColonTag = clause.trim().match(/^([一-鿿A-Za-z·]{1,8})[：:]$/);
+  const directColonTag = clause.trim().match(/(?:^|[”’"])([一-鿿A-Za-z·]{1,8})[：:]$/);
   return Boolean(directColonTag) || ADDRESSED_SPEECH_TAG.test(cleanClause) || SPEECH_TAG.test(cleanClause);
 }
 
 function stripTrailingSpeakerTag(value: string): string {
-  const directColonTag = value.match(/([一-鿿A-Za-z·]{1,8})[：:]\s*$/);
+  const directColonTag = value.match(/(?:^|[。！？；\n”’"])([一-鿿A-Za-z·]{1,8})[：:]\s*$/);
   if (directColonTag && directColonTag.index !== undefined) {
-    return value.slice(0, directColonTag.index).trimEnd();
+    const nameOffset = directColonTag[0].indexOf(directColonTag[1]);
+    return value.slice(0, directColonTag.index + nameOffset).trimEnd();
   }
   const trimmed = value.replace(/[：:，\s]+$/g, "");
   const match = ADDRESSED_SPEECH_TAG.exec(trimmed) ?? SPEECH_TAG.exec(trimmed);
@@ -75,8 +76,8 @@ function stripTrailingSpeakerTag(value: string): string {
 }
 
 function stripLeadingSpeakerTag(value: string): string {
-  const trimmed = value.replace(/^[，。！？；：\\s]+/, "");
-  const directColonTag = trimmed.match(/^([一-鿿A-Za-z·]{1,8})[：:]\\s*/);
+  const trimmed = value.replace(/^[，。！？；：\s”’"]+/, "");
+  const directColonTag = trimmed.match(/^([一-鿿A-Za-z·]{1,8})[：:]\s*/);
   if (directColonTag) return trimmed.slice(directColonTag[0].length).trimStart();
   const match = ADDRESSED_SPEECH_TAG_PREFIX.exec(trimmed) ?? SPEECH_TAG_PREFIX.exec(trimmed);
   if (!match) return value;
@@ -86,21 +87,21 @@ function stripLeadingSpeakerTag(value: string): string {
 function cleanNarrationAroundDialogue(value: string): string {
   return stripLeadingSpeakerTag(stripTrailingSpeakerTag(value));
 }
+
 function speakerBeforeQuote(text: string, quoteStart: number): string | undefined {
   const prefix = text.slice(Math.max(0, quoteStart - 48), quoteStart);
-  const clause = prefix.split(/[。！？；\\n]/).pop() ?? prefix;
-  const directColonTag = clause.trim().match(/^([一-鿿A-Za-z·]{1,8})[：:]$/);
+  const clause = prefix.split(/[。！？；\n]/).pop() ?? prefix;
+  const directColonTag = clause.trim().match(/(?:^|[”’"])([一-鿿A-Za-z·]{1,8})[：:]$/);
   const directName = directColonTag?.[1];
   if (directName && !GENERIC_SPEAKERS.has(directName)) return directName;
   return speakerFromTag(clause);
 }
-
 function speakerAfterQuote(text: string, quoteEnd: number): string | undefined {
   const suffix = text.slice(quoteEnd, quoteEnd + 48).replace(/^[，。！？；：\s]+/, "");
   return speakerFromTag(suffix);
 }
 
-/** Return character names only when an explicit speech tag identifies them. */
+/** Return character names only when a direct speech tag or name-colon marker identifies them. */
 export function extractExplicitSpeakerNames(text: string): string[] {
   const names: string[] = [];
   const seen = new Set<string>();
