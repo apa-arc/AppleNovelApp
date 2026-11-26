@@ -297,3 +297,35 @@ test("preserves Legado @content and attribute selectors for search and detail me
   assert.equal(rules.detail.authorAttribute, "content");
   assert.equal(rules.detail.descriptionAttribute, "content");
 });
+
+test("imports Legado sources that keep the search URL inside ruleSearch.url", () => {
+  const result = parseSourceSubscription(JSON.stringify({
+    bookSourceName: "Legado 相对地址源",
+    bookSourceUrl: "https://books.example/",
+    ruleSearch: {
+      url: "/search?key={{key}}&page={{page}}",
+      bookList: "class.book",
+      name: "tag.a@text",
+      bookUrl: "tag.a@href",
+      author: "class.author@text"
+    },
+    tocUrl: "/toc/{bookUrl}",
+    contentUrl: "/content/{chapterUrl}",
+    ruleToc: {
+      chapterList: "class.chapter",
+      chapterName: "tag.a@text",
+      chapterUrl: "tag.a@href"
+    },
+    ruleContent: { content: "id.content" },
+    ruleBookInfo: { name: "id.title", author: "class.author" }
+  }));
+  assert.equal(result.compatible.length, 1);
+  assert.equal(result.unsupported.length, 0);
+  const source = result.compatible[0];
+  assert.equal(source.searchUrl, "https://books.example/search?key={keyword}&page={page}");
+  assert.equal(source.bookUrl, "https://books.example/");
+  assert.equal(source.chapterListUrl, "https://books.example/toc/{bookUrl}");
+  assert.equal(source.chapterUrl, "https://books.example/content/{chapterUrl}");
+  assert.equal(source.htmlRules.search.titleSelector, "a");
+  assert.equal(source.htmlRules.chapters.itemSelector, ".chapter");
+});
