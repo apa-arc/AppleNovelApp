@@ -97,3 +97,22 @@ test("caches successful source searches briefly and returns independent result o
   assert.equal(calls, 1);
   assert.equal(second.items[0].title, "缓存测试书");
 });
+
+test("maps numeric book_id to an explicit trusted bookId endpoint template", () => {
+  const kuwo = {
+    ...source,
+    id: "kuwo",
+    baseUrl: "https://appi.kuwo.cn/",
+    searchUrl: "https://appi.kuwo.cn/novels/api/book/search?keyword={keyword}&pi={page}&ps=30",
+    bookUrl: "https://appi.kuwo.cn/novels/api/book/{bookId}",
+    chapterListUrl: "https://appi.kuwo.cn/novels/api/book/{bookId}/chapters?paging=0",
+    chapterUrl: "https://appi.kuwo.cn/novels/api/book/{bookId}/chapters/{chapterId}"
+  };
+  const page = parseJsonSearchResults(JSON.stringify({ code: 200, data: [
+    { book_id: 98765, title: "酷我测试书", author_name: "测试作者", intro: "简介", cover_url: "https://openbookcover.yuewen.com/cover.jpg" }
+  ] }), kuwo, "酷我测试", "https://appi.kuwo.cn/novels/api/book/search");
+  assert.equal(page.items.length, 1);
+  assert.equal(page.items[0].bookUrl, "https://appi.kuwo.cn/novels/api/book/98765");
+  assert.equal(page.items[0].author, "测试作者");
+  assert.equal(page.items[0].coverUrl, "https://openbookcover.yuewen.com/cover.jpg");
+});
