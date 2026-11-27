@@ -169,3 +169,41 @@ test("resolves Legado tocUrl templates that use the {{url}} token", async () => 
   assert.equal(requested, "https://books.example/api/toc?url=https%3A%2F%2Fbooks.example%2Fbook%2F1");
   assert.equal(chapters.length, 1);
 });
+
+test("maps Kuwo chapter IDs through configured bookId and chapterId templates", async () => {
+  const kuwo = {
+    ...source,
+    id: "kuwo",
+    baseUrl: "https://appi.kuwo.cn/",
+    searchUrl: "https://appi.kuwo.cn/novels/api/book/search?keyword={keyword}",
+    bookUrl: "https://appi.kuwo.cn/novels/api/book/{bookId}",
+    chapterListUrl: "https://appi.kuwo.cn/novels/api/book/{bookId}/chapters?paging=0",
+    chapterUrl: "https://appi.kuwo.cn/novels/api/book/{bookId}/chapters/{chapterId}"
+  };
+  const kuwoSummary = {
+    ...summary,
+    id: "kuwo:book:98765",
+    sourceId: "kuwo",
+    bookUrl: "https://appi.kuwo.cn/novels/api/book/98765"
+  };
+  const calls = [];
+  const client = { get: async (endpoint, url) => {
+    calls.push({ endpoint, url });
+    if (endpoint === "bookUrl") {
+      return { url, contentType: "application/json", body: JSON.stringify({ code: 200, data: { book_id: 98765, title: "酷我测试书", author_name: "测试作者", intro: "作品简介" } }) };
+    }
+    if (endpoint === "chapterListUrl") {
+      return { url, contentType: "application/json", body: JSON.stringify({ code: 200, data: [{ chapter_id: 5566, chapter_title: "第一章", chapter_index: 1 }] }) };
+    }
+    return { url, contentType: "application/json", body: JSON.stringify({ code: 200, data: { book_id: 98765, chapter_id: 5566, chapter_name: "第一章", content: "酷我正文内容" } }) };
+  } };
+  const detail = await fetchNovelDetail(kuwo, kuwoSummary, client);
+  assert.equal(detail.title, "酷我测试书");
+  assert.equal(calls[0].url, "https://appi.kuwo.cn/novels/api/book/98765");
+  const chapters = await fetchNovelChapterList(kuwo, kuwoSummary, client);
+  assert.equal(chapters.length, 1);
+  assert.equal(chapters[0].url, "https://appi.kuwo.cn/novels/api/book/98765/chapters/5566");
+  const content = await fetchNovelChapterContent(kuwo, chapters[0], client);
+  assert.equal(content.content, "酷我正文内容");
+  assert.equal(calls[2].url, "https://appi.kuwo.cn/novels/api/book/98765/chapters/5566");
+});
