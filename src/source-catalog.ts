@@ -8,6 +8,7 @@ const TITLE_KEYS = ["title", "name", "bookName", "book_name", "chapterName", "ch
 const AUTHOR_KEYS = ["author", "authorName", "author_name", "writer"];
 const DESCRIPTION_KEYS = ["description", "desc", "intro", "summary", "bookIntro"];
 const URL_KEYS = ["url", "chapterUrl", "chapter_url", "link", "href"];
+const CHAPTER_ID_KEYS = ["chapter_id", "chapterId", "id"];
 const LIST_KEYS = ["data", "list", "chapters", "chapterList", "chapter_list", "results", "items", "records"];
 const CONTENT_KEYS = ["content", "chapterContent", "chapter_content", "text", "body"];
 
@@ -54,7 +55,8 @@ function findChapterArray(value: unknown, depth = 0): unknown[] | null {
   if (depth > 6 || !value || typeof value !== "object") return null;
   if (Array.isArray(value)) {
     if (value.some((item) => item && typeof item === "object" && !Array.isArray(item) &&
-      firstString(item as JsonRecord, TITLE_KEYS) && firstString(item as JsonRecord, URL_KEYS))) return value;
+      firstString(item as JsonRecord, TITLE_KEYS) &&
+      (firstString(item as JsonRecord, URL_KEYS) || firstString(item as JsonRecord, CHAPTER_ID_KEYS)))) return value;
     for (const item of value) {
       const found = findChapterArray(item, depth + 1);
       if (found) return found;
@@ -124,15 +126,32 @@ export function parseJsonNovelDetail(body: string, summary: NovelSummary): Novel
   };
 }
 
-export function parseJsonChapterList(body: string, novelId: string, responseUrl: string): NovelChapter[] {
+export function parseJsonChapterList(
+  body: string,
+  novelId: string,
+  responseUrl: string,
+  source?: NovelSource,
+  summary?: NovelSummary
+): NovelChapter[] {
   const candidates = findChapterArray(parseJson(body));
   if (!candidates) throw new Error("没有在 JSON 响应中找到章节列表。");
+  const bookPathSegments = summary ? new URL(summary.bookUrl).pathname.split("/").filter(Boolean) : [];
+  const bookId = bookPathSegments[bookPathSegments.length - 1] || "";
   const chapters: NovelChapter[] = [];
   candidates.forEach((item, index) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return;
     const record = item as JsonRecord;
     const title = firstString(record, TITLE_KEYS);
-    const url = resolveHttpsUrl(firstString(record, URL_KEYS), responseUrl);
+    let url = resolveHttpsUrl(firstString(record, URL_KEYS), responseUrl);
+    // JSON catalogues may expose chapter_id instead of a URL. Build the
+    // endpoint only from the source's explicit {bookId}/{chapterId} template.
+    if (!url && source && bookId) {
+      const chapterId = firstString(record, CHAPTER_ID_KEYS);
+      if (chapterId && source.chapterUrl.includes("{chapterId}")) {
+        const templated = replaceTemplate(source.chapterUrl, { bookId, chapterId });
+        if (templated) url = resolveHttpsUrl(templated, responseUrl);
+      }
+    }
     if (!title || !url) return;
     chapters.push({ id: novelId + ":" + index + ":" + url, novelId, title, url, index: chapters.length });
   });
@@ -192,7 +211,7 @@ export async function fetchNovelChapterList(
     ];
     return parseHtmlChapterList(response.body, summary.id, response.url, source.htmlRules.chapters, allowedOrigins);
   }
-  return parseJsonChapterList(response.body, summary.id, response.url);
+  return parseJsonChapterList(response.body, summary.id, response.url, source, summary);
 }
 
 export async function fetchNovelChapterContent(
@@ -200,8 +219,13 @@ export async function fetchNovelChapterContent(
   chapter: NovelChapter,
   client: SourceHttpClient = createSourceHttpClient(source)
 ): Promise<NovelContent> {
-  const chapterPathId = new URL(chapter.url).pathname.split("/").filter(Boolean).pop() || chapter.id;
-  const templated = replaceTemplate(source.chapterUrl, { chapterUrl: chapter.url, url: chapter.url, chapterId: chapterPathId });
+  const chapterPathSegments = new URL(chapter.url).pathname.split("/").filter(Boolean);
+  const chapterPathId = chapterPathSegments[chapterPathSegments.length - 1] || chapter.id;
+  const chaptersSegmentIndex = chapterPathSegments.lastIndexOf("chapters");
+  const chapterBookId = chaptersSegmentIndex > 0 ? chapterPathSegments[chaptersSegmentIndex - 1] : "";
+  const templated = replaceTemplate(source.chapterUrl, {
+    chapterUrl: chapter.url, url: chapter.url, chapterId: chapterPathId, bookId: chapterBookId
+  });
   const response = await client.get("chapterUrl", templated || chapter.url);
   if (/html/i.test(response.contentType) || (!response.body.trim().startsWith("{") && !response.body.trim().startsWith("["))) {
     if (!source.htmlRules?.content) throw new Error("该书源正文返回 HTML，但未配置 CSS 正文规则。");
