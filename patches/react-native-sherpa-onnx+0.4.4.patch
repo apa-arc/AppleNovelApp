@@ -27,7 +27,7 @@ diff --git a/node_modules/react-native-sherpa-onnx/src/download/postDownloadProc
    const now = new Date().toISOString();
    let sizeOnDisk: number | undefined;
  
-@@ -383,6 +381,8 @@ async function runPostDownloadProcessingBody(
+@@ -385,5 +383,8 @@ async function runPostDownloadProcessingBody(
      'utf8'
    );
  
