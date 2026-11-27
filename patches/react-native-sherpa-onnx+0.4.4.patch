@@ -18,16 +18,31 @@ diff --git a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-
 diff --git a/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts b/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts
 --- a/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts
 +++ b/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts
-@@ -358,8 +358,6 @@ async function runPostDownloadProcessingBody(
-     );
-   }
- 
+@@ -361,26 +361,27 @@
 -  await writeFile(getReadyMarkerPath(category, id), 'ready', 'utf8');
 -
    const now = new Date().toISOString();
    let sizeOnDisk: number | undefined;
  
-@@ -385,5 +383,8 @@ async function runPostDownloadProcessingBody(
+   if (isArchive && extractedTotalBytes > 0) {
+     sizeOnDisk = extractedTotalBytes;
+   } else if (!isArchive) {
+     try {
+       const sourceStat = await stat(downloadPath);
+       sizeOnDisk = sourceStat.size;
+     } catch {
+       // ignore
+     }
+   }
+ 
+   await writeFile(
+     getManifestPath(category, id),
+     JSON.stringify({
+       downloadedAt: now,
+       lastUsed: now,
+       model,
+       sizeOnDisk,
+     }),
      'utf8'
    );
  
@@ -37,3 +52,7 @@ diff --git a/node_modules/react-native-sherpa-onnx/src/download/postDownloadProc
    try {
      if (await exists(statePath)) {
        await unlink(statePath);
+     }
+   } catch {
+     // non-fatal
+   }
