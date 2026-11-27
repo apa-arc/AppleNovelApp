@@ -1129,16 +1129,13 @@ export default function App() {
 
         try {
           const chapters = await fetchNovelChapterList(source, option.summary, getSourceClient(source));
-          const detail = await detailPromise;
           if (requestId !== catalogRequestIdRef.current) return;
-          if (detail && (detail.coverUrl || !fallbackDetail)) fallbackDetail = detail;
-          if (!detail && fallbackDetail) setLoadedNovelDetail(fallbackDetail);
           if (!chapters.length) throw new Error("该书源没有返回章节目录。");
           setSelectedSourceId(source.id);
           setLoadedChapters(chapters);
           setSelectedSearchNovel((current) => current?.id === novel.id ? {
             ...current,
-            coverUrl: current.coverUrl || detail?.coverUrl,
+            coverUrl: current.coverUrl || fallbackDetail?.coverUrl,
             sources: current.sources.map((item) => item.summary.sourceId === source.id
               ? {
                   ...item,
@@ -1150,9 +1147,7 @@ export default function App() {
           } : current);
           return;
         } catch (error) {
-          const detail = await detailPromise;
           if (requestId !== catalogRequestIdRef.current) return;
-          if (detail && (detail.coverUrl || !fallbackDetail)) fallbackDetail = detail;
           if (fallbackDetail) setLoadedNovelDetail(fallbackDetail);
           // Keep usable detail metadata and its poster even when this source's
           // chapter-list endpoint fails; the detail screen can still open.
