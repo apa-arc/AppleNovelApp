@@ -271,3 +271,33 @@ test("HTML detail recognizes additional lazy cover attributes used by mobile nov
     assert.equal(detail.coverUrl, "https://cdn.books.example/" + file, attribute);
   }
 });
+
+
+test("xbiquge search card selectors extract real cover, title, author and detail URL", () => {
+  const html = '<dl><dt><a href="/124/124809/"><img src="/images/124/124809/124809s.jpg"></a></dt><dd><h3><a href="/124/124809/">斗罗大陆之青莲剑仙</a></h3></dd><dd>作者：迷惘时代</dd><dd>状态：连载</dd></dl>';
+  const page = p.parseHtmlSearchResults(html, "xinbiquge-info", "新笔趣阁小说网", "斗罗大陆", "https://www.xbiquge.info/search.php?q=斗罗大陆", {
+    itemSelector: "dl",
+    titleSelector: "h3",
+    urlSelector: "a",
+    authorSelector: "dd:nth-of-type(2)",
+    coverSelector: "img",
+    coverAttribute: "src"
+  });
+  assert.equal(page.items.length, 1);
+  assert.equal(page.items[0].title, "斗罗大陆之青莲剑仙");
+  assert.equal(page.items[0].author, "迷惘时代");
+  assert.equal(page.items[0].bookUrl, "https://www.xbiquge.info/124/124809/");
+  assert.equal(page.items[0].coverUrl, "https://www.xbiquge.info/images/124/124809/124809s.jpg");
+});
+
+test("cover extraction supports lazy srcset attributes and xbiquge Open Graph image URLs", () => {
+  const html = '<div class="book"><img data-lazy-srcset="/small.jpg 320w, /large.jpg 1200w"></div><meta property="og:image" content="//www.xbiquge.info/images/124/124809/124809s.jpg">';
+  const root = p.parseHtmlDocument(html);
+  const search = p.parseHtmlSearchResults('<ul><li class="book"><a href="/b/1">懒加载</a><img data-lazy-srcset="/small.jpg 320w, /large.jpg 1200w"></li></ul>', "s", "源", "懒加载", "https://books.example/search", {
+    itemSelector: "li.book", titleSelector: "a", urlSelector: "a"
+  });
+  assert.equal(search.items[0].coverUrl, "https://books.example/large.jpg");
+  const summary = { id: "b", sourceId: "s", sourceName: "源", title: "书", author: "作者", description: "", bookUrl: "https://www.xbiquge.info/124/124809/" };
+  const detail = p.parseHtmlNovelDetail(html, summary, { coverSelector: "meta[property='og:image']", coverAttribute: "content" });
+  assert.equal(detail.coverUrl, "https://www.xbiquge.info/images/124/124809/124809s.jpg");
+});

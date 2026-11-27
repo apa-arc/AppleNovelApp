@@ -1,10 +1,13 @@
 import * as FileSystem from "expo-file-system/legacy";
 import { resolveTtsModelPath } from "./model-registry";
+import { assertKokoroChineseModelValid } from "./model-validation";
+import { createValidatedTtsEngine } from "./provider-fallback";
 import {
   getCoreMlSupport,
 } from "react-native-sherpa-onnx";
 import {
   ModelCategory,
+  clearModelsCache,
   configureBackgroundDownloader,
   ensureModel,
   getModelPath,
@@ -13,6 +16,7 @@ import {
 } from "react-native-sherpa-onnx/download";
 import {
   createTTS,
+  detectTtsModel,
   saveAudioToFile,
   type TtsEngine,
 } from "react-native-sherpa-onnx/tts";
@@ -71,6 +75,7 @@ export async function ensureOfflineTtsModel(
 
   return resolveTtsModelPath(KOKORO_ZH_MODEL_ID, {
     getInstalledPath: () => getModelPath(ModelCategory.Tts, KOKORO_ZH_MODEL_ID),
+    clearModelsCache: () => clearModelsCache(ModelCategory.Tts),
     refreshModels: async (forceRefresh = false) => {
       if (forceRefresh) {
         await refreshModels(ModelCategory.Tts, { forceRefresh: true });
@@ -101,6 +106,12 @@ export async function loadOfflineTts(
   if (!enginePromise) {
     enginePromise = (async () => {
       const modelPath = await ensureOfflineTtsModel(onProgress);
+      const detection = await detectTtsModel(
+        { type: "file", path: modelPath },
+        { modelType: "kokoro" },
+      );
+      assertKokoroChineseModelValid(detection);
+
       let provider: "coreml" | "cpu" = "cpu";
       try {
         const support = await getCoreMlSupport();
@@ -118,25 +129,18 @@ export async function loadOfflineTts(
         maxNumSentences: 1,
       };
 
-      let engine: TtsEngine;
-      try {
-        engine = await createTTS(options);
-      } catch (error) {
-        if (provider !== "coreml") throw error;
-        provider = "cpu";
-        engine = await createTTS({ ...options, provider: "cpu" });
-      }
-
-      const speakerCount = await engine.getNumSpeakers();
-      if (speakerCount < KOKORO_ZH_EXPECTED_SPEAKERS) {
-        await engine.destroy();
-        throw new Error(
-          `中文多角色音色模型不完整：预期至少 ${KOKORO_ZH_EXPECTED_SPEAKERS} 个音色，实际检测到 ${speakerCount} 个。`,
-        );
-      }
-      engineInstance = engine;
-      activeProvider = provider;
-      return engine;
+      const initialized = await createValidatedTtsEngine(
+        provider,
+        KOKORO_ZH_EXPECTED_SPEAKERS,
+        {
+          create: (selectedProvider) => createTTS({ ...options, provider: selectedProvider }),
+          getSpeakerCount: (engine) => engine.getNumSpeakers(),
+          destroy: (engine) => engine.destroy(),
+        },
+      );
+      engineInstance = initialized.engine;
+      activeProvider = initialized.provider;
+      return initialized.engine;
     })().catch((error) => {
       enginePromise = null;
       engineInstance = null;

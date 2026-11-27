@@ -5,7 +5,7 @@
   "description": "普通小说统一订阅；来源发现问题后持续修复或下架。",
   "repository": "https://github.com/apa-arc/Novel-book-source-",
   "updatedAt": "2026-11-21T09:33:31.360Z",
-  "sourceCount": 26,
+  "sourceCount": 27,
   "sources": [
     {
       "id": "biquluo-la",
@@ -1117,6 +1117,48 @@
           },
           "content": {
             "contentSelector": "article.article",
+            "titleSelector": "h1"
+          }
+        }
+      }
+    },
+    {
+      "id": "xinbiquge-info",
+      "name": "新笔趣阁小说网",
+      "kind": "public-web",
+      "version": "1.0.9",
+      "description": "GET 搜索，目录分页，正文使用 article.font_max；搜索结果提取真实 img[src]，详情页读取 og:image。",
+      "baseUrl": "https://www.xbiquge.info/",
+      "domains": [
+        "www.xbiquge.info"
+      ],
+      "appConfig": {
+        "searchUrl": "https://www.xbiquge.info/search.php?q={keyword}",
+        "bookUrl": "https://www.xbiquge.info/{bookUrl}",
+        "chapterListUrl": "https://www.xbiquge.info/{bookUrl}",
+        "chapterUrl": "https://www.xbiquge.info/{chapterUrl}",
+        "htmlRules": {
+          "search": {
+            "itemSelector": "dl",
+            "titleSelector": "h3",
+            "urlSelector": "a",
+            "authorSelector": "dd:nth-of-type(2)",
+            "coverSelector": "img",
+            "coverAttribute": "src"
+          },
+          "detail": {
+            "titleSelector": "h1",
+            "descriptionSelector": "#intro",
+            "coverSelector": "meta[property='og:image']",
+            "coverAttribute": "content"
+          },
+          "chapters": {
+            "itemSelector": ".book_list2 > ul > li",
+            "titleSelector": "a",
+            "urlSelector": "a"
+          },
+          "content": {
+            "contentSelector": "article.font_max",
             "titleSelector": "h1"
           }
         }

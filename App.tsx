@@ -10,6 +10,7 @@ import { searchNovelSource } from "./src/source-search";
 import { rankNovelSearchResults, rankSourcesByPerformance, updateSearchPerformanceMetric, runSearchPool, type SearchPerformanceMetric } from "./src/search-ranking";
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
+import { lookupQQReaderCover } from "./src/qq-reader-cover";
 import { compareChapterUpdates } from "./src/subscription";
 import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type PageTurnMode, type ReaderSettings, type ReaderTheme } from "./src/reader-settings";
 import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } from "./src/reading-progress";
@@ -17,7 +18,7 @@ import { getOrFetchChapterContent, prefetchNextChapters } from "./src/chapter-ca
 import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
 import { buildSpeakerVoiceMap, splitTextForMultiVoice } from "./src/speaker-assignment";
-import { isModelDownloaded, ModelCategory } from "react-native-sherpa-onnx/download";
+import { getModelPath, ModelCategory } from "react-native-sherpa-onnx/download";
 import {
   KOKORO_ZH_MODEL_ID,
   loadOfflineTts,
@@ -48,6 +49,20 @@ import {
   Easing,
   PanResponder,
 } from "react-native";
+
+async function isKokoroModelDownloaded(): Promise<boolean> {
+  try {
+    // Check the local ready-marked model directory directly. This lookup does
+    // not depend on the remote model registry and therefore works offline.
+    const installedPath = await getModelPath(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+    return typeof installedPath === "string" && installedPath.length > 0;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes(`Unknown model id: ${KOKORO_ZH_MODEL_ID}`)) {
+      return false;
+    }
+    throw error;
+  }
+}
 
 type Tab = "书架" | "搜索" | "源" | "我的";
 type Book = {
@@ -294,6 +309,9 @@ export default function App() {
   const [searching, setSearching] = useState(false);
   const [searchSourceMetrics, setSearchSourceMetrics] = useState<Record<string, SearchPerformanceMetric>>({});
   const searchRequestIdRef = useRef(0);
+  const catalogRequestIdRef = useRef(0);
+  const chapterContentRequestIdRef = useRef(0);
+  const qqCoverLookupRef = useRef(new Set<string>());
   const searchRequestControllerRef = useRef<AbortController | null>(null);
   const [searchLogs, setSearchLogs] = useState<SearchLogEntry[]>([]);
   const [showSearchLogs, setShowSearchLogs] = useState(false);
@@ -535,13 +553,12 @@ export default function App() {
         );
         if (!active) return;
         const targetTitle = normalizeNovelTitle(book.title);
+        const targetAuthor = normalizeNovelTitle(book.author);
         const candidates = searchOutcomes.flatMap((outcome) => outcome.ok ? outcome.value.items : [])
-          .filter((item) => normalizeNovelTitle(item.title) === targetTitle)
-          .sort((a, b) => {
-            const authorA = normalizeNovelTitle(a.author) === normalizeNovelTitle(book.author) ? 1 : 0;
-            const authorB = normalizeNovelTitle(b.author) === normalizeNovelTitle(book.author) ? 1 : 0;
-            return authorB - authorA;
-          })
+          .filter((item) =>
+            normalizeNovelTitle(item.title) === targetTitle &&
+            (!targetAuthor || normalizeNovelTitle(item.author) === targetAuthor)
+          )
           .slice(0, 5);
         // Many sites expose the poster only on the book detail page as og:image,
         // not in search results. Query detail metadata when search has no cover.
@@ -924,9 +941,23 @@ export default function App() {
     [books, query]
   );
 
+  const recoverQQCoverForResult = async (novel: SearchNovelGroup, requestId: number, replaceExisting = false) => {
+    if (qqCoverLookupRef.current.has(novel.id)) return;
+    qqCoverLookupRef.current.add(novel.id);
+    const coverUrl = await lookupQQReaderCover(novel.title, novel.author);
+    if (!coverUrl || requestId !== searchRequestIdRef.current) return;
+    setOnlineResults((current) => current.map((item) => item.id === novel.id && (replaceExisting || !item.coverUrl)
+      ? { ...item, coverUrl }
+      : item));
+    setSelectedSearchNovel((current) => current?.id === novel.id && (replaceExisting || !current.coverUrl)
+      ? { ...current, coverUrl }
+      : current);
+  };
+
   const searchOnlineNovels = async (searchTerm = onlineQuery) => {
     const keyword = searchTerm.trim();
     const requestId = ++searchRequestIdRef.current;
+    qqCoverLookupRef.current.clear();
     searchRequestControllerRef.current?.abort();
     const requestController = new AbortController();
     searchRequestControllerRef.current = requestController;
@@ -1027,6 +1058,22 @@ export default function App() {
       sources: [...group.sources].sort((a, b) => a.latencyMs - b.latencyMs),
     })), resolvedKeyword);
     setOnlineResults(groupedResults);
+
+    // Some sources omit search-page covers but QQ Reading exposes an official
+    // og:image on the exact-matched public book detail page. Recover only a
+    // small first batch so this remains a lightweight cover-only fallback.
+    const missingCoverResults = groupedResults.filter((item) => !item.coverUrl).slice(0, 6);
+    if (missingCoverResults.length > 0) {
+      void (async () => {
+        for (let offset = 0; offset < missingCoverResults.length; offset += 3) {
+          if (requestId !== searchRequestIdRef.current) return;
+          await Promise.all(missingCoverResults.slice(offset, offset + 3).map((item) =>
+            recoverQQCoverForResult(item, requestId)
+          ));
+        }
+      })();
+    }
+
     const skipped = prioritizedSources.length - completed;
     setSearchSummary((resolvedKeyword !== keyword ? "别名「" + keyword + "」→「" + resolvedKeyword + "」；" : "") + (deadlineReached
       ? "搜索达到 18 秒上限：成功 " + success + " 个，失败 " + failed + " 个，跳过 " + skipped + " 个书源，共找到 " + groupedResults.length + " 本（已合并重复结果）。"
@@ -1035,6 +1082,7 @@ export default function App() {
   };
 
   const loadNovelCatalogFor = async (novel: SearchNovelGroup) => {
+    const requestId = ++catalogRequestIdRef.current;
     setLoadingCatalog(true);
     setCatalogMessage("");
     setSelectedSourceId(null);
@@ -1044,36 +1092,79 @@ export default function App() {
       .filter((option) => sources.some((source) => source.id === option.summary.sourceId && source.enabled))
       .sort((a, b) => a.latencyMs - b.latencyMs);
     let lastError = "没有可用的已启用书源。";
+    let fallbackDetail: NovelDetail | null = null;
     try {
       for (const option of candidates) {
+        if (requestId !== catalogRequestIdRef.current) return;
         const source = sources.find((item) => item.id === option.summary.sourceId && item.enabled);
         if (!source) continue;
+
+        setLoadedNovelDetail(fallbackDetail);
+        const applyDetail = (detail: NovelDetail | null) => {
+          if (!detail || requestId !== catalogRequestIdRef.current) return;
+          if (detail.coverUrl || !fallbackDetail) fallbackDetail = detail;
+          setLoadedNovelDetail(detail.coverUrl ? detail : fallbackDetail);
+          if (!detail.coverUrl) return;
+          setSelectedSearchNovel((current) => current?.id === novel.id ? {
+            ...current,
+            coverUrl: current.coverUrl || detail.coverUrl,
+            sources: current.sources.map((item) => item.summary.sourceId === source.id
+              ? { ...item, summary: { ...item.summary, coverUrl: item.summary.coverUrl || detail.coverUrl } }
+              : item),
+          } : current);
+          setOnlineResults((current) => current.map((item) => item.id !== novel.id ? item : ({
+            ...item,
+            coverUrl: item.coverUrl || detail.coverUrl,
+            sources: item.sources.map((entry) => entry.summary.sourceId === source.id
+              ? { ...entry, summary: { ...entry.summary, coverUrl: entry.summary.coverUrl || detail.coverUrl } }
+              : entry),
+          })));
+        };
+
+        // Fetch detail metadata independently from the chapter list. This lets
+        // og:image render as soon as it arrives, even if a site's TOC is slow.
+        const detailPromise = fetchNovelDetail(source, option.summary, getSourceClient(source))
+          .then((detail) => { applyDetail(detail); return detail; })
+          .catch(() => null);
+
         try {
           const chapters = await fetchNovelChapterList(source, option.summary, getSourceClient(source));
+          if (requestId !== catalogRequestIdRef.current) return;
           if (!chapters.length) throw new Error("该书源没有返回章节目录。");
-          let detail: NovelDetail | null = null;
-          try { detail = await fetchNovelDetail(source, option.summary, getSourceClient(source)); } catch {
-            // Description is optional; a valid chapter list is enough to read.
-          }
           setSelectedSourceId(source.id);
-          setLoadedNovelDetail(detail);
           setLoadedChapters(chapters);
           setSelectedSearchNovel((current) => current?.id === novel.id ? {
             ...current,
+            coverUrl: current.coverUrl || fallbackDetail?.coverUrl,
             sources: current.sources.map((item) => item.summary.sourceId === source.id
-              ? { ...item, chapterCount: chapters.length, chapterError: undefined }
+              ? {
+                  ...item,
+                  summary: { ...item.summary, coverUrl: item.summary.coverUrl || fallbackDetail?.coverUrl },
+                  chapterCount: chapters.length,
+                  chapterError: undefined,
+                }
               : item),
           } : current);
           return;
         } catch (error) {
+          if (requestId !== catalogRequestIdRef.current) return;
+          if (fallbackDetail) setLoadedNovelDetail(fallbackDetail);
+          // Keep usable detail metadata and its poster even when this source's
+          // chapter-list endpoint fails; the detail screen can still open.
           lastError = error instanceof Error ? error.message : "书源目录读取失败。";
         }
       }
+      if (requestId !== catalogRequestIdRef.current) return;
       setCatalogMessage(candidates.length ? "暂时无法自动获取小说目录，请稍后重试。" : lastError);
-    } finally { setLoadingCatalog(false); }
+    } finally {
+      if (requestId === catalogRequestIdRef.current) setLoadingCatalog(false);
+    }
   };
 
   const openSearchNovel = (novel: SearchNovelGroup) => {
+    catalogRequestIdRef.current += 1;
+    chapterContentRequestIdRef.current += 1;
+    setLoadingOnlineChapter(false);
     setSelectedSearchNovel(novel);
     setSelectedSourceId(null);
     setCatalogMessage("");
@@ -1128,6 +1219,10 @@ export default function App() {
   };
 
   const closeSearchNovel = () => {
+    catalogRequestIdRef.current += 1;
+    chapterContentRequestIdRef.current += 1;
+    setLoadingCatalog(false);
+    setLoadingOnlineChapter(false);
     setSelectedSearchNovel(null);
     setSelectedSourceId(null);
     setLoadedNovelDetail(null);
@@ -1149,10 +1244,12 @@ export default function App() {
 
   const openOnlineChapter = async (chapter: NovelChapter) => {
     if (!selectedSearchNovel || !selectedSourceId) return;
+    const requestId = ++chapterContentRequestIdRef.current;
     cancelTtsForChapterSwitch();
     const source = sources.find((item) => item.id === selectedSourceId);
     const option = selectedSearchNovel.sources.find((item) => item.summary.sourceId === selectedSourceId);
     if (!source || !source.enabled || !option) {
+      setLoadingOnlineChapter(false);
       setCatalogMessage("所选书源已不可用，请重新选择书源。");
       return;
     }
@@ -1163,6 +1260,7 @@ export default function App() {
       const novelCacheId = selectedSearchNovel.id;
       const fetchChapter = (target: NovelChapter) => fetchNovelChapterContent(source, target, getSourceClient(source));
       const result = await getOrFetchChapterContent(novelCacheId, chapter.id, () => fetchChapter(chapter));
+      if (requestId !== chapterContentRequestIdRef.current) return;
       void prefetchNextChapters(novelCacheId, loadedChapters, chapter.index, fetchChapter, 5);
       setOnlineChapterIndex(chapter.index);
       setReaderParagraphIndex(0);
@@ -1212,9 +1310,11 @@ export default function App() {
       setShowCatalog(false);
       setShowReaderSettings(false);
     } catch (error) {
-      setCatalogMessage(error instanceof Error ? error.message : "章节正文获取失败，请尝试其他书源。");
+      if (requestId === chapterContentRequestIdRef.current) {
+        setCatalogMessage(error instanceof Error ? error.message : "章节正文获取失败，请尝试其他书源。");
+      }
     } finally {
-      setLoadingOnlineChapter(false);
+      if (requestId === chapterContentRequestIdRef.current) setLoadingOnlineChapter(false);
     }
   };
 
@@ -1802,6 +1902,9 @@ export default function App() {
           setTtsProgress(Math.round(((index + 1) / segments.length) * 100));
         }
         await controller.start(initialTracks);
+        // Starting may wait for the native iOS audio session. A stop or newer
+        // generation can invalidate this request while that await is pending.
+        if (generationId !== ttsGenerationIdRef.current) return;
         controller.setSpeed(ttsSpeed);
         setTtsMessage(`已识别 ${Object.keys(speakerMap).length} 位角色，正在准备后续语音`);
 
@@ -1853,7 +1956,7 @@ export default function App() {
       }
       if (ttsGenerating) return;
       try {
-        const ready = await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+        const ready = await isKokoroModelDownloaded();
         if (ready) {
           await startOfflineTts();
           return;
@@ -1900,7 +2003,7 @@ export default function App() {
     };
     const previewTtsVoice = async (name: string, voiceId: number) => {
       try {
-        const ready = await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+        const ready = await isKokoroModelDownloaded();
         if (!ready) {
           Alert.alert("音色试听", "请先点击听书按钮下载中文语音模型。");
           return;
@@ -1919,6 +2022,8 @@ export default function App() {
           chapterTitle: `${name} · 音色试听`,
           segmentIndex: 0,
         }]);
+        // Do not let a cancelled preview finish or mutate a newer chapter queue.
+        if (previewId !== ttsGenerationIdRef.current) return;
         controller.finishQueue();
         controller.setSpeed(ttsSpeed);
         setTtsMessage(`正在试听${name}的${voiceLabel(voiceId)}`);
@@ -1928,7 +2033,7 @@ export default function App() {
     };
     const restartOfflineTts = async () => {
       try {
-        const ready = await isModelDownloaded(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
+        const ready = await isKokoroModelDownloaded();
         if (!ready) {
           Alert.alert("离线听书", "请先点击听书按钮下载中文多角色语音模型。");
           return;
@@ -2386,9 +2491,9 @@ export default function App() {
               {onlineResults.map((item) => {
                 const coverUrl = (item.coverUrl && !failedCoverUrls[item.coverUrl] ? item.coverUrl : undefined) || item.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string])?.summary.coverUrl;
                 return (
-                <Pressable key={item.id} style={styles.searchResultTile} onPress={() => openSearchNovel(item)}>
+                <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={"打开《" + item.title + "》详情"} hitSlop={6} style={styles.searchResultTile} onPress={() => openSearchNovel(item)}>
                   {coverUrl ? (
-                    <Image source={{ uri: coverUrl }} style={styles.searchResultCover} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [coverUrl]: true }))} />
+                    <Image source={{ uri: coverUrl }} style={styles.searchResultCover} resizeMode="cover" onError={() => { setFailedCoverUrls((current) => ({ ...current, [coverUrl]: true })); void recoverQQCoverForResult(item, searchRequestIdRef.current, true); }} />
                   ) : (
                     <View style={[styles.searchResultCover, styles.searchResultCoverFallback]}>
                       <Text style={styles.searchResultFallbackTitle} numberOfLines={4}>{item.title}</Text>
