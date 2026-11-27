@@ -61,11 +61,12 @@ export function parseBookAliasDictionary(raw: string): BookAliasDictionary {
           alias.length > MAX_ALIAS_LENGTH) {
         continue;
       }
+      const rawKey = alias.normalize("NFKC").trim().toLocaleLowerCase("zh-CN").replace(/\s+/g, "");
+      // Reject JavaScript prototype-pollution keys before punctuation folding
+      // (for example "__proto__" would otherwise normalize to the harmless-looking "proto").
+      if (rawKey === "__proto__" || rawKey === "prototype" || rawKey === "constructor") continue;
       const key = normalizeBookAlias(alias);
-      if (!key || key === "__proto__" || key === "prototype" ||
-          key === "constructor") {
-        continue;
-      }
+      if (!key || key === "__proto__" || key === "prototype" || key === "constructor") continue;
       aliasCount++;
       const previous = aliases[key];
       if (previous && previous !== title) {
