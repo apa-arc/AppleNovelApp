@@ -558,6 +558,13 @@ export default function App() {
     });
   }, [books, isLoaded]);
 
+  // Keep imported promotional aliases across app restarts. The map is loaded
+  // during initial hydration and replaced whenever the subscription is updated.
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem(BOOK_ALIAS_MAP_STORAGE_KEY, JSON.stringify(bookAliasMap)).catch(() => undefined);
+  }, [bookAliasMap, isLoaded]);
+
   // Repair missing or broken covers for previously saved online books.
   // Each distinct failure set is attempted once to avoid retry loops.
   const coverRecoveryAttemptsRef = useRef(new Set<string>());

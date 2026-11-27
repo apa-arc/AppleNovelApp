@@ -92,3 +92,13 @@ test("excludes ambiguous aliases instead of silently overwriting another book", 
   assert.equal(result.conflictCount, 1);
   assert.deepEqual(result.conflicts, ["共同别名"]);
 });
+
+test("resolves the confirmed Shuqi promotional name regardless of spacing or punctuation", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const raw = fs.readFileSync(path.join(__dirname, "fixtures", "current-book-aliases.json"), "utf8");
+  const result = parseBookAliasDictionary(raw);
+  const normalized = normalizeBookAlias(" 极致-蓝银！ ");
+  assert.equal(normalized, "极致蓝银");
+  assert.equal(result.aliases[normalized], "斗罗：魂环全选蓝银草，极致生命");
+});
