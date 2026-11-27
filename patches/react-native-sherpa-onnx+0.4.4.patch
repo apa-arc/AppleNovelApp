@@ -14,7 +14,6 @@ diff --git a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-
      });
      return candidates;
  }
-
 diff --git a/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts b/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts
 --- a/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts
 +++ b/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts
