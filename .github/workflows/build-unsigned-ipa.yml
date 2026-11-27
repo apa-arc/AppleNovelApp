@@ -1,6 +1,16 @@
 name: Build unsigned iOS IPA
 
 on:
+  # A change to the release packager/version/workflow itself starts the formal
+  # release build on main. Ordinary app-source commits do not trigger a release.
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/package-unsigned-ipa.py"
+      - "package.json"
+      - "app.json"
+      - ".github/workflows/build-unsigned-ipa.yml"
   workflow_dispatch:
     inputs:
       release_version:
@@ -39,8 +49,8 @@ jobs:
 
       - name: Restrict release builds to their version branch
         env:
-          RELEASE_VERSION: ${{ inputs.release_version }}
-          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          RELEASE_VERSION: ${{ inputs.release_version || '1.1.9' }}
+          PUBLISH_RELEASE: ${{ github.event_name == 'push' || inputs.publish_release }}
         run: |
           if [ "$PUBLISH_RELEASE" = "true" ]; then
             test "$GITHUB_REF" = "refs/heads/main"
@@ -208,7 +218,7 @@ jobs:
       - name: Read and validate app version
         id: app-version
         env:
-          RELEASE_VERSION: ${{ inputs.release_version }}
+          RELEASE_VERSION: ${{ inputs.release_version || '1.1.9' }}
         run: |
           PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
           APP_VERSION="$(node -p 'require("./app.json").expo.version')"
@@ -224,7 +234,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish formal GitHub Release
-        if: inputs.publish_release == true
+        if: github.event_name == 'push' || inputs.publish_release == true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.app-version.outputs.version }}
