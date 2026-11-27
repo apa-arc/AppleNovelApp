@@ -11,6 +11,7 @@ import { rankNovelSearchResults, rankSourcesByPerformance, updateSearchPerforman
 import { fetchNovelDetail, fetchNovelChapterList, fetchNovelChapterContent } from "./src/source-catalog";
 import { normalizeNovelTitle, type NovelSummary, type NovelSearchPage, type NovelDetail, type NovelChapter } from "./src/novel";
 import { lookupQQReaderCover } from "./src/qq-reader-cover";
+import { cacheCoverImage } from "./src/cover-cache";
 import { compareChapterUpdates } from "./src/subscription";
 import { DEFAULT_READER_SETTINGS, normalizeReaderSettings, type PageTurnMode, type ReaderSettings, type ReaderTheme } from "./src/reader-settings";
 import { getReadingParagraphIndex, getReadingScrollOffset, splitReadingText } from "./src/reading-progress";
@@ -74,6 +75,7 @@ type Book = {
   progress: number;
   color: string;
   coverUrl?: string;
+  cachedCoverUri?: string;
   coverCandidates?: string[];
   lastChapter?: string;
   chapterIndex?: number;
@@ -107,7 +109,7 @@ const TTS_CELLULAR_ALLOWED_STORAGE_KEY = "@private_novel/tts_cellular_allowed_v1
 const TTS_DEFAULT_VOICE_STORAGE_KEY = "@private_novel/tts_default_voice_v1";
 const TTS_AUTO_NEXT_CHAPTER_STORAGE_KEY = "@private_novel/tts_auto_next_chapter_v1";
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
-type SearchNovelGroup = { id: string; title: string; author: string; description: string; coverUrl?: string; sources: SearchSourceOption[] };
+type SearchNovelGroup = { id: string; title: string; author: string; description: string; coverUrl?: string; cachedCoverUri?: string; sources: SearchSourceOption[] };
 type SearchLogEntry = { id: string; sourceId: string; sourceName: string; keyword: string; ok: boolean; resultCount: number; error?: string; searchedAt: number };
 type Chapter = { title: string; content: string };
 const HOT_SEARCH_TERMS = ["斗罗大陆", "斗破苍穹", "凡人修仙传", "仙逆", "遮天", "诡秘之主", "全职高手"];
@@ -134,7 +136,7 @@ function BookCover({ book, grid = false, failedCoverUrls, onCoverError }: {
   failedCoverUrls?: Record<string, boolean>;
   onCoverError?: (url: string) => void;
 }) {
-  const coverUrl = [book.coverUrl, ...(book.coverCandidates || []), book.onlineSummary?.coverUrl].find((url): url is string => !!url && !failedCoverUrls?.[url]);
+  const coverUrl = [book.cachedCoverUri, book.coverUrl, ...(book.coverCandidates || []), book.onlineSummary?.coverUrl].find((url): url is string => !!url && !failedCoverUrls?.[url]);
   if (coverUrl) {
     return (
       <Image
@@ -944,15 +946,70 @@ export default function App() {
   const recoverQQCoverForResult = async (novel: SearchNovelGroup, requestId: number, replaceExisting = false) => {
     if (qqCoverLookupRef.current.has(novel.id)) return;
     qqCoverLookupRef.current.add(novel.id);
-    const coverUrl = await lookupQQReaderCover(novel.title, novel.author);
+    let coverUrl: string | undefined;
+    // Search pages can omit posters while detail pages expose og:image.
+    // Try up to three exact-matched enabled sources before the QQ cover fallback.
+    for (const option of novel.sources.slice(0, 3)) {
+      if (requestId !== searchRequestIdRef.current) return;
+      const source = sources.find((entry) => entry.id === option.summary.sourceId && entry.enabled);
+      if (!source) continue;
+      try {
+        const detail = await fetchNovelDetail(source, option.summary, getSourceClient(source));
+        if (detail.coverUrl) { coverUrl = detail.coverUrl; break; }
+      } catch { /* Continue to the next exact-matched source. */ }
+    }
+    if (!coverUrl) coverUrl = (await lookupQQReaderCover(novel.title, novel.author)) || undefined;
     if (!coverUrl || requestId !== searchRequestIdRef.current) return;
     setOnlineResults((current) => current.map((item) => item.id === novel.id && (replaceExisting || !item.coverUrl)
-      ? { ...item, coverUrl }
+      ? { ...item, coverUrl, sources: item.sources.map((entry) => entry.summary.coverUrl ? entry : { ...entry, summary: { ...entry.summary, coverUrl } }) }
       : item));
     setSelectedSearchNovel((current) => current?.id === novel.id && (replaceExisting || !current.coverUrl)
-      ? { ...current, coverUrl }
+      ? { ...current, coverUrl, sources: current.sources.map((entry) => entry.summary.coverUrl ? entry : { ...entry, summary: { ...entry.summary, coverUrl } }) }
       : current);
   };
+
+  // Persist search posters immediately and reuse the same files on the shelf.
+  useEffect(() => {
+    if (!isLoaded || onlineResults.length === 0) return;
+    let active = true;
+    const cacheResults = async () => {
+      const jobs = onlineResults.filter((item) => !item.cachedCoverUri).map((item) => ({
+        id: item.id, title: item.title, author: item.author,
+        url: item.coverUrl || item.sources.find((entry) => !!entry.summary.coverUrl)?.summary.coverUrl,
+      })).filter((item): item is { id: string; title: string; author: string; url: string } => !!item.url);
+      for (let offset = 0; offset < jobs.length; offset += 4) {
+        await Promise.all(jobs.slice(offset, offset + 4).map(async (job) => {
+          const uri = await cacheCoverImage(job.url);
+          if (!active || !uri) return;
+          setOnlineResults((current) => current.map((item) => item.id === job.id ? { ...item, cachedCoverUri: uri } : item));
+          setSelectedSearchNovel((current) => current?.id === job.id ? { ...current, cachedCoverUri: uri } : current);
+          const bookId = getOnlineBookId(job.title, job.author);
+          setBooks((current) => current.map((book) => book.id === bookId ? { ...book, cachedCoverUri: uri } : book));
+        }));
+      }
+    };
+    void cacheResults();
+    return () => { active = false; };
+  }, [onlineResults, isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded || books.length === 0) return;
+    let active = true;
+    const cacheShelfCovers = async () => {
+      const jobs = books.filter((book) => !book.cachedCoverUri).map((book) => ({
+        id: book.id, url: book.coverUrl || book.coverCandidates?.[0] || book.onlineSummary?.coverUrl,
+      })).filter((item): item is { id: string; url: string } => !!item.url && /^https:\/\//i.test(item.url));
+      for (let offset = 0; offset < jobs.length; offset += 4) {
+        await Promise.all(jobs.slice(offset, offset + 4).map(async (job) => {
+          const uri = await cacheCoverImage(job.url);
+          if (!active || !uri) return;
+          setBooks((current) => current.map((book) => book.id === job.id ? { ...book, cachedCoverUri: uri } : book));
+        }));
+      }
+    };
+    void cacheShelfCovers();
+    return () => { active = false; };
+  }, [books, isLoaded]);
 
   const searchOnlineNovels = async (searchTerm = onlineQuery) => {
     const keyword = searchTerm.trim();
@@ -1062,7 +1119,7 @@ export default function App() {
     // Some sources omit search-page covers but QQ Reading exposes an official
     // og:image on the exact-matched public book detail page. Recover only a
     // small first batch so this remains a lightweight cover-only fallback.
-    const missingCoverResults = groupedResults.filter((item) => !item.coverUrl).slice(0, 6);
+    const missingCoverResults = groupedResults.filter((item) => !item.coverUrl);
     if (missingCoverResults.length > 0) {
       void (async () => {
         for (let offset = 0; offset < missingCoverResults.length; offset += 3) {
@@ -1196,6 +1253,7 @@ export default function App() {
         progress: existing?.progress ?? 0,
         color: "#E5E9DF",
         coverUrl: selectedSearchNovel.coverUrl || loadedNovelDetail?.coverUrl || option.summary.coverUrl || existing?.coverUrl || existing?.onlineSummary?.coverUrl,
+        cachedCoverUri: selectedSearchNovel.cachedCoverUri || existing?.cachedCoverUri,
         coverCandidates: [...new Set([...coverCandidates, ...(existing?.coverCandidates || [])])],
         lastChapter: existing?.lastChapter || "尚未开始",
         chapterIndex: existing?.chapterIndex ?? 0,
@@ -1281,6 +1339,7 @@ export default function App() {
         progress: Math.round((chapter.index / Math.max(1, loadedChapters.length)) * 100),
         color: "#E5E9DF",
         coverUrl: loadedNovelDetail?.coverUrl || option.summary.coverUrl,
+        cachedCoverUri: selectedSearchNovel?.cachedCoverUri,
         coverCandidates: [...new Set([loadedNovelDetail?.coverUrl, option.summary.coverUrl].filter((url): url is string => !!url))],
         lastChapter: chapter.title,
         chapterIndex: chapter.index,
@@ -1717,7 +1776,7 @@ export default function App() {
 
   if (selectedSearchNovel && !selectedBook) {
     const detailChapters = [...loadedChapters].sort((a, b) => chapterSortOrder === "asc" ? a.index - b.index : b.index - a.index);
-    const detailCoverUrl = [loadedNovelDetail?.coverUrl, selectedSearchNovel.coverUrl, ...selectedSearchNovel.sources.map((entry) => entry.summary.coverUrl)].find((url): url is string => !!url && !failedCoverUrls[url]);
+    const detailCoverUrl = [selectedSearchNovel.cachedCoverUri, loadedNovelDetail?.coverUrl, selectedSearchNovel.coverUrl, ...selectedSearchNovel.sources.map((entry) => entry.summary.coverUrl)].find((url): url is string => !!url && !failedCoverUrls[url]);
     return (
       <SafeAreaView style={[styles.safe, appIsDark && styles.appDarkBackground]}>
         <StatusBar barStyle={appIsDark ? "light-content" : "dark-content"} />
@@ -2489,7 +2548,7 @@ export default function App() {
           {onlineResults.length > 0 && (
             <View style={styles.searchResultGrid}>
               {onlineResults.map((item) => {
-                const coverUrl = (item.coverUrl && !failedCoverUrls[item.coverUrl] ? item.coverUrl : undefined) || item.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string])?.summary.coverUrl;
+                const coverUrl = item.cachedCoverUri || (item.coverUrl && !failedCoverUrls[item.coverUrl] ? item.coverUrl : undefined) || item.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string])?.summary.coverUrl;
                 return (
                 <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={"打开《" + item.title + "》详情"} hitSlop={6} style={styles.searchResultTile} onPress={() => openSearchNovel(item)}>
                   {coverUrl ? (
