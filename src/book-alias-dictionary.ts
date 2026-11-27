@@ -16,7 +16,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function normalizeBookAlias(value: string): string {
-  return value.trim().toLocaleLowerCase().replace(/\s+/g, "");
+  return value.normalize("NFKC").trim().toLocaleLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
 }
 
 /**
