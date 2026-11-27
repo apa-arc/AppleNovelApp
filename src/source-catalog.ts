@@ -4,7 +4,7 @@ import { createSourceHttpClient, type SourceHttpClient } from "./source-runtime"
 import type { NovelChapter, NovelContent, NovelDetail, NovelSummary } from "./novel";
 
 type JsonRecord = Record<string, unknown>;
-const TITLE_KEYS = ["title", "name", "bookName", "book_name", "chapterName", "chapter_name"];
+const TITLE_KEYS = ["title", "name", "bookName", "book_name", "chapterName", "chapter_name", "chapter_title"];
 const AUTHOR_KEYS = ["author", "authorName", "author_name", "writer"];
 const DESCRIPTION_KEYS = ["description", "desc", "intro", "summary", "bookIntro"];
 const URL_KEYS = ["url", "chapterUrl", "chapter_url", "link", "href"];
