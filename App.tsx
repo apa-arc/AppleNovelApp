@@ -1168,6 +1168,8 @@ export default function App() {
 
   const openSearchNovel = (novel: SearchNovelGroup) => {
     catalogRequestIdRef.current += 1;
+    chapterContentRequestIdRef.current += 1;
+    setLoadingOnlineChapter(false);
     setSelectedSearchNovel(novel);
     setSelectedSourceId(null);
     setCatalogMessage("");
@@ -1223,7 +1225,9 @@ export default function App() {
 
   const closeSearchNovel = () => {
     catalogRequestIdRef.current += 1;
+    chapterContentRequestIdRef.current += 1;
     setLoadingCatalog(false);
+    setLoadingOnlineChapter(false);
     setSelectedSearchNovel(null);
     setSelectedSourceId(null);
     setLoadedNovelDetail(null);
