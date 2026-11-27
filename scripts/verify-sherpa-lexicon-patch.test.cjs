@@ -13,3 +13,17 @@ test("Sherpa ONNX iOS detector prioritizes the Chinese Kokoro lexicon", () => {
   assert.match(source, /if \(a\.languageId == "zh"\) return true;/);
   assert.match(source, /if \(b\.languageId == "zh"\) return false;/);
 });
+
+test("Sherpa ONNX writes the ready marker only after the install manifest", () => {
+  const sourcePath = path.join(
+    process.cwd(),
+    "node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts",
+  );
+  assert.ok(fs.existsSync(sourcePath), "Sherpa ONNX post-download source must exist");
+  const source = fs.readFileSync(sourcePath, "utf8");
+  const manifestWrite = source.indexOf("getManifestPath(category, id)");
+  const readyWrite = source.indexOf("getReadyMarkerPath(category, id)");
+  assert.notEqual(manifestWrite, -1, "install manifest write must exist");
+  assert.notEqual(readyWrite, -1, "ready marker write must exist");
+  assert.ok(manifestWrite < readyWrite, "ready marker must be the final install commit point");
+});
