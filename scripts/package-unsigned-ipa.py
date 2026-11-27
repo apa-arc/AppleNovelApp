@@ -1,29 +1,14 @@
 #!/usr/bin/env python3
-"""Create a SideStore-compatible unsigned IPA with conservative ZIP metadata."""
+"""Package and validate an unsigned iOS IPA using Apple's native ditto archiver."""
 
 import os
+import posixpath
+import plistlib
 import stat
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
-
-STAMP = (2026, 1, 1, 0, 0, 0)
-
-
-def zip_info(name: str, mode: int, is_dir: bool = False) -> zipfile.ZipInfo:
-    info = zipfile.ZipInfo(name, STAMP)
-    info.create_system = 3
-    info.create_version = 20
-    info.extract_version = 20
-    info.extra = b""
-    info.comment = b""
-    info.external_attr = (mode & 0xFFFF) << 16
-    if is_dir:
-        info.external_attr |= 0x10
-        info.compress_type = zipfile.ZIP_STORED
-    else:
-        info.compress_type = zipfile.ZIP_DEFLATED
-    return info
 
 
 def main() -> None:
@@ -35,55 +20,94 @@ def main() -> None:
     output = Path(sys.argv[2]).resolve()
     if not payload.is_dir():
         raise SystemExit(f"Payload directory not found: {payload}")
+    if not (payload.is_dir() and list(payload.glob("*.app"))):
+        raise SystemExit("Payload must contain an iOS .app bundle at its root")
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as archive:
-        archive.writestr(zip_info("Payload/", stat.S_IFDIR | 0o755, True), b"")
-        paths = sorted(payload.rglob("*"), key=lambda p: (len(p.parts), p.as_posix()))
-        for path in paths:
-            relative = path.relative_to(root).as_posix()
-            file_stat = path.lstat()
-            mode = file_stat.st_mode
+    if output.exists():
+        output.unlink()
 
-            if stat.S_ISDIR(mode):
-                archive.writestr(zip_info(relative.rstrip("/") + "/", mode, True), b"")
-            elif stat.S_ISLNK(mode):
-                target = os.readlink(path).encode("utf-8")
-                archive.writestr(zip_info(relative, mode), target)
-            elif stat.S_ISREG(mode):
-                with path.open("rb") as source:
-                    archive.writestr(zip_info(relative, mode), source.read())
-            else:
-                raise SystemExit(f"Unsupported file type in app bundle: {path}")
+    # ditto is Apple's bundle-aware archiver. Unlike a pathlib/rglob ZIP writer,
+    # it preserves macOS file metadata and traverses framework bundle structures
+    # without flattening or silently skipping directory symlinks.
+    subprocess.run(
+        [
+            "/usr/bin/ditto",
+            "-c",
+            "-k",
+            "--sequesterRsrc",
+            "--keepParent",
+            "Payload",
+            str(output),
+        ],
+        cwd=root,
+        check=True,
+    )
 
     with zipfile.ZipFile(output, "r") as archive:
         entries = archive.infolist()
-        if not entries or entries[0].filename != "Payload/":
-            raise SystemExit("IPA is missing the Payload/ root directory entry")
-        extras = [entry.filename for entry in entries if entry.extra]
-        if extras:
-            raise SystemExit(f"ZIP extra fields found: {extras[:5]}")
-        versions = [entry.filename for entry in entries if entry.create_version != 20 or entry.extract_version != 20]
-        if versions:
-            raise SystemExit(f"Unexpected ZIP version metadata: {versions[:5]}")
+        names = {entry.filename.rstrip("/") for entry in entries}
+        if not entries or not any(name.startswith("Payload/") for name in names):
+            raise SystemExit("IPA is missing the Payload/ root")
+        if any(not (entry.filename == "Payload/" or entry.filename.startswith("Payload/")) for entry in entries):
+            raise SystemExit("Unexpected files found outside the Payload/ root")
+
         bad = archive.testzip()
         if bad:
             raise SystemExit(f"IPA CRC validation failed at: {bad}")
-        apps = [entry.filename for entry in entries if entry.filename.startswith("Payload/") and entry.filename.endswith(".app/Info.plist")]
-        if len(apps) != 1:
-            raise SystemExit(f"Expected exactly one app Info.plist, found: {apps}")
-        executable_files = [
+
+        app_plists = [
             entry.filename
             for entry in entries
-            if stat.S_ISREG((entry.external_attr >> 16) & 0xFFFF)
-            and ((entry.external_attr >> 16) & 0o111)
+            if entry.filename.startswith("Payload/")
+            and entry.filename.endswith(".app/Info.plist")
         ]
-        if not executable_files:
-            raise SystemExit("No regular executable files with executable permissions were preserved")
+        if len(app_plists) != 1:
+            raise SystemExit(f"Expected exactly one top-level app Info.plist, found: {app_plists}")
 
-    print(f"SideStore-compatible IPA verified: {output.stat().st_size} bytes")
-    print(f"Entries: {len(entries)} | ZIP metadata: 2.0 | Extra fields: none | CRC: OK")
-    print(f"App plist: {apps[0]} | Executable files: {len(executable_files)}")
+        app_plist_path = app_plists[0]
+        app_root = app_plist_path.rsplit("/Info.plist", 1)[0]
+        app_info = plistlib.loads(archive.read(app_plist_path))
+        executable_name = app_info.get("CFBundleExecutable")
+        if not executable_name:
+            raise SystemExit("App Info.plist has no CFBundleExecutable")
+        executable_path = f"{app_root}/{executable_name}"
+        if executable_path not in names:
+            raise SystemExit(f"App executable is missing from IPA: {executable_path}")
+
+        executable_info = next(entry for entry in entries if entry.filename.rstrip("/") == executable_path)
+        executable_mode = (executable_info.external_attr >> 16) & 0xFFFF
+        if not (executable_mode & 0o111):
+            raise SystemExit(f"App executable lost executable permissions: {executable_path}")
+        if not archive.read(executable_info):
+            raise SystemExit("App executable is unexpectedly empty")
+
+        symlinks = []
+        executable_files = []
+        for entry in entries:
+            mode = (entry.external_attr >> 16) & 0xFFFF
+            if stat.S_ISLNK(mode):
+                target = archive.read(entry).decode("utf-8", errors="strict")
+                if not target:
+                    raise SystemExit(f"Empty symlink target: {entry.filename}")
+                resolved = posixpath.normpath(posixpath.join(posixpath.dirname(entry.filename), target))
+                if resolved.startswith("../") or resolved == "..":
+                    raise SystemExit(f"Symlink escapes the app bundle: {entry.filename} -> {target}")
+                if resolved not in names and not any(name.startswith(resolved.rstrip("/") + "/") for name in names):
+                    raise SystemExit(f"Broken symlink in IPA: {entry.filename} -> {target}")
+                symlinks.append(entry.filename)
+            elif stat.S_ISREG(mode) and mode & 0o111:
+                executable_files.append(entry.filename)
+
+        if not executable_files:
+            raise SystemExit("No executable files with preserved Unix permissions were found")
+        if not archive.read(app_plist_path):
+            raise SystemExit("App Info.plist is unexpectedly empty")
+
+    print(f"IPA packaged with /usr/bin/ditto: {output.stat().st_size} bytes")
+    print(f"ZIP CRC: OK | Entries: {len(entries)} | App: {app_root}")
+    print(f"Executable files: {len(executable_files)} | Symlinks preserved and checked: {len(symlinks)}")
+    print(f"App executable: {executable_path}")
 
 
 if __name__ == "__main__":
