@@ -48,11 +48,3 @@ diff --git a/node_modules/react-native-sherpa-onnx/src/download/postDownloadProc
  
 +  // The ready marker is the install commit point: write it only after the manifest.
 +  await writeFile(getReadyMarkerPath(category, id), 'ready', 'utf8');
-+
-   try {
-     if (await exists(statePath)) {
-       await unlink(statePath);
-     }
-   } catch {
-     // non-fatal
-   }
