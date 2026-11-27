@@ -1139,7 +1139,7 @@ export default function App() {
             sources: current.sources.map((item) => item.summary.sourceId === source.id
               ? {
                   ...item,
-                  summary: { ...item.summary, coverUrl: item.summary.coverUrl || detail?.coverUrl },
+                  summary: { ...item.summary, coverUrl: item.summary.coverUrl || fallbackDetail?.coverUrl },
                   chapterCount: chapters.length,
                   chapterError: undefined,
                 }
