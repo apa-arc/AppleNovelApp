@@ -22,6 +22,7 @@ test("parses the current alias registry format and resolves the supplied QQ Read
 test("normalizes case and whitespace consistently", () => {
   assert.equal(normalizeBookAlias("  A B C  "), "abc");
   assert.equal(normalizeBookAlias("五月 轮回"), "五月轮回");
+  assert.equal(normalizeBookAlias(" 极致-蓝银！"), "极致蓝银");
 });
 
 test("skips unsafe keys and malformed records without poisoning the map", () => {
