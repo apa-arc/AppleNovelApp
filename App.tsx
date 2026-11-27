@@ -977,16 +977,28 @@ export default function App() {
         id: item.id, title: item.title, author: item.author,
         url: item.coverUrl || item.sources.find((entry) => !!entry.summary.coverUrl)?.summary.coverUrl,
       })).filter((item): item is { id: string; title: string; author: string; url: string } => !!item.url);
+      const cached = new Map<string, { uri: string; title: string; author: string }>();
       for (let offset = 0; offset < jobs.length; offset += 4) {
-        await Promise.all(jobs.slice(offset, offset + 4).map(async (job) => {
-          const uri = await cacheCoverImage(job.url);
-          if (!active || !uri) return;
-          setOnlineResults((current) => current.map((item) => item.id === job.id ? { ...item, cachedCoverUri: uri } : item));
-          setSelectedSearchNovel((current) => current?.id === job.id ? { ...current, cachedCoverUri: uri } : current);
-          const bookId = getOnlineBookId(job.title, job.author);
-          setBooks((current) => current.map((book) => book.id === bookId ? { ...book, cachedCoverUri: uri } : book));
-        }));
+        const batch = await Promise.all(jobs.slice(offset, offset + 4).map(async (job) => ({
+          id: job.id, title: job.title, author: job.author, uri: await cacheCoverImage(job.url),
+        })));
+        if (!active) return;
+        for (const result of batch) if (result.uri) cached.set(result.id, { uri: result.uri, title: result.title, author: result.author });
       }
+      if (!active || cached.size === 0) return;
+      setOnlineResults((current) => current.map((item) => {
+        const result = cached.get(item.id);
+        return result ? { ...item, cachedCoverUri: result.uri } : item;
+      }));
+      setSelectedSearchNovel((current) => {
+        if (!current) return current;
+        const result = cached.get(current.id);
+        return result ? { ...current, cachedCoverUri: result.uri } : current;
+      });
+      setBooks((current) => current.map((book) => {
+        const result = [...cached.values()].find((item) => getOnlineBookId(item.title, item.author) === book.id);
+        return result ? { ...book, cachedCoverUri: result.uri } : book;
+      }));
     };
     void cacheResults();
     return () => { active = false; };
@@ -999,13 +1011,17 @@ export default function App() {
       const jobs = books.filter((book) => !book.cachedCoverUri).map((book) => ({
         id: book.id, url: book.coverUrl || book.coverCandidates?.[0] || book.onlineSummary?.coverUrl,
       })).filter((item): item is { id: string; url: string } => !!item.url && /^https:\/\//i.test(item.url));
+      const cached = new Map<string, string>();
       for (let offset = 0; offset < jobs.length; offset += 4) {
-        await Promise.all(jobs.slice(offset, offset + 4).map(async (job) => {
-          const uri = await cacheCoverImage(job.url);
-          if (!active || !uri) return;
-          setBooks((current) => current.map((book) => book.id === job.id ? { ...book, cachedCoverUri: uri } : book));
-        }));
+        const batch = await Promise.all(jobs.slice(offset, offset + 4).map(async (job) => ({
+          id: job.id, uri: await cacheCoverImage(job.url),
+        })));
+        if (!active) return;
+        for (const result of batch) if (result.uri) cached.set(result.id, result.uri);
       }
+      if (active && cached.size) setBooks((current) => current.map((book) => cached.has(book.id)
+        ? { ...book, cachedCoverUri: cached.get(book.id) }
+        : book));
     };
     void cacheShelfCovers();
     return () => { active = false; };
