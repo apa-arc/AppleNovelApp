@@ -12,7 +12,8 @@ on:
           - "1.1.5"
           - "1.1.6"
           - "1.1.7"
-        default: "1.1.7"
+          - "1.1.8"
+        default: "1.1.8"
       publish_release:
         description: Publish a public GitHub Release (requires main branch)
         required: true
@@ -233,11 +234,12 @@ jobs:
           body: |
             AppleNovelApp ${{ steps.app-version.outputs.version }} 正式版。
 
-            - 书架封面识别与缺失封面自动回填优化
-            - 订阅源静态规则兼容性增强，无法适配的规则明确提示
-            - 修复 Kokoro 中文离线语音模型注册表加载，已安装模型可离线启动
-            - 集成免费开源 Kokoro 中文离线朗读与多角色音色分配
-            - 听书悬浮球、播放队列、暂停恢复与本地音频缓存优化
+            - 修复 Kokoro 模型注册表缓存与已安装模型离线识别
+            - 修复 Sherpa ONNX 中文词典优先级及 Core ML 到 CPU 回退
+            - 修复离线朗读队列竞态、章节切换与连续播放
+            - 搜索结果可进入详情，目录与海报并行加载
+            - 增强 xbiquge、笔趣阁懒加载封面识别
+            - QQ 阅读公开目录仅作为严格匹配的封面回退
             - IPA 完整性校验：检查 ZIP 结构、Payload、App Info.plist 与 OTA channel
             - IPA 为未签名构建产物，安装前由 SideStore 按其签名流程处理
             - Production OTA 通过独立工作流发布，并按 fingerprint runtime 校验兼容性
