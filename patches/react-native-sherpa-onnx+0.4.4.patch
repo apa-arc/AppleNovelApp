@@ -14,3 +14,26 @@ diff --git a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-
      });
      return candidates;
  }
+
+diff --git a/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts b/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts
+--- a/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts
++++ b/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts
+@@ -358,8 +358,6 @@ async function runPostDownloadProcessingBody(
+     );
+   }
+ 
+-  await writeFile(getReadyMarkerPath(category, id), 'ready', 'utf8');
+-
+   const now = new Date().toISOString();
+   let sizeOnDisk: number | undefined;
+ 
+@@ -383,6 +381,8 @@ async function runPostDownloadProcessingBody(
+     'utf8'
+   );
+ 
++  // The ready marker is the install commit point: write it only after the manifest.
++  await writeFile(getReadyMarkerPath(category, id), 'ready', 'utf8');
++
+   try {
+     if (await exists(statePath)) {
+       await unlink(statePath);
