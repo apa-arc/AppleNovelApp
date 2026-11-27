@@ -162,14 +162,17 @@ test("keeps alias dictionary IDs unique across the whole subscription", () => {
   assert.match(result.unsupported[0].reason, /重复 ID/);
 });
 
-test("recognizes the live 11-entry subscription alias source as compatible", () => {
+test("imports the live 12-entry subscription with all current reading sources and alias registry", () => {
   const raw = fs.readFileSync(path.join(__dirname, "fixtures", "current-11-source-subscription.json"), "utf8");
+  const manifest = JSON.parse(raw);
   const result = parseSourceSubscription(raw);
+  assert.equal(manifest.sourceCount, manifest.sources.length);
+  assert.equal(result.compatible.length, 11);
   assert.equal(result.aliasSources.length, 1);
-  assert.equal(result.aliasSources[0].id, "book-alias-dictionary");
-  assert.equal(result.aliasSources[0].name, "小说别名库");
+  assert.equal(result.aliasSources[0].id, "book-aliases");
+  assert.equal(result.aliasSources[0].name, "小说推广名别名库");
   assert.equal(result.aliasSources[0].dataUrl, "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/aliases/book-aliases.json");
-  assert.equal(result.unsupported.some((entry) => entry.id === "book-alias-dictionary"), false);
+  assert.equal(result.unsupported.length, 0);
 });
 
 
