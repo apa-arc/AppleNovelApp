@@ -13,7 +13,8 @@ on:
           - "1.1.6"
           - "1.1.7"
           - "1.1.8"
-        default: "1.1.8"
+          - "1.1.9"
+        default: "1.1.9"
       publish_release:
         description: Publish a public GitHub Release (requires main branch)
         required: true
@@ -240,8 +241,8 @@ jobs:
             - 搜索结果可进入详情，目录与海报并行加载
             - 增强 xbiquge、笔趣阁懒加载封面识别
             - QQ 阅读公开目录仅作为严格匹配的封面回退
-            - IPA 完整性校验：检查 ZIP 结构、Payload、App Info.plist 与 OTA channel
-            - IPA 为未签名构建产物，安装前由 SideStore 按其签名流程处理
+            - IPA 使用 macOS 原生 ditto 封装，并检查 App 主程序、Unix 执行权限、符号链接及 ZIP 完整性
+            - IPA 为未签名构建产物，安装前由 SideStore 按其签名流程处理；SideStore 实机导入仍需用户端验证
             - Production OTA 通过独立工作流发布，并按 fingerprint runtime 校验兼容性
             - 构建提交：${{ github.sha }}
           prerelease: false
