@@ -18,7 +18,7 @@ diff --git a/node_modules/react-native-sherpa-onnx/ios/model_detect/sherpa-onnx-
 diff --git a/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts b/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts
 --- a/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts
 +++ b/node_modules/react-native-sherpa-onnx/src/download/postDownloadProcessing.ts
-@@ -361,26 +361,27 @@
+@@ -361,27 +361,27 @@
 -  await writeFile(getReadyMarkerPath(category, id), 'ready', 'utf8');
 -
    const now = new Date().toISOString();
