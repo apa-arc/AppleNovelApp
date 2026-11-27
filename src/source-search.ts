@@ -8,6 +8,7 @@ const TITLE_KEYS = ["title", "name", "bookName", "book_name", "novelName", "nove
 const AUTHOR_KEYS = ["author", "authorName", "author_name", "writer"];
 const DESCRIPTION_KEYS = ["description", "desc", "intro", "summary", "content"];
 const URL_KEYS = ["url", "bookUrl", "book_url", "link", "detailUrl", "detail_url"];
+const BOOK_ID_KEYS = ["book_id", "bookId", "novel_id", "novelId"];
 const COVER_KEYS = [
   "cover", "coverUrl", "cover_url", "coverImage", "cover_image", "coverImg", "cover_img",
   "coverImageUrl", "cover_image_url", "coverImgUrl", "cover_img_url", "coverUri", "cover_uri",
@@ -165,7 +166,17 @@ export function parseJsonSearchResults(body: string, source: NovelSource, keywor
     const title = firstString(record, TITLE_KEYS);
     const author = firstString(record, AUTHOR_KEYS) || "未知作者";
     const rawUrl = firstString(record, URL_KEYS);
-    const bookUrl = resolvePublicResultUrl(rawUrl, responseUrl);
+    let bookUrl = resolvePublicResultUrl(rawUrl, responseUrl);
+    // Some JSON APIs return a numeric book_id instead of a detail URL.
+    // Synthesize a URL only when trusted source config provides an explicit ID template.
+    if (!bookUrl) {
+      const bookId = firstString(record, BOOK_ID_KEYS);
+      const template = source.bookUrl;
+      if (bookId && (template.includes("{bookId}") || template.includes("{bookUrl}"))) {
+        const token = template.includes("{bookId}") ? "{bookId}" : "{bookUrl}";
+        bookUrl = resolvePublicResultUrl(template.split(token).join(encodeURIComponent(bookId)), responseUrl);
+      }
+    }
     if (!title || !bookUrl) return;
     const coverUrl = findCoverUrl(record, responseUrl);
     items.push({
