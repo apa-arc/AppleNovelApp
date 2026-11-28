@@ -161,7 +161,7 @@ export default function App() {
   useEffect(() => {
     AsyncStorage.getItem(TTS_DEFAULT_VOICE_STORAGE_KEY).then((value) => {
       const voiceId = Number(value);
-      if (Number.isInteger(voiceId) && voiceId >= 3 && voiceId <= 102) setTtsDefaultVoiceId(voiceId);
+      if (Number.isInteger(voiceId) && voiceId >= 3 && voiceId <= 31) setTtsDefaultVoiceId(voiceId);
     }).catch(() => undefined);
   }, []);
 
@@ -1898,8 +1898,8 @@ export default function App() {
     const voiceLabel = (voiceId: number) => getGeminiVoiceName(voiceId);
     const nextAvailableVoice = (currentId: number, reserved: number[]) => {
       let nextId = currentId;
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        nextId = nextId >= 102 ? 3 : nextId + 1;
+      for (let attempt = 0; attempt < 29; attempt += 1) {
+        nextId = nextId >= 31 ? 3 : nextId + 1;
         if (!reserved.includes(nextId)) return nextId;
       }
       return currentId;
@@ -2064,7 +2064,7 @@ export default function App() {
       setTtsMessage("已停止听书");
     };
     const cycleRoleVoice = async (name: string) => {
-      const currentId = ttsSpeakerMap[name] ?? 58;
+      const currentId = ttsSpeakerMap[name] ?? 4;
       const reserved = [ttsDefaultVoiceId, ...Object.entries(ttsSpeakerMap)
         .filter(([otherName]) => otherName !== name)
         .map(([, voiceId]) => voiceId)];
