@@ -1,6 +1,19 @@
 export const GEMINI_TTS_MODEL_ID = "gemini-3.8-flash-tts";
 export const GEMINI_TTS_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
+export const GEMINI_PREBUILT_VOICES = [
+  "Achernar", "Achird", "Algenib", "Algieba", "Alnilam", "Aoede", "Autonoe",
+  "Callirrhoe", "Charon", "Despina", "Enceladus", "Erinome", "Fenrir", "Gacrux",
+  "Iapetus", "Kore", "Laomedeia", "Leda", "Orus", "Puck", "Rasalgethi",
+  "Sadachbia", "Sadaltager", "Schedar", "Sulafat", "Umbriel", "Vindemiatrix",
+  "Zephyr", "Zubenelgenubi",
+] as const;
+
+export function getGeminiVoiceName(speakerId: number): string {
+  const index = Math.abs(Math.trunc(speakerId) - 3) % GEMINI_PREBUILT_VOICES.length;
+  return GEMINI_PREBUILT_VOICES[index];
+}
+
 export interface GeminiTtsPart {
   text: string;
   speakerId: number;
