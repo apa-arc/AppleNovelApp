@@ -3,14 +3,14 @@ import {
   setAudioModeAsync,
 } from "expo-audio";
 
-export interface OfflineAudioTrack {
+export interface AudioTrack {
   uri: string;
   bookTitle: string;
   chapterTitle: string;
   segmentIndex: number;
 }
 
-export interface OfflineAudioPlaybackState {
+export interface AudioPlaybackState {
   playing: boolean;
   currentTime: number;
   duration: number;
@@ -20,19 +20,19 @@ export interface OfflineAudioPlaybackState {
   finished: boolean;
 }
 
-type PlaybackListener = (state: OfflineAudioPlaybackState) => void;
+type PlaybackListener = (state: AudioPlaybackState) => void;
 type AudioPlayerInstance = ReturnType<typeof createAudioPlayer>;
 
-let sharedController: OfflineAudioPlaybackController | null = null;
+let sharedController: AudioPlaybackController | null = null;
 
 /**
- * A single native player with a rolling queue of locally generated WAV files.
+ * A single native player with a rolling queue of generated WAV files.
  * Audio continues in the background and publishes book/chapter metadata to
- * the iOS lock screen; the in-reader floating controls call the same methods.
+ * the iOS lock screen; the full-screen and in-reader controls call the same methods.
  */
-export class OfflineAudioPlaybackController {
+export class AudioPlaybackController {
   private player: AudioPlayerInstance;
-  private tracks: OfflineAudioTrack[] = [];
+  private tracks: AudioTrack[] = [];
   private currentIndex = -1;
   private playing = false;
   private currentTime = 0;
@@ -92,7 +92,7 @@ export class OfflineAudioPlaybackController {
     this.player.updateLockScreenMetadata({
       title: track.chapterTitle,
       artist: track.bookTitle,
-      albumTitle: "AppleNovel 离线听书",
+      albumTitle: "AppleNovel 听书",
     });
   }
 
@@ -133,7 +133,7 @@ export class OfflineAudioPlaybackController {
     }
   }
 
-  getState(): OfflineAudioPlaybackState {
+  getState(): AudioPlaybackState {
     return {
       playing: this.playing,
       currentTime: this.currentTime,
@@ -151,7 +151,7 @@ export class OfflineAudioPlaybackController {
     return () => { this.listeners.delete(listener); };
   }
 
-  async start(tracks: OfflineAudioTrack[], startIndex = 0): Promise<void> {
+  async start(tracks: AudioTrack[], startIndex = 0): Promise<void> {
     this.assertAlive();
     if (tracks.length === 0) throw new Error("当前章节还没有生成可播放的语音。");
     const requestId = ++this.startRequestId;
@@ -175,7 +175,7 @@ export class OfflineAudioPlaybackController {
       {
         title: tracks[startIndex]?.chapterTitle ?? tracks[0].chapterTitle,
         artist: tracks[startIndex]?.bookTitle ?? tracks[0].bookTitle,
-        albumTitle: "AppleNovel 离线听书",
+        albumTitle: "AppleNovel 听书",
       },
       {
         showSeekBackward: true,
@@ -185,7 +185,7 @@ export class OfflineAudioPlaybackController {
     await this.playIndex(Math.max(0, Math.min(startIndex, tracks.length - 1)));
   }
 
-  append(tracks: OfflineAudioTrack[]): void {
+  append(tracks: AudioTrack[]): void {
     this.assertAlive();
     if (tracks.length === 0) return;
     const wasFinished = this.finished;
@@ -317,12 +317,12 @@ export class OfflineAudioPlaybackController {
   }
 }
 
-export function getOfflineAudioPlaybackController(): OfflineAudioPlaybackController {
-  if (!sharedController) sharedController = new OfflineAudioPlaybackController();
+export function getAudioPlaybackController(): AudioPlaybackController {
+  if (!sharedController) sharedController = new AudioPlaybackController();
   return sharedController;
 }
 
-export function releaseOfflineAudioPlaybackController(): void {
+export function releaseAudioPlaybackController(): void {
   sharedController?.destroy();
   sharedController = null;
 }
