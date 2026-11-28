@@ -8,7 +8,6 @@ on:
       - main
     paths:
       - "scripts/package-unsigned-ipa.py"
-      - "package.json"
       - "app.json"
       - ".github/workflows/build-unsigned-ipa.yml"
   workflow_dispatch:
@@ -24,7 +23,8 @@ on:
           - "1.1.7"
           - "1.1.8"
           - "1.1.9"
-        default: "1.1.9"
+          - "1.2.0"
+        default: "1.2.0"
       publish_release:
         description: Publish a public GitHub Release (requires main branch)
         required: true
@@ -33,8 +33,8 @@ on:
 
 concurrency:
   group: unsigned-ipa-${{ github.ref }}
-  # Keep active iOS builds running; newer updates may wait in the queue.
-  cancel-in-progress: false
+  # A newer formal version build supersedes any stale pending release build.
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -49,7 +49,7 @@ jobs:
 
       - name: Restrict release builds to their version branch
         env:
-          RELEASE_VERSION: ${{ inputs.release_version || '1.1.9' }}
+          RELEASE_VERSION: ${{ inputs.release_version || '1.2.0' }}
           PUBLISH_RELEASE: ${{ github.event_name == 'push' || inputs.publish_release }}
         run: |
           if [ "$PUBLISH_RELEASE" = "true" ]; then
@@ -245,11 +245,11 @@ jobs:
           body: |
             AppleNovelApp ${{ steps.app-version.outputs.version }} 正式版。
 
-            - 修复 Kokoro 模型注册表缓存与已安装模型离线识别
-            - 修复 Sherpa ONNX 中文词典优先级及 Core ML 到 CPU 回退
-            - 修复离线朗读队列竞态、章节切换与连续播放
-            - 搜索结果可进入详情，目录与海报并行加载
-            - 增强 xbiquge、笔趣阁懒加载封面识别
+            - Gemini 在线多角色听书与全屏播放器，返回阅读页不中断播放
+            - Gemini API Key 仅保存在 iOS 安全钥匙串，429 时停止后续请求
+            - 搜索页自动补全海报并持久化缓存，书架与详情页共用缓存
+            - 订阅源升级为 12 个正文源与 1 个推广名别名库
+            - 推广名统一规范化，别名命中后跨启用书源搜索
             - QQ 阅读公开目录仅作为严格匹配的封面回退
             - IPA 使用 macOS 原生 ditto 封装，并检查 App 主程序、Unix 执行权限、符号链接及 ZIP 完整性
             - IPA 为未签名构建产物，安装前由 SideStore 按其签名流程处理；SideStore 实机导入仍需用户端验证
