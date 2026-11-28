@@ -72,10 +72,10 @@ export function buildGeminiTtsRequest(
 ): GeminiTtsRequest {
   const cleanParts = parts.filter((part) => typeof part.text === "string" && part.text.trim());
   if (!cleanParts.length) throw new Error("没有可合成的朗读文本。");
-  const voiceMap = new Map(voices.map((entry) => [entry.speakerId, entry.voice]));
+  const voiceMap = new Map<number, string>(voices.map((entry) => [entry.speakerId, entry.voice] as const));
   const speakerIds = [...new Set(cleanParts.map((part) => part.speakerId))];
   if (speakerIds.length > 2) throw new Error("Gemini 单次最多配置两位角色，请先拆分语音片段。");
-  const speakerNames = new Map(speakerIds.map((id, index) => [id, "Speaker" + (index + 1)]));
+  const speakerNames = new Map<number, string>(speakerIds.map((id, index) => [id, "Speaker" + (index + 1)] as const));
   const configuredVoices = speakerIds.map((speakerId) => {
     const voice = voiceMap.get(speakerId);
     if (!voice) throw new Error("缺少角色音色配置。");
