@@ -2564,7 +2564,7 @@ export default function App() {
           {onlineResults.length > 0 && (
             <View style={styles.searchResultGrid}>
               {onlineResults.map((item) => {
-                const coverUrl = item.cachedCoverUri || (item.coverUrl && !failedCoverUrls[item.coverUrl] ? item.coverUrl : undefined) || item.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string])?.summary.coverUrl;
+                const coverUrl = (item.cachedCoverUri && !failedCoverUrls[item.cachedCoverUri] ? item.cachedCoverUri : undefined) || (item.coverUrl && !failedCoverUrls[item.coverUrl] ? item.coverUrl : undefined) || item.sources.find((entry) => !!entry.summary.coverUrl && !failedCoverUrls[entry.summary.coverUrl as string])?.summary.coverUrl;
                 return (
                 <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={"打开《" + item.title + "》详情"} hitSlop={6} style={styles.searchResultTile} onPress={() => openSearchNovel(item)}>
                   {coverUrl ? (
