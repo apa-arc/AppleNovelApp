@@ -1,15 +1,15 @@
 /**
- * Conservative dialogue speaker assignment for offline multi-voice reading.
+ * Conservative dialogue speaker assignment for Gemini online multi-voice reading.
  *
  * The analyzer only assigns a character voice when a quoted line has an
  * explicit speech tag (for example: "张三说道：……" or "……"张三问道).
  * Unclear dialogue always falls back to the book's default voice.
  */
 
-export const DEFAULT_KOKORO_ZH_VOICE_ID = 3;
+export const DEFAULT_GEMINI_VOICE_ID = 3;
 
-// Kokoro v1.1-zh: Chinese female speakers 3-57, male speakers 58-102.
-export const KOKORO_ZH_VOICE_IDS = Array.from({ length: 100 }, (_, index) => index + 3);
+// Gemini currently exposes 29 prebuilt voices; reserve one distinct ID per voice.
+export const GEMINI_TTS_VOICE_IDS = Array.from({ length: 29 }, (_, index) => index + 3);
 
 export type SpeakerVoiceMap = Record<string, number>;
 
@@ -44,7 +44,7 @@ function cleanSpeakerClause(value: string): string {
 }
 
 function validVoiceId(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 3 && value <= 102;
+  return typeof value === "number" && Number.isInteger(value) && value >= 3 && value <= 31;
 }
 
 function speakerFromTag(value: string): string | undefined {
@@ -182,7 +182,7 @@ function stableHash(value: string): number {
 export function buildSpeakerVoiceMap(
   text: string,
   existingMap: SpeakerVoiceMap = {},
-  defaultVoiceId = DEFAULT_KOKORO_ZH_VOICE_ID,
+  defaultVoiceId = DEFAULT_GEMINI_VOICE_ID,
 ): SpeakerVoiceMap {
   const result: SpeakerVoiceMap = {};
   const safeDefaultVoiceId = validVoiceId(defaultVoiceId)
@@ -199,9 +199,9 @@ export function buildSpeakerVoiceMap(
 
   for (const name of extractExplicitSpeakerNames(text)) {
     if (validVoiceId(result[name])) continue;
-    let voiceId = 3 + (stableHash(name) % 100);
-    for (let attempt = 0; attempt < 100 && used.has(voiceId); attempt += 1) {
-      voiceId = 3 + ((voiceId - 3 + 1) % 100);
+    let voiceId = 3 + (stableHash(name) % 29);
+    for (let attempt = 0; attempt < 29 && used.has(voiceId); attempt += 1) {
+      voiceId = 3 + ((voiceId - 3 + 1) % 29);
     }
     result[name] = voiceId;
     used.add(voiceId);
