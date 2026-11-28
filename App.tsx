@@ -79,6 +79,10 @@ const SOURCES_STORAGE_KEY = "@private_novel/sources_v1";
 const SUBSCRIPTION_URLS_STORAGE_KEY = "@private_novel/subscription_urls_v1";
 const BOOK_ALIAS_MAP_STORAGE_KEY = "@private_novel/book_alias_map_v1";
 const DEFAULT_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/apa-arc/Novel-book-source-/main/subscription.json";
+function formatTtsTime(value: number): string {
+  const seconds = Math.max(0, Math.floor(Number.isFinite(value) ? value : 0));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
 const READER_SETTINGS_STORAGE_KEY = "@private_novel/reader_settings_v1";
 const READING_HISTORY_STORAGE_KEY = "@private_novel/reading_history_v1";
 const SEARCH_LOGS_STORAGE_KEY = "@private_novel/search_logs_v1";
@@ -217,6 +221,7 @@ export default function App() {
   const [ttsProgress, setTtsProgress] = useState(0);
   const [ttsMessage, setTtsMessage] = useState("");
   const [ttsPanelOpen, setTtsPanelOpen] = useState(false);
+  const [ttsFullScreenOpen, setTtsFullScreenOpen] = useState(false);
   const [ttsFloatingSide, setTtsFloatingSide] = useState<"left" | "right">("right");
   const [ttsSpeed, setTtsSpeed] = useState(1);
   const [ttsDefaultVoiceId, setTtsDefaultVoiceId] = useState(3);
@@ -2306,7 +2311,7 @@ export default function App() {
                 elevation: 8,
               }}>
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <Text style={{ color: readerTheme === "night" ? "#F0F0E8" : "#30362D", fontSize: 15, fontWeight: "800" }}>Gemini 在线多角色听书</Text>
+                  <Pressable onPress={() => setTtsFullScreenOpen(true)}><Text style={{ color: readerTheme === "night" ? "#F0F0E8" : "#30362D", fontSize: 15, fontWeight: "800" }}>Gemini 在线多角色听书　›</Text></Pressable>
                   <Pressable onPress={() => setTtsPanelOpen(false)}><Text style={{ color: readerTheme === "night" ? "#C6CBBF" : "#68705F", fontSize: 20 }}>×</Text></Pressable>
                 </View>
                 <Text numberOfLines={2} style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 11, lineHeight: 16, marginBottom: 8 }}>
@@ -2375,7 +2380,7 @@ export default function App() {
               </View>
             )}
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Pressable onPress={() => void toggleOfflineTts()} style={{
+              <Pressable onPress={() => setTtsFullScreenOpen(true)} style={{
                 width: 56,
                 height: 56,
                 borderRadius: 28,
@@ -2410,6 +2415,74 @@ export default function App() {
             </View>
           </Animated.View>
         )}
+        <Modal
+          visible={ttsFullScreenOpen}
+          animationType="slide"
+          presentationStyle="fullScreen"
+          onRequestClose={() => setTtsFullScreenOpen(false)}
+        >
+          <SafeAreaView style={{ flex: 1, backgroundColor: "#171B18" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 22, paddingVertical: 12 }}>
+              <Pressable onPress={() => setTtsFullScreenOpen(false)}><Text style={{ color: "#D7DED2", fontSize: 16 }}>⌄　返回阅读</Text></Pressable>
+              <Text style={{ color: "#AEB9A8", fontSize: 12, fontWeight: "700" }}>正在听书</Text>
+              <Pressable onPress={() => configureGeminiTts()}><Text style={{ color: "#A9BB99", fontSize: 12 }}>语音设置</Text></Pressable>
+            </View>
+            <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: "center", paddingHorizontal: 24, paddingTop: 14, paddingBottom: 34 }}>
+              {(() => {
+                const cover = currentBook.cachedCoverUri || currentBook.coverUrl || currentBook.onlineSummary?.coverUrl || currentBook.coverCandidates?.[0];
+                return cover
+                  ? <Image source={{ uri: cover }} style={{ width: 206, height: 282, borderRadius: 16, backgroundColor: "#343B34", marginBottom: 22 }} resizeMode="cover" />
+                  : <View style={{ width: 206, height: 282, borderRadius: 16, backgroundColor: "#344034", alignItems: "center", justifyContent: "center", padding: 18, marginBottom: 22 }}><Text style={{ color: "#E5EADF", fontSize: 22, fontWeight: "800", textAlign: "center" }}>{currentBook.title}</Text></View>;
+              })()}
+              <Text numberOfLines={2} style={{ color: "#F1F3ED", fontSize: 21, fontWeight: "800", textAlign: "center" }}>{currentBook.title}</Text>
+              <Text style={{ color: "#AEB9A8", fontSize: 13, marginTop: 7 }}>{currentBook.author || "未知作者"}</Text>
+              <Text numberOfLines={1} style={{ color: "#D2D9CC", fontSize: 14, marginTop: 25, marginBottom: 18 }}>{activeChapter.title || ttsPlaybackState.chapterTitle || "等待开始播放"}</Text>
+              <Pressable
+                onPress={(event) => {
+                  if (ttsPlaybackState.duration <= 0) return;
+                  const width = Math.max(1, Dimensions.get("window").width - 48);
+                  void getOfflineAudioPlaybackController().seekTo(ttsPlaybackState.duration * Math.max(0, Math.min(1, event.nativeEvent.locationX / width)));
+                }}
+                style={{ width: "100%", height: 5, borderRadius: 4, backgroundColor: "#465044", overflow: "hidden" }}
+              >
+                <View style={{ height: 5, width: `${ttsPlaybackState.duration > 0 ? Math.min(100, (ttsPlaybackState.currentTime / ttsPlaybackState.duration) * 100) : 0}%`, backgroundColor: "#A7C18F" }} />
+              </Pressable>
+              <View style={{ width: "100%", flexDirection: "row", justifyContent: "space-between", marginTop: 9 }}>
+                <Text style={{ color: "#9BA796", fontSize: 11 }}>{formatTtsTime(ttsPlaybackState.currentTime)}</Text>
+                <Text style={{ color: "#9BA796", fontSize: 11 }}>{formatTtsTime(ttsPlaybackState.duration)}</Text>
+              </View>
+              {ttsGenerating && <View style={{ width: "100%", marginTop: 12 }}><View style={{ height: 3, backgroundColor: "#3A4438", borderRadius: 3, overflow: "hidden" }}><View style={{ height: 3, width: `${Math.max(2, ttsProgress)}%`, backgroundColor: "#A7C18F" }} /></View><Text style={{ color: "#AEB9A8", fontSize: 11, marginTop: 6 }}>{ttsMessage || "正在生成语音…"}</Text></View>}
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-around", width: "100%", marginTop: 30 }}>
+                <Pressable onPress={() => void getOfflineAudioPlaybackController().previous()}><Text style={{ color: "#E5EADF", fontSize: 25 }}>|◀</Text></Pressable>
+                <Pressable onPress={() => void toggleOfflineTts()} style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: "#A7C18F", alignItems: "center", justifyContent: "center" }}><Text style={{ color: "#1D261B", fontSize: 29, fontWeight: "800" }}>{ttsPlaybackState.playing ? "Ⅱ" : "▶"}</Text></Pressable>
+                <Pressable onPress={() => void getOfflineAudioPlaybackController().next()}><Text style={{ color: "#E5EADF", fontSize: 25 }}>▶|</Text></Pressable>
+              </View>
+              <View style={{ flexDirection: "row", justifyContent: "center", gap: 10, marginTop: 30, flexWrap: "wrap" }}>
+                {[0.8, 1, 1.2, 1.5, 1.8, 2].map((speed) => (
+                  <Pressable key={speed} onPress={() => { setTtsSpeed(speed); getOfflineAudioPlaybackController().setSpeed(speed); }} style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 18, backgroundColor: ttsSpeed === speed ? "#A7C18F" : "#303A30" }}>
+                    <Text style={{ color: ttsSpeed === speed ? "#1D261B" : "#D8E0D2", fontSize: 12, fontWeight: "700" }}>{speed}×</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <View style={{ width: "100%", flexDirection: "row", justifyContent: "space-between", marginTop: 28 }}>
+                <Pressable onPress={() => { setTtsFullScreenOpen(false); changeChapter(-1); }} disabled={activeChapterIndex <= 0}><Text style={{ color: activeChapterIndex <= 0 ? "#657060" : "#C9D4C0", fontSize: 13 }}>上一章</Text></Pressable>
+                <Pressable onPress={() => { setTtsFullScreenOpen(false); changeChapter(1); }} disabled={activeChapterIndex >= activeChapterCount - 1}><Text style={{ color: activeChapterIndex >= activeChapterCount - 1 ? "#657060" : "#C9D4C0", fontSize: 13 }}>下一章</Text></Pressable>
+              </View>
+              <View style={{ width: "100%", borderTopWidth: 1, borderTopColor: "#384137", marginTop: 26, paddingTop: 16 }}>
+                <Text style={{ color: "#DCE4D6", fontSize: 13, fontWeight: "700", marginBottom: 12 }}>角色音色</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  <Pressable onPress={() => void previewTtsVoice("旁白", ttsDefaultVoiceId)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, backgroundColor: "#303A30" }}><Text style={{ color: "#D8E0D2", fontSize: 11 }}>旁白 · {voiceLabel(ttsDefaultVoiceId)}</Text></Pressable>
+                  {Object.entries(ttsSpeakerMap).slice(0, 8).map(([name, voiceId]) => <Pressable key={name} onPress={() => void previewTtsVoice(name, voiceId)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, backgroundColor: "#303A30" }}><Text style={{ color: "#D8E0D2", fontSize: 11 }}>{name} · {voiceLabel(voiceId)}</Text></Pressable>)}
+                </View>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 22 }}>
+                  <Pressable onPress={() => { const enabled = !ttsAutoNextChapter; setTtsAutoNextChapter(enabled); void AsyncStorage.setItem(TTS_AUTO_NEXT_CHAPTER_STORAGE_KEY, enabled ? "1" : "0"); }}><Text style={{ color: "#AFC29E", fontSize: 12 }}>自动下一章：{ttsAutoNextChapter ? "开" : "关"}</Text></Pressable>
+                  <Pressable onPress={stopOfflineTts}><Text style={{ color: "#D28C7E", fontSize: 12 }}>停止播放</Text></Pressable>
+                </View>
+                <Text style={{ color: "#899585", fontSize: 10, marginTop: 14, textAlign: "center" }}>{geminiTtsConfigured ? "Gemini 在线语音已连接" : "尚未连接 Gemini API Key"}</Text>
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
       </SafeAreaView>
     );
   }
