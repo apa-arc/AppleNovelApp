@@ -2448,7 +2448,7 @@ export default function App() {
               {(() => {
                 const cover = [currentBook.cachedCoverUri, currentBook.coverUrl, currentBook.onlineSummary?.coverUrl, ...(currentBook.coverCandidates || [])].find((url): url is string => !!url && !failedCoverUrls[url]);
                 return cover
-                  ? <Image source={{ uri: cover }} style={{ width: 206, height: 282, borderRadius: 16, backgroundColor: "#343B34", marginBottom: 22 }} resizeMode="cover" />
+                  ? <Image source={{ uri: cover }} style={{ width: 206, height: 282, borderRadius: 16, backgroundColor: "#343B34", marginBottom: 22 }} resizeMode="cover" onError={() => setFailedCoverUrls((current) => ({ ...current, [cover]: true }))} />
                   : <View style={{ width: 206, height: 282, borderRadius: 16, backgroundColor: "#344034", alignItems: "center", justifyContent: "center", padding: 18, marginBottom: 22 }}><Text style={{ color: "#E5EADF", fontSize: 22, fontWeight: "800", textAlign: "center" }}>{currentBook.title}</Text></View>;
               })()}
               <Text numberOfLines={2} style={{ color: "#F1F3ED", fontSize: 21, fontWeight: "800", textAlign: "center" }}>{currentBook.title}</Text>
