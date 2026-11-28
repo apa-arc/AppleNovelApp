@@ -23,15 +23,15 @@ test("allocates stable distinct Gemini voices and preserves manual choices", () 
   const second = buildSpeakerVoiceMap(text);
   assert.deepEqual(first, second);
   assert.notEqual(first["张三"], first["李四"]);
-  assert.notEqual(first["张三"], DEFAULT_KOKORO_ZH_VOICE_ID);
-  assert.notEqual(first["李四"], DEFAULT_KOKORO_ZH_VOICE_ID);
+  assert.notEqual(first["张三"], DEFAULT_GEMINI_VOICE_ID);
+  assert.notEqual(first["李四"], DEFAULT_GEMINI_VOICE_ID);
   assert.equal(buildSpeakerVoiceMap(text, { "张三": 27 })["张三"], 27);
 });
 
 test("uses the default voice when dialogue speaker is ambiguous or unmapped", () => {
   const segments = splitTextForMultiVoice("她说道：“别过来！”", {});
   assert.equal(segments.length, 1);
-  assert.equal(segments[0].speakerId, DEFAULT_KOKORO_ZH_VOICE_ID);
+  assert.equal(segments[0].speakerId, DEFAULT_GEMINI_VOICE_ID);
   assert.equal(segments[0].speakerName, undefined);
 });
 
@@ -85,8 +85,8 @@ test("resolves the speaker in comma-separated addressed speech tags", () => {
 
 
 test("does not read direct name-colon attributions as narration", () => {
-  const segments = splitTextForMultiVoice("张三：“快走！”她：“我不走。”", { "张三": 58 });
+  const segments = splitTextForMultiVoice("张三：“快走！”她：“我不走。”", { "张三": 28 });
   assert.deepEqual(segments.map((segment) => segment.text), ["快走！", "我不走。"]);
-  assert.equal(segments[0].speakerId, 58);
-  assert.equal(segments[1].speakerId, DEFAULT_KOKORO_ZH_VOICE_ID);
+  assert.equal(segments[0].speakerId, 28);
+  assert.equal(segments[1].speakerId, DEFAULT_GEMINI_VOICE_ID);
 });
