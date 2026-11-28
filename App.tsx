@@ -23,8 +23,8 @@ import { buildSpeakerVoiceMap, splitTextForMultiVoice } from "./src/speaker-assi
 import { groupGeminiTtsParts, getGeminiVoiceName } from "./src/tts/gemini-request";
 import { synthesizeGeminiTtsBatch } from "./src/tts/gemini-engine";
 import {
-  getOfflineAudioPlaybackController,
-  type OfflineAudioPlaybackState,
+  getAudioPlaybackController,
+  type AudioPlaybackState,
 } from "./src/tts/audio-playback";
 import {
   AppState,
@@ -168,7 +168,7 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedBook) return;
-    const controller = getOfflineAudioPlaybackController();
+    const controller = getAudioPlaybackController();
     return controller.subscribe(setTtsPlaybackState);
   }, [selectedBook?.id]);
   useEffect(() => {
@@ -209,7 +209,7 @@ export default function App() {
   const [readerHorizontalPadding, setReaderHorizontalPadding] = useState(DEFAULT_READER_SETTINGS.horizontalPadding);
   const [readerMode, setReaderMode] = useState<PageTurnMode>(DEFAULT_READER_SETTINGS.pageTurnMode);
   const [readerParagraphIndex, setReaderParagraphIndex] = useState(0);
-  const [ttsPlaybackState, setTtsPlaybackState] = useState<OfflineAudioPlaybackState>({
+  const [ttsPlaybackState, setTtsPlaybackState] = useState<AudioPlaybackState>({
     playing: false,
     currentTime: 0,
     duration: 0,
@@ -1298,7 +1298,7 @@ export default function App() {
   const cancelTtsForChapterSwitch = () => {
     ttsGenerationIdRef.current += 1;
     setTtsGenerating(false);
-    getOfflineAudioPlaybackController().clearQueue();
+    getAudioPlaybackController().clearQueue();
     ttsBookIdRef.current = null;
     ttsChapterIndexRef.current = null;
   };
@@ -1930,7 +1930,7 @@ export default function App() {
       ttsRequestControllerRef.current?.abort();
       const requestController = new AbortController();
       ttsRequestControllerRef.current = requestController;
-      const controller = getOfflineAudioPlaybackController();
+      const controller = getAudioPlaybackController();
       controller.clearQueue();
       ttsBookIdRef.current = currentBook.id;
       ttsChapterIndexRef.current = activeChapterIndex;
@@ -2046,7 +2046,7 @@ export default function App() {
     };
     ttsStartRef.current = startOfflineTts;
     const toggleOfflineTts = async () => {
-      const controller = getOfflineAudioPlaybackController();
+      const controller = getAudioPlaybackController();
       const playback = controller.getState();
       const sameChapter =
         ttsBookIdRef.current === currentBook.id &&
@@ -2073,7 +2073,7 @@ export default function App() {
       ttsRequestControllerRef.current?.abort();
       ttsRequestControllerRef.current = null;
       setTtsGenerating(false);
-      getOfflineAudioPlaybackController().clearQueue();
+      getAudioPlaybackController().clearQueue();
       ttsBookIdRef.current = null;
       ttsChapterIndexRef.current = null;
       setTtsMessage("已停止听书");
@@ -2111,7 +2111,7 @@ export default function App() {
         setTtsGenerating(false);
         ttsBookIdRef.current = null;
         ttsChapterIndexRef.current = null;
-        const controller = getOfflineAudioPlaybackController();
+        const controller = getAudioPlaybackController();
         controller.clearQueue();
         const uri = await synthesizeGeminiTtsBatch(
           [{ text: `你好，我是${name}。`, speakerId: voiceId, style: "Warm, natural Mandarin Chinese voice sample." }],
@@ -2340,13 +2340,13 @@ export default function App() {
                   </View>
                 )}
                 <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 6, marginBottom: 12 }}>
-                  <Pressable onPress={() => void getOfflineAudioPlaybackController().previous()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: readerTheme === "night" ? "#3A4237" : "#F0F2EC", alignItems: "center" }}>
+                  <Pressable onPress={() => void getAudioPlaybackController().previous()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: readerTheme === "night" ? "#3A4237" : "#F0F2EC", alignItems: "center" }}>
                     <Text style={{ color: readerTheme === "night" ? "#E5E9DE" : "#4B5545", fontSize: 11 }}>上一段</Text>
                   </Pressable>
                   <Pressable onPress={() => void toggleOfflineTts()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: "#65745D", alignItems: "center" }}>
                     <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "700" }}>{ttsPlaybackState.playing ? "暂停" : "继续"}</Text>
                   </Pressable>
-                  <Pressable onPress={() => void getOfflineAudioPlaybackController().next()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: readerTheme === "night" ? "#3A4237" : "#F0F2EC", alignItems: "center" }}>
+                  <Pressable onPress={() => void getAudioPlaybackController().next()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: readerTheme === "night" ? "#3A4237" : "#F0F2EC", alignItems: "center" }}>
                     <Text style={{ color: readerTheme === "night" ? "#E5E9DE" : "#4B5545", fontSize: 11 }}>下一段</Text>
                   </Pressable>
                 </View>
@@ -2354,7 +2354,7 @@ export default function App() {
                   <Text style={{ color: readerTheme === "night" ? "#D7DDCF" : "#4E5648", fontSize: 12, fontWeight: "700" }}>语速</Text>
                   <View style={{ flexDirection: "row", gap: 4 }}>
                     {[0.8, 1, 1.2, 1.5, 1.8, 2].map((speed) => (
-                      <Pressable key={speed} onPress={() => { setTtsSpeed(speed); getOfflineAudioPlaybackController().setSpeed(speed); }} style={{ paddingHorizontal: 7, paddingVertical: 5, borderRadius: 7, backgroundColor: ttsSpeed === speed ? "#65745D" : (readerTheme === "night" ? "#3A4237" : "#F0F2EC") }}>
+                      <Pressable key={speed} onPress={() => { setTtsSpeed(speed); getAudioPlaybackController().setSpeed(speed); }} style={{ paddingHorizontal: 7, paddingVertical: 5, borderRadius: 7, backgroundColor: ttsSpeed === speed ? "#65745D" : (readerTheme === "night" ? "#3A4237" : "#F0F2EC") }}>
                         <Text style={{ fontSize: 10, color: ttsSpeed === speed ? "#FFFFFF" : (readerTheme === "night" ? "#E5E9DE" : "#4B5545") }}>{speed}×</Text>
                       </Pressable>
                     ))}
@@ -2458,7 +2458,7 @@ export default function App() {
                 onPress={(event) => {
                   if (ttsPlaybackState.duration <= 0) return;
                   const width = Math.max(1, Dimensions.get("window").width - 48);
-                  void getOfflineAudioPlaybackController().seekTo(ttsPlaybackState.duration * Math.max(0, Math.min(1, event.nativeEvent.locationX / width)));
+                  void getAudioPlaybackController().seekTo(ttsPlaybackState.duration * Math.max(0, Math.min(1, event.nativeEvent.locationX / width)));
                 }}
                 style={{ width: "100%", height: 5, borderRadius: 4, backgroundColor: "#465044", overflow: "hidden" }}
               >
@@ -2470,13 +2470,13 @@ export default function App() {
               </View>
               {ttsGenerating && <View style={{ width: "100%", marginTop: 12 }}><View style={{ height: 3, backgroundColor: "#3A4438", borderRadius: 3, overflow: "hidden" }}><View style={{ height: 3, width: `${Math.max(2, ttsProgress)}%`, backgroundColor: "#A7C18F" }} /></View><Text style={{ color: "#AEB9A8", fontSize: 11, marginTop: 6 }}>{ttsMessage || "正在生成语音…"}</Text></View>}
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-around", width: "100%", marginTop: 30 }}>
-                <Pressable onPress={() => void getOfflineAudioPlaybackController().previous()}><Text style={{ color: "#E5EADF", fontSize: 25 }}>|◀</Text></Pressable>
+                <Pressable onPress={() => void getAudioPlaybackController().previous()}><Text style={{ color: "#E5EADF", fontSize: 25 }}>|◀</Text></Pressable>
                 <Pressable onPress={() => void toggleOfflineTts()} style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: "#A7C18F", alignItems: "center", justifyContent: "center" }}><Text style={{ color: "#1D261B", fontSize: 29, fontWeight: "800" }}>{ttsPlaybackState.playing ? "Ⅱ" : "▶"}</Text></Pressable>
-                <Pressable onPress={() => void getOfflineAudioPlaybackController().next()}><Text style={{ color: "#E5EADF", fontSize: 25 }}>▶|</Text></Pressable>
+                <Pressable onPress={() => void getAudioPlaybackController().next()}><Text style={{ color: "#E5EADF", fontSize: 25 }}>▶|</Text></Pressable>
               </View>
               <View style={{ flexDirection: "row", justifyContent: "center", gap: 10, marginTop: 30, flexWrap: "wrap" }}>
                 {[0.8, 1, 1.2, 1.5, 1.8, 2].map((speed) => (
-                  <Pressable key={speed} onPress={() => { setTtsSpeed(speed); getOfflineAudioPlaybackController().setSpeed(speed); }} style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 18, backgroundColor: ttsSpeed === speed ? "#A7C18F" : "#303A30" }}>
+                  <Pressable key={speed} onPress={() => { setTtsSpeed(speed); getAudioPlaybackController().setSpeed(speed); }} style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 18, backgroundColor: ttsSpeed === speed ? "#A7C18F" : "#303A30" }}>
                     <Text style={{ color: ttsSpeed === speed ? "#1D261B" : "#D8E0D2", fontSize: 12, fontWeight: "700" }}>{speed}×</Text>
                   </Pressable>
                 ))}
