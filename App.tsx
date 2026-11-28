@@ -1924,7 +1924,7 @@ export default function App() {
         "secure-text",
       );
     };
-    const startOfflineTts = async () => {
+    const startGeminiTts = async () => {
       ttsAutoAdvanceReadyRef.current = false;
       const generationId = ++ttsGenerationIdRef.current;
       ttsRequestControllerRef.current?.abort();
@@ -1944,7 +1944,7 @@ export default function App() {
         if (!apiKey) {
           setTtsGenerating(false);
           setTtsMessage("请先连接 Gemini 在线语音");
-          configureGeminiTts(() => { void startOfflineTts(); });
+          configureGeminiTts(() => { void startGeminiTts(); });
           return;
         }
         const privacyAcknowledged = await AsyncStorage.getItem(GEMINI_TTS_PRIVACY_ACK_KEY);
@@ -1956,7 +1956,7 @@ export default function App() {
             "朗读时，本章正文和角色台词会发送给 Google Gemini 生成音频。Google 的免费层可能会使用提交内容改进产品。继续即表示你了解并同意；本 App 不会自动切换模型或重试付费接口，遇到 429 会停止后续生成；若你的 Google 项目已启用计费，Google 仍可能按其规则收费，请使用未启用付费结算的免费层密钥。",
             [
               { text: "暂不使用", style: "cancel" },
-              { text: "同意并继续", onPress: () => { void AsyncStorage.setItem(GEMINI_TTS_PRIVACY_ACK_KEY, "1").then(() => startOfflineTts()); } },
+              { text: "同意并继续", onPress: () => { void AsyncStorage.setItem(GEMINI_TTS_PRIVACY_ACK_KEY, "1").then(() => startGeminiTts()); } },
             ],
           );
           return;
@@ -2044,8 +2044,8 @@ export default function App() {
         if (ttsRequestControllerRef.current === requestController) ttsRequestControllerRef.current = null;
       }
     };
-    ttsStartRef.current = startOfflineTts;
-    const toggleOfflineTts = async () => {
+    ttsStartRef.current = startGeminiTts;
+    const toggleGeminiTts = async () => {
       const controller = getAudioPlaybackController();
       const playback = controller.getState();
       const sameChapter =
@@ -2056,16 +2056,16 @@ export default function App() {
         if (playback.playing) {
           await controller.pause();
         } else if (playback.currentIndex >= playback.trackCount - 1 && !ttsGenerating) {
-          await startOfflineTts();
+          await startGeminiTts();
         } else {
           await controller.resume();
         }
         return;
       }
       if (ttsGenerating) return;
-      await startOfflineTts();
+      await startGeminiTts();
     };
-    const stopOfflineTts = () => {
+    const stopGeminiTts = () => {
       ttsAutoResumeRef.current = false;
       ttsAutoResumeChapterRef.current = null;
       ttsAutoAdvanceReadyRef.current = false;
@@ -2136,9 +2136,9 @@ export default function App() {
         if (ttsRequestControllerRef.current === previewController) ttsRequestControllerRef.current = null;
       }
     };
-    const restartOfflineTts = async () => {
+    const restartGeminiTts = async () => {
       if (ttsGenerating) return;
-      await startOfflineTts();
+      await startGeminiTts();
     };
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: readerBackground }]}>
@@ -2343,7 +2343,7 @@ export default function App() {
                   <Pressable onPress={() => void getAudioPlaybackController().previous()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: readerTheme === "night" ? "#3A4237" : "#F0F2EC", alignItems: "center" }}>
                     <Text style={{ color: readerTheme === "night" ? "#E5E9DE" : "#4B5545", fontSize: 11 }}>上一段</Text>
                   </Pressable>
-                  <Pressable onPress={() => void toggleOfflineTts()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: "#65745D", alignItems: "center" }}>
+                  <Pressable onPress={() => void toggleGeminiTts()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: "#65745D", alignItems: "center" }}>
                     <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "700" }}>{ttsPlaybackState.playing ? "暂停" : "继续"}</Text>
                   </Pressable>
                   <Pressable onPress={() => void getAudioPlaybackController().next()} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: readerTheme === "night" ? "#3A4237" : "#F0F2EC", alignItems: "center" }}>
@@ -2385,9 +2385,9 @@ export default function App() {
                   ))}
                 </ScrollView>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                  <Pressable onPress={() => void restartOfflineTts()}><Text style={{ color: "#829575", fontSize: 11, fontWeight: "700" }}>重新生成本章</Text></Pressable>
+                  <Pressable onPress={() => void restartGeminiTts()}><Text style={{ color: "#829575", fontSize: 11, fontWeight: "700" }}>重新生成本章</Text></Pressable>
                   <Pressable onPress={() => configureGeminiTts()}><Text style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 10 }}>{geminiTtsConfigured ? "Gemini 已连接 · 更换密钥" : "连接 Gemini"}</Text></Pressable>
-                  <Pressable onPress={stopOfflineTts}><Text style={{ color: "#B56F62", fontSize: 11 }}>停止</Text></Pressable>
+                  <Pressable onPress={stopGeminiTts}><Text style={{ color: "#B56F62", fontSize: 11 }}>停止</Text></Pressable>
                   <Pressable onPress={() => {
                     const enabled = !ttsAutoNextChapter;
                     setTtsAutoNextChapter(enabled);
@@ -2471,7 +2471,7 @@ export default function App() {
               {ttsGenerating && <View style={{ width: "100%", marginTop: 12 }}><View style={{ height: 3, backgroundColor: "#3A4438", borderRadius: 3, overflow: "hidden" }}><View style={{ height: 3, width: `${Math.max(2, ttsProgress)}%`, backgroundColor: "#A7C18F" }} /></View><Text style={{ color: "#AEB9A8", fontSize: 11, marginTop: 6 }}>{ttsMessage || "正在生成语音…"}</Text></View>}
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-around", width: "100%", marginTop: 30 }}>
                 <Pressable onPress={() => void getAudioPlaybackController().previous()}><Text style={{ color: "#E5EADF", fontSize: 25 }}>|◀</Text></Pressable>
-                <Pressable onPress={() => void toggleOfflineTts()} style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: "#A7C18F", alignItems: "center", justifyContent: "center" }}><Text style={{ color: "#1D261B", fontSize: 29, fontWeight: "800" }}>{ttsPlaybackState.playing ? "Ⅱ" : "▶"}</Text></Pressable>
+                <Pressable onPress={() => void toggleGeminiTts()} style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: "#A7C18F", alignItems: "center", justifyContent: "center" }}><Text style={{ color: "#1D261B", fontSize: 29, fontWeight: "800" }}>{ttsPlaybackState.playing ? "Ⅱ" : "▶"}</Text></Pressable>
                 <Pressable onPress={() => void getAudioPlaybackController().next()}><Text style={{ color: "#E5EADF", fontSize: 25 }}>▶|</Text></Pressable>
               </View>
               <View style={{ flexDirection: "row", justifyContent: "center", gap: 10, marginTop: 30, flexWrap: "wrap" }}>
@@ -2493,7 +2493,7 @@ export default function App() {
                 </View>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 22 }}>
                   <Pressable onPress={() => { const enabled = !ttsAutoNextChapter; setTtsAutoNextChapter(enabled); void AsyncStorage.setItem(TTS_AUTO_NEXT_CHAPTER_STORAGE_KEY, enabled ? "1" : "0"); }}><Text style={{ color: "#AFC29E", fontSize: 12 }}>自动下一章：{ttsAutoNextChapter ? "开" : "关"}</Text></Pressable>
-                  <Pressable onPress={stopOfflineTts}><Text style={{ color: "#D28C7E", fontSize: 12 }}>停止播放</Text></Pressable>
+                  <Pressable onPress={stopGeminiTts}><Text style={{ color: "#D28C7E", fontSize: 12 }}>停止播放</Text></Pressable>
                 </View>
                 <Text style={{ color: "#899585", fontSize: 10, marginTop: 14, textAlign: "center" }}>{geminiTtsConfigured ? "Gemini 在线语音已连接" : "尚未连接 Gemini API Key"}</Text>
               </View>
