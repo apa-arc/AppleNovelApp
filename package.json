@@ -53,7 +53,8 @@
     "react-native": "0.81.5",
     "expo-audio": "~1.1.1",
     "@kesha-antonov/react-native-background-downloader": "^4.5.4",
-    "react-native-sherpa-onnx": "0.4.4"
+    "react-native-sherpa-onnx": "0.4.4",
+    "expo-secure-store": "~15.0.8"
   },
   "devDependencies": {
     "patch-package": "^8.0.0",
