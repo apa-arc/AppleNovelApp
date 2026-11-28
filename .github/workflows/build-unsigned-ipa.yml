@@ -227,7 +227,7 @@ jobs:
       - name: Read and validate app version
         id: app-version
         env:
-          RELEASE_VERSION: ${{ inputs.release_version || '1.1.9' }}
+          RELEASE_VERSION: ${{ inputs.release_version || '1.2.0' }}
         run: |
           PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
           APP_VERSION="$(node -p 'require("./app.json").expo.version')"
