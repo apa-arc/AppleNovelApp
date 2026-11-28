@@ -92,6 +92,7 @@ const SHELF_VIEW_STORAGE_KEY = "@private_novel/shelf_view_v1";
 const APPEARANCE_STORAGE_KEY = "@private_novel/appearance_v1";
 const TTS_SPEAKER_MAP_STORAGE_KEY = "@private_novel/tts_speaker_map_v1";
 const GEMINI_TTS_API_KEY_STORAGE_KEY = "applenovel.geminiTts.apiKey";
+const GEMINI_TTS_PRIVACY_ACK_KEY = "@private_novel/gemini_tts_privacy_ack_v1";
 const TTS_DEFAULT_VOICE_STORAGE_KEY = "@private_novel/tts_default_voice_v1";
 const TTS_AUTO_NEXT_CHAPTER_STORAGE_KEY = "@private_novel/tts_auto_next_chapter_v1";
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
@@ -1944,6 +1945,20 @@ export default function App() {
           setTtsGenerating(false);
           setTtsMessage("请先连接 Gemini 在线语音");
           configureGeminiTts(() => { void startOfflineTts(); });
+          return;
+        }
+        const privacyAcknowledged = await AsyncStorage.getItem(GEMINI_TTS_PRIVACY_ACK_KEY);
+        if (privacyAcknowledged !== "1") {
+          setTtsGenerating(false);
+          setTtsMessage("需要先确认在线语音的数据使用说明");
+          Alert.alert(
+            "Gemini 在线听书说明",
+            "朗读时，本章正文和角色台词会发送给 Google Gemini 生成音频。Google 的免费层可能会使用提交内容改进产品。继续即表示你了解并同意；本 App 不会自动切换到付费接口，遇到 429 会停止后续生成。",
+            [
+              { text: "暂不使用", style: "cancel" },
+              { text: "同意并继续", onPress: () => { void AsyncStorage.setItem(GEMINI_TTS_PRIVACY_ACK_KEY, "1").then(() => startOfflineTts()); } },
+            ],
+          );
           return;
         }
 
