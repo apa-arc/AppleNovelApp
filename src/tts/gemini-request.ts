@@ -44,6 +44,7 @@ export interface GeminiTtsRequest {
 /** Split narration into requests with at most two distinct voices and bounded text size. */
 export function groupGeminiTtsParts(parts: GeminiTtsPart[], maxCharacters = 1400): GeminiTtsPart[][] {
   const groups: GeminiTtsPart[][] = [];
+  const limit = Math.max(1, Math.floor(maxCharacters));
   let current: GeminiTtsPart[] = [];
   let speakers = new Set<number>();
   let characters = 0;
@@ -56,11 +57,15 @@ export function groupGeminiTtsParts(parts: GeminiTtsPart[], maxCharacters = 1400
   for (const part of parts) {
     const text = part.text.trim();
     if (!text) continue;
-    const addsSpeaker = !speakers.has(part.speakerId);
-    if (current.length && ((addsSpeaker && speakers.size >= 2) || characters + text.length > maxCharacters)) flush();
-    current.push({ ...part, text });
-    speakers.add(part.speakerId);
-    characters += text.length;
+    const codePoints = Array.from(text);
+    for (let offset = 0; offset < codePoints.length; offset += limit) {
+      const chunk = codePoints.slice(offset, offset + limit).join("");
+      const addsSpeaker = !speakers.has(part.speakerId);
+      if (current.length && ((addsSpeaker && speakers.size >= 2) || characters + chunk.length > limit)) flush();
+      current.push({ ...part, text: chunk });
+      speakers.add(part.speakerId);
+      characters += chunk.length;
+    }
   }
   flush();
   return groups;
