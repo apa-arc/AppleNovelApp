@@ -13,8 +13,6 @@ module.exports = ({ config }) => {
 
   // The unsigned GitHub IPA build does not run through EAS Build, so
   // explicitly embed its update channel. EAS builds keep using eas.json.
-  // Versioned release branches package the current JS bundle in the self-sign IPA.
-  // Keep this workflow path-triggered so each release artifact matches its source commit.
   const updateChannel = process.env.APP_UPDATE_CHANNEL;
   if (updateChannel) {
     updates.requestHeaders = {
@@ -33,9 +31,6 @@ module.exports = ({ config }) => {
         enableBackgroundRecording: false,
       },
     ]);
-  }
-  if (!plugins.includes("@kesha-antonov/react-native-background-downloader")) {
-    plugins.push("@kesha-antonov/react-native-background-downloader");
   }
 
   const ios = { ...(config.ios || {}) };
