@@ -934,8 +934,8 @@ export default function App() {
     qqCoverLookupRef.current.add(novel.id);
     let coverUrl: string | undefined;
     // Search pages can omit posters while detail pages expose og:image.
-    // Try up to three exact-matched enabled sources before the QQ cover fallback.
-    for (const option of novel.sources.slice(0, 3)) {
+    // Try up to two exact-matched enabled sources before the QQ cover fallback.
+    for (const option of novel.sources.slice(0, 2)) {
       if (requestId !== searchRequestIdRef.current) return;
       const source = sources.find((entry) => entry.id === option.summary.sourceId && entry.enabled);
       if (!source) continue;
@@ -1119,8 +1119,8 @@ export default function App() {
     setOnlineResults(groupedResults);
 
     // Some sources omit search-page covers but QQ Reading exposes an official
-    // og:image on the exact-matched public book detail page. Recover only a
-    // small first batch so this remains a lightweight cover-only fallback.
+    // og:image on the exact-matched public book detail page. Process missing
+    // posters in small batches so this remains a bounded cover-only fallback.
     const missingCoverResults = groupedResults.filter((item) => !item.coverUrl);
     if (missingCoverResults.length > 0) {
       void (async () => {
@@ -2431,7 +2431,7 @@ export default function App() {
             </View>
             <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: "center", paddingHorizontal: 24, paddingTop: 14, paddingBottom: 34 }}>
               {(() => {
-                const cover = currentBook.cachedCoverUri || currentBook.coverUrl || currentBook.onlineSummary?.coverUrl || currentBook.coverCandidates?.[0];
+                const cover = [currentBook.cachedCoverUri, currentBook.coverUrl, currentBook.onlineSummary?.coverUrl, ...(currentBook.coverCandidates || [])].find((url): url is string => !!url && !failedCoverUrls[url]);
                 return cover
                   ? <Image source={{ uri: cover }} style={{ width: 206, height: 282, borderRadius: 16, backgroundColor: "#343B34", marginBottom: 22 }} resizeMode="cover" />
                   : <View style={{ width: 206, height: 282, borderRadius: 16, backgroundColor: "#344034", alignItems: "center", justifyContent: "center", padding: 18, marginBottom: 22 }}><Text style={{ color: "#E5EADF", fontSize: 22, fontWeight: "800", textAlign: "center" }}>{currentBook.title}</Text></View>;
