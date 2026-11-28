@@ -1953,7 +1953,7 @@ export default function App() {
           setTtsMessage("需要先确认在线语音的数据使用说明");
           Alert.alert(
             "Gemini 在线听书说明",
-            "朗读时，本章正文和角色台词会发送给 Google Gemini 生成音频。Google 的免费层可能会使用提交内容改进产品。继续即表示你了解并同意；本 App 不会自动切换到付费接口，遇到 429 会停止后续生成。",
+            "朗读时，本章正文和角色台词会发送给 Google Gemini 生成音频。Google 的免费层可能会使用提交内容改进产品。继续即表示你了解并同意；本 App 不会自动切换模型或重试付费接口，遇到 429 会停止后续生成；若你的 Google 项目已启用计费，Google 仍可能按其规则收费，请使用未启用付费结算的免费层密钥。",
             [
               { text: "暂不使用", style: "cancel" },
               { text: "同意并继续", onPress: () => { void AsyncStorage.setItem(GEMINI_TTS_PRIVACY_ACK_KEY, "1").then(() => startOfflineTts()); } },
@@ -2332,7 +2332,7 @@ export default function App() {
                   <Pressable onPress={() => setTtsPanelOpen(false)}><Text style={{ color: readerTheme === "night" ? "#C6CBBF" : "#68705F", fontSize: 20 }}>×</Text></Pressable>
                 </View>
                 <Text numberOfLines={2} style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 11, lineHeight: 16, marginBottom: 8 }}>
-                  {ttsMessage || (ttsPlaybackState.playing ? "正在朗读" : "点击悬浮球开始朗读")}
+                  {ttsMessage || (ttsPlaybackState.playing ? "正在朗读" : "点击悬浮球进入全屏听书")}
                 </Text>
                 {ttsGenerating && (
                   <View style={{ height: 4, backgroundColor: readerTheme === "night" ? "#454D41" : "#E9ECE5", borderRadius: 4, overflow: "hidden", marginBottom: 10 }}>
