@@ -2081,6 +2081,7 @@ export default function App() {
       setTtsMessage(`旁白音色已切换为${voiceLabel(nextId)}；点击“重新生成本章”后生效`);
     };
     const previewTtsVoice = async (name: string, voiceId: number) => {
+      let previewController: AbortController | null = null;
       try {
         const apiKey = await SecureStore.getItemAsync(GEMINI_TTS_API_KEY_STORAGE_KEY);
         if (!apiKey) {
@@ -2090,6 +2091,7 @@ export default function App() {
         const previewId = ++ttsGenerationIdRef.current;
         ttsRequestControllerRef.current?.abort();
         const requestController = new AbortController();
+        previewController = requestController;
         ttsRequestControllerRef.current = requestController;
         setTtsGenerating(false);
         ttsBookIdRef.current = null;
@@ -2116,7 +2118,7 @@ export default function App() {
       } catch (error) {
         Alert.alert("Gemini 音色试听", error instanceof Error ? error.message : "试听失败。");
       } finally {
-        ttsRequestControllerRef.current = null;
+        if (ttsRequestControllerRef.current === previewController) ttsRequestControllerRef.current = null;
       }
     };
     const restartOfflineTts = async () => {
