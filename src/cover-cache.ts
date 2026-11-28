@@ -43,6 +43,12 @@ export async function cacheCoverImage(url: string): Promise<string | null> {
       const downloaded = await FileSystem.downloadAsync(cleanUrl, target, {
         headers: { Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" },
       });
+      const contentType = Object.entries(downloaded.headers || {})
+        .find(([key]) => key.toLowerCase() === "content-type")?.[1] || "";
+      if (/^(text\/html|application\/json)/i.test(contentType)) {
+        await FileSystem.deleteAsync(target, { idempotent: true }).catch(() => undefined);
+        return null;
+      }
       if (downloaded.status < 200 || downloaded.status >= 300) {
         await FileSystem.deleteAsync(target, { idempotent: true }).catch(() => undefined);
         return null;
