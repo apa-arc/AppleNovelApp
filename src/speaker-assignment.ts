@@ -187,7 +187,7 @@ export function buildSpeakerVoiceMap(
   const result: SpeakerVoiceMap = {};
   const safeDefaultVoiceId = validVoiceId(defaultVoiceId)
     ? defaultVoiceId
-    : DEFAULT_KOKORO_ZH_VOICE_ID;
+    : DEFAULT_GEMINI_VOICE_ID;
   const used = new Set<number>([safeDefaultVoiceId]);
 
   for (const [name, voiceId] of Object.entries(existingMap)) {
@@ -214,11 +214,11 @@ export function buildSpeakerVoiceMap(
 export function splitTextForMultiVoice(
   text: string,
   speakerVoiceMap: SpeakerVoiceMap = {},
-  defaultVoiceId = DEFAULT_KOKORO_ZH_VOICE_ID,
+  defaultVoiceId = DEFAULT_GEMINI_VOICE_ID,
 ): SpeechSegment[] {
   const fallbackVoiceId = validVoiceId(defaultVoiceId)
     ? defaultVoiceId
-    : DEFAULT_KOKORO_ZH_VOICE_ID;
+    : DEFAULT_GEMINI_VOICE_ID;
   const segments: SpeechSegment[] = [];
   let cursor = 0;
   const appendChunks = (
