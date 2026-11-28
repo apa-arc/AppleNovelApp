@@ -1,4 +1,5 @@
 name: Publish OTA update
+# v1.2.0 production OTA trigger
 
 on:
   push:
