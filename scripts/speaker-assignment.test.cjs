@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
-  DEFAULT_KOKORO_ZH_VOICE_ID,
+  DEFAULT_GEMINI_VOICE_ID,
   buildSpeakerVoiceMap,
   extractExplicitSpeakerNames,
   splitTextForMultiVoice,
@@ -17,7 +17,7 @@ test("does not treat pronouns or group labels as named characters", () => {
   assert.deepEqual(extractExplicitSpeakerNames(text), []);
 });
 
-test("allocates stable distinct Kokoro voices and preserves manual choices", () => {
+test("allocates stable distinct Gemini voices and preserves manual choices", () => {
   const text = "张三说道：“你好。”李四说道：“你好。”";
   const first = buildSpeakerVoiceMap(text);
   const second = buildSpeakerVoiceMap(text);
@@ -25,7 +25,7 @@ test("allocates stable distinct Kokoro voices and preserves manual choices", () 
   assert.notEqual(first["张三"], first["李四"]);
   assert.notEqual(first["张三"], DEFAULT_KOKORO_ZH_VOICE_ID);
   assert.notEqual(first["李四"], DEFAULT_KOKORO_ZH_VOICE_ID);
-  assert.equal(buildSpeakerVoiceMap(text, { "张三": 77 })["张三"], 77);
+  assert.equal(buildSpeakerVoiceMap(text, { "张三": 27 })["张三"], 27);
 });
 
 test("uses the default voice when dialogue speaker is ambiguous or unmapped", () => {
@@ -70,11 +70,11 @@ test("recognizes the common name-colon dialogue format without guessing pronouns
 
 
 test("does not read a speaker attribution following a quoted line", () => {
-  const segments = splitTextForMultiVoice("“你好。”张三说道。", { "张三": 58 });
+  const segments = splitTextForMultiVoice("“你好。”张三说道。", { "张三": 28 });
   assert.equal(segments.length, 1);
   assert.equal(segments[0].kind, "dialogue");
   assert.equal(segments[0].speakerName, "张三");
-  assert.equal(segments[0].speakerId, 58);
+  assert.equal(segments[0].speakerId, 28);
 });
 
 
