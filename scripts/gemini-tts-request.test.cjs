@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   buildGeminiTtsRequest,
+  groupGeminiTtsParts,
   extractGeminiTtsAudio,
   formatGeminiTtsHttpError,
 } = require("../.test-build/tts/gemini-request.js");
@@ -65,4 +66,22 @@ test("HTTP 429 stops with an explicit free-tier message", () => {
   const error = formatGeminiTtsHttpError(429);
   assert.match(error.message, /免费额度/);
   assert.match(error.message, /不会自动切换付费接口/);
+});
+
+test("splits more than two roles into safe sequential requests", () => {
+  const groups = groupGeminiTtsParts([
+    { text: "旁白。", speakerId: 3 },
+    { text: "甲说。", speakerId: 4 },
+    { text: "乙说。", speakerId: 5 },
+    { text: "甲继续。", speakerId: 4 },
+  ]);
+  assert.equal(groups.length, 2);
+  assert.ok(groups.every((group) => new Set(group.map((part) => part.speakerId)).size <= 2));
+});
+
+test("splits long text into bounded requests without losing content", () => {
+  const text = "甲".repeat(1000);
+  const groups = groupGeminiTtsParts([{ text, speakerId: 3 }], 300);
+  assert.equal(groups.length, 4);
+  assert.equal(groups.flat().map((part) => part.text).join(""), text);
 });
