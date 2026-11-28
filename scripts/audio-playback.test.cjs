@@ -19,7 +19,7 @@ Module._load = function(request, parent, isMain) {
   return originalLoad.call(this, request, parent, isMain);
 };
 
-const { OfflineAudioPlaybackController } = require("../.test-build/tts/audio-playback.js");
+const { AudioPlaybackController } = require("../.test-build/tts/audio-playback.js");
 
 function createPlayer() {
   return {
@@ -51,7 +51,7 @@ const track = (index) => ({
 test("enables background playback and lock-screen media controls", async () => {
   player = createPlayer();
   audioMode = undefined;
-  const controller = new OfflineAudioPlaybackController();
+  const controller = new AudioPlaybackController();
   await controller.start([track(0)]);
   assert.equal(audioMode.playsInSilentMode, true);
   assert.equal(audioMode.shouldPlayInBackground, true);
@@ -65,7 +65,7 @@ test("enables background playback and lock-screen media controls", async () => {
 
 test("marks a streamed queue finished only after the final audio track ends", async () => {
   player = createPlayer();
-  const controller = new OfflineAudioPlaybackController();
+  const controller = new AudioPlaybackController();
   await controller.start([track(0)]);
   controller.finishQueue();
   assert.equal(controller.getState().finished, false);
@@ -79,7 +79,7 @@ test("marks a streamed queue finished only after the final audio track ends", as
 
 test("waits for more generated tracks, then finishes after the appended final track", async () => {
   player = createPlayer();
-  const controller = new OfflineAudioPlaybackController();
+  const controller = new AudioPlaybackController();
   await controller.start([track(0)]);
   player.emitFinished();
   await new Promise((resolve) => setImmediate(resolve));
@@ -98,7 +98,7 @@ test("waits for more generated tracks, then finishes after the appended final tr
 
 test("does not auto-finish a paused queue until the user resumes", async () => {
   player = createPlayer();
-  const controller = new OfflineAudioPlaybackController();
+  const controller = new AudioPlaybackController();
   await controller.start([track(0)]);
   player.emitFinished();
   await new Promise((resolve) => setImmediate(resolve));
@@ -112,7 +112,7 @@ test("does not auto-finish a paused queue until the user resumes", async () => {
 });
 test("ignores repeated terminal status events for the same audio track", async () => {
   player = createPlayer();
-  const controller = new OfflineAudioPlaybackController();
+  const controller = new AudioPlaybackController();
   await controller.start([track(0)]);
   controller.finishQueue();
 
@@ -129,7 +129,7 @@ test("ignores repeated terminal status events for the same audio track", async (
 
 test("does not advance to the next TTS segment when pause races with track completion", async () => {
   player = createPlayer();
-  const controller = new OfflineAudioPlaybackController();
+  const controller = new AudioPlaybackController();
   await controller.start([track(0), { ...track(1), chapterTitle: "第二章" }]);
   await controller.pause();
   player.emitFinished();
@@ -149,7 +149,7 @@ test("handles a native terminal callback emitted synchronously by pause", async 
   player.pause = function() {
     this.listener?.({ currentTime: 1, duration: 1, playing: false, didJustFinish: true });
   };
-  const controller = new OfflineAudioPlaybackController();
+  const controller = new AudioPlaybackController();
   await controller.start([track(0), { ...track(1), chapterTitle: "第二章" }]);
   await controller.pause();
   assert.equal(controller.getState().currentIndex, 0);
@@ -166,7 +166,7 @@ test("does not restart or advance a track when clearing synchronously finishes n
   player.pause = function() {
     this.listener?.({ currentTime: 1, duration: 1, playing: false, didJustFinish: true });
   };
-  const controller = new OfflineAudioPlaybackController();
+  const controller = new AudioPlaybackController();
   await controller.start([track(0), { ...track(1), chapterTitle: "第二章" }]);
   controller.clearQueue();
   await new Promise((resolve) => setImmediate(resolve));
@@ -180,7 +180,7 @@ test("does not restart or advance a track when clearing synchronously finishes n
 
 test("reopens a completed queue when a late TTS batch is appended", async () => {
   player = createPlayer();
-  const controller = new OfflineAudioPlaybackController();
+  const controller = new AudioPlaybackController();
   await controller.start([track(0)]);
   controller.finishQueue();
   player.emitFinished();
@@ -201,7 +201,7 @@ test("does not resurrect playback when stop occurs during iOS audio-session setu
   player = createPlayer();
   let releaseAudioMode;
   audioModeGate = new Promise((resolve) => { releaseAudioMode = resolve; });
-  const controller = new OfflineAudioPlaybackController();
+  const controller = new AudioPlaybackController();
   const starting = controller.start([track(0)]);
   controller.clearQueue();
   releaseAudioMode();
@@ -219,7 +219,7 @@ test("a newer playback start supersedes an older pending audio-session request",
   player = createPlayer();
   let releaseAudioMode;
   audioModeGate = new Promise((resolve) => { releaseAudioMode = resolve; });
-  const controller = new OfflineAudioPlaybackController();
+  const controller = new AudioPlaybackController();
   const firstStart = controller.start([track(0)]);
   const secondStart = controller.start([{ ...track(1), chapterTitle: "新章节" }]);
   releaseAudioMode();
