@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Updates from "expo-updates";
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system/legacy";
+import * as SecureStore from "expo-secure-store";
 import type { NovelSource } from "./src/source";
 import { parseSourceSubscription } from "./src/source-subscription";
 import { normalizeBookAlias, parseBookAliasDictionary } from "./src/book-alias-dictionary";
@@ -19,13 +20,8 @@ import { getOrFetchChapterContent, prefetchNextChapters } from "./src/chapter-ca
 import { normalizeReadingHistory, upsertReadingHistory, type ReadingHistoryEntry } from "./src/reading-history";
 import { parseLocalTextBook, type LocalTextChapter } from "./src/local-book";
 import { buildSpeakerVoiceMap, splitTextForMultiVoice } from "./src/speaker-assignment";
-import { getModelPath, ModelCategory } from "react-native-sherpa-onnx/download";
-import {
-  KOKORO_ZH_MODEL_ID,
-  loadOfflineTts,
-  setOfflineTtsCellularDownloadsAllowed,
-  synthesizeOfflineSegment,
-} from "./src/tts/offline-engine";
+import { groupGeminiTtsParts, getGeminiVoiceName } from "./src/tts/gemini-request";
+import { synthesizeGeminiTtsBatch } from "./src/tts/gemini-engine";
 import {
   getOfflineAudioPlaybackController,
   type OfflineAudioPlaybackState,
@@ -50,20 +46,6 @@ import {
   Easing,
   PanResponder,
 } from "react-native";
-
-async function isKokoroModelDownloaded(): Promise<boolean> {
-  try {
-    // Check the local ready-marked model directory directly. This lookup does
-    // not depend on the remote model registry and therefore works offline.
-    const installedPath = await getModelPath(ModelCategory.Tts, KOKORO_ZH_MODEL_ID);
-    return typeof installedPath === "string" && installedPath.length > 0;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes(`Unknown model id: ${KOKORO_ZH_MODEL_ID}`)) {
-      return false;
-    }
-    throw error;
-  }
-}
 
 type Tab = "书架" | "搜索" | "源" | "我的";
 type Book = {
@@ -105,7 +87,7 @@ const SEARCH_HISTORY_STORAGE_KEY = "@private_novel/search_history_v1";
 const SHELF_VIEW_STORAGE_KEY = "@private_novel/shelf_view_v1";
 const APPEARANCE_STORAGE_KEY = "@private_novel/appearance_v1";
 const TTS_SPEAKER_MAP_STORAGE_KEY = "@private_novel/tts_speaker_map_v1";
-const TTS_CELLULAR_ALLOWED_STORAGE_KEY = "@private_novel/tts_cellular_allowed_v1";
+const GEMINI_TTS_API_KEY_STORAGE_KEY = "applenovel.geminiTts.apiKey";
 const TTS_DEFAULT_VOICE_STORAGE_KEY = "@private_novel/tts_default_voice_v1";
 const TTS_AUTO_NEXT_CHAPTER_STORAGE_KEY = "@private_novel/tts_auto_next_chapter_v1";
 type SearchSourceOption = { summary: NovelSummary; latencyMs: number; chapterCount?: number | null; chapterError?: string };
@@ -160,13 +142,6 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("书架");
   const [appearanceMode, setAppearanceMode] = useState<"light" | "dark">("light");
   const appIsDark = appearanceMode === "dark";
-  useEffect(() => {
-    AsyncStorage.getItem(TTS_CELLULAR_ALLOWED_STORAGE_KEY).then((value) => {
-      const allowed = value === "1";
-      setTtsCellularAllowed(allowed);
-      setOfflineTtsCellularDownloadsAllowed(allowed);
-    }).catch(() => undefined);
-  }, []);
 
   const [shelfView, setShelfView] = useState<"list" | "grid">("grid");
   const autoSubscriptionCheckRef = useRef(false);
@@ -213,6 +188,11 @@ export default function App() {
   const [readingHistory, setReadingHistory] = useState<ReadingHistoryEntry[]>([]);
   const [showReadingHistory, setShowReadingHistory] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  useEffect(() => {
+    SecureStore.getItemAsync(GEMINI_TTS_API_KEY_STORAGE_KEY).then((key) => {
+      setGeminiTtsConfigured(!!key);
+    }).catch(() => setGeminiTtsConfigured(false));
+  }, []);
 
   const [chapterIndex, setChapterIndex] = useState(0);
   const [showCatalog, setShowCatalog] = useState(false);
@@ -241,7 +221,7 @@ export default function App() {
   const [ttsSpeed, setTtsSpeed] = useState(1);
   const [ttsDefaultVoiceId, setTtsDefaultVoiceId] = useState(3);
   const [ttsSpeakerMap, setTtsSpeakerMap] = useState<Record<string, number>>({});
-  const [ttsCellularAllowed, setTtsCellularAllowed] = useState(false);
+  const [geminiTtsConfigured, setGeminiTtsConfigured] = useState(false);
   const [ttsAutoNextChapter, setTtsAutoNextChapter] = useState(true);
   const ttsFloatingPosition = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const ttsFloatingPositionRef = useRef({ x: 0, y: 0 });
@@ -276,6 +256,7 @@ export default function App() {
     },
   })).current;
   const ttsGenerationIdRef = useRef(0);
+  const ttsRequestControllerRef = useRef<AbortController | null>(null);
   const ttsBookIdRef = useRef<string | null>(null);
   const ttsChapterIndexRef = useRef<number | null>(null);
   const ttsAutoResumeRef = useRef(false);
@@ -1909,8 +1890,7 @@ export default function App() {
       inputRange: [-1, 0, 1],
       outputRange: ["-8deg", "0deg", "8deg"],
     });
-    const voiceLabel = (voiceId: number) =>
-      voiceId >= 58 ? `男声 ${voiceId - 57}` : `女声 ${voiceId - 2}`;
+    const voiceLabel = (voiceId: number) => getGeminiVoiceName(voiceId);
     const nextAvailableVoice = (currentId: number, reserved: number[]) => {
       let nextId = currentId;
       for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -1919,9 +1899,31 @@ export default function App() {
       }
       return currentId;
     };
+    const configureGeminiTts = (afterSave?: () => void) => {
+      Alert.prompt(
+        "连接 Gemini 在线听书",
+        "粘贴 Google AI Studio 的 Gemini API Key。密钥只保存在这台 iPhone 的安全钥匙串中，不会写入订阅源或 GitHub。",
+        async (value) => {
+          const key = value?.trim();
+          if (!key) return;
+          try {
+            await SecureStore.setItemAsync(GEMINI_TTS_API_KEY_STORAGE_KEY, key);
+            setGeminiTtsConfigured(true);
+            setTtsMessage("Gemini 已连接，可以开始在线多角色朗读");
+            afterSave?.();
+          } catch {
+            Alert.alert("Gemini 设置", "无法安全保存 API Key，请稍后重试。");
+          }
+        },
+        "secure-text",
+      );
+    };
     const startOfflineTts = async () => {
       ttsAutoAdvanceReadyRef.current = false;
       const generationId = ++ttsGenerationIdRef.current;
+      ttsRequestControllerRef.current?.abort();
+      const requestController = new AbortController();
+      ttsRequestControllerRef.current = requestController;
       const controller = getOfflineAudioPlaybackController();
       controller.clearQueue();
       ttsBookIdRef.current = currentBook.id;
@@ -1929,18 +1931,16 @@ export default function App() {
       setTtsPanelOpen(true);
       setTtsGenerating(true);
       setTtsProgress(0);
-      setTtsMessage("正在准备离线语音模型…");
+      setTtsMessage("正在连接 Gemini 在线语音…");
       try {
-        const engine = await loadOfflineTts((progress) => {
-          if (generationId !== ttsGenerationIdRef.current) return;
-          setTtsProgress(progress.percent);
-          setTtsMessage(
-            progress.phase === "downloading"
-              ? `正在下载中文语音模型 ${progress.percent}%`
-              : `正在解压语音模型 ${progress.percent}%`,
-          );
-        });
+        const apiKey = await SecureStore.getItemAsync(GEMINI_TTS_API_KEY_STORAGE_KEY);
         if (generationId !== ttsGenerationIdRef.current) return;
+        if (!apiKey) {
+          setTtsGenerating(false);
+          setTtsMessage("请先连接 Gemini 在线语音");
+          configureGeminiTts(() => { void startOfflineTts(); });
+          return;
+        }
 
         const storageKey = `${TTS_SPEAKER_MAP_STORAGE_KEY}:${currentBook.id}`;
         const savedMap = await AsyncStorage.getItem(storageKey);
@@ -1960,13 +1960,26 @@ export default function App() {
 
         const segments = splitTextForMultiVoice(activeReadingText, speakerMap, ttsDefaultVoiceId);
         if (segments.length === 0) throw new Error("当前章节没有可朗读的正文。");
-        setTtsProgress(0);
-        setTtsMessage(`正在生成语音 · ${engine.provider === "coreml" ? "Apple Core ML" : "CPU"}`);
-        const initialCount = Math.min(3, segments.length);
+        const batches = groupGeminiTtsParts(segments.map((segment) => ({
+          text: segment.text,
+          speakerId: segment.speakerId,
+          style: segment.kind === "narration"
+            ? "Natural, clear Mandarin Chinese audiobook narration."
+            : "Natural, expressive Mandarin Chinese character dialogue.",
+        })));
+        if (batches.length === 0) throw new Error("当前章节没有可朗读的正文。");
+        const generateBatch = async (batch: typeof batches[number]) => {
+          const voiceIds = [...new Set(batch.map((part) => part.speakerId))];
+          const voices = voiceIds.map((speakerId) => ({ speakerId, voice: getGeminiVoiceName(speakerId) }));
+          return synthesizeGeminiTtsBatch(batch, voices, apiKey, requestController.signal);
+        };
+
+        setTtsMessage(`Gemini 正在生成语音 · ${batches.length} 段`);
+        const initialCount = Math.min(2, batches.length);
         const initialTracks = [];
         for (let index = 0; index < initialCount; index += 1) {
-          const segment = segments[index];
-          const uri = await synthesizeOfflineSegment(segment.text, { speakerId: segment.speakerId });
+          if (generationId !== ttsGenerationIdRef.current) return;
+          const uri = await generateBatch(batches[index]);
           if (generationId !== ttsGenerationIdRef.current) return;
           initialTracks.push({
             uri,
@@ -1974,19 +1987,16 @@ export default function App() {
             chapterTitle: activeChapter.title,
             segmentIndex: index,
           });
-          setTtsProgress(Math.round(((index + 1) / segments.length) * 100));
+          setTtsProgress(Math.round(((index + 1) / batches.length) * 100));
         }
         await controller.start(initialTracks);
-        // Starting may wait for the native iOS audio session. A stop or newer
-        // generation can invalidate this request while that await is pending.
         if (generationId !== ttsGenerationIdRef.current) return;
         controller.setSpeed(ttsSpeed);
-        setTtsMessage(`已识别 ${Object.keys(speakerMap).length} 位角色，正在准备后续语音`);
+        setTtsMessage(`已识别 ${Object.keys(speakerMap).length} 位角色，Gemini 正在准备后续语音`);
 
-        for (let index = initialCount; index < segments.length; index += 1) {
+        for (let index = initialCount; index < batches.length; index += 1) {
           if (generationId !== ttsGenerationIdRef.current) return;
-          const segment = segments[index];
-          const uri = await synthesizeOfflineSegment(segment.text, { speakerId: segment.speakerId });
+          const uri = await generateBatch(batches[index]);
           if (generationId !== ttsGenerationIdRef.current) return;
           controller.append([{
             uri,
@@ -1994,21 +2004,24 @@ export default function App() {
             chapterTitle: activeChapter.title,
             segmentIndex: index,
           }]);
-          setTtsProgress(Math.round(((index + 1) / segments.length) * 100));
+          setTtsProgress(Math.round(((index + 1) / batches.length) * 100));
         }
         if (generationId === ttsGenerationIdRef.current) {
           ttsAutoAdvanceReadyRef.current = true;
           controller.finishQueue();
           setTtsGenerating(false);
-          setTtsMessage(`本章语音已准备完成 · ${Object.keys(speakerMap).length} 位角色`);
+          setTtsMessage(`本章在线语音已准备完成 · ${Object.keys(speakerMap).length} 位角色`);
         }
       } catch (error) {
         if (generationId !== ttsGenerationIdRef.current) return;
         ttsAutoAdvanceReadyRef.current = false;
-        getOfflineAudioPlaybackController().finishQueue();
+        controller.finishQueue();
         setTtsGenerating(false);
-        setTtsMessage(error instanceof Error ? error.message : "离线语音生成失败。");
-        Alert.alert("离线听书", error instanceof Error ? error.message : "离线语音生成失败，请稍后重试。");
+        const message = error instanceof Error ? error.message : "Gemini 在线语音生成失败。";
+        setTtsMessage(message);
+        Alert.alert("Gemini 在线听书", message);
+      } finally {
+        if (ttsRequestControllerRef.current === requestController) ttsRequestControllerRef.current = null;
       }
     };
     ttsStartRef.current = startOfflineTts;
@@ -2030,29 +2043,15 @@ export default function App() {
         return;
       }
       if (ttsGenerating) return;
-      try {
-        const ready = await isKokoroModelDownloaded();
-        if (ready) {
-          await startOfflineTts();
-          return;
-        }
-        Alert.alert(
-          "首次使用离线听书",
-          "需要下载约 348 MB 的中文多角色语音模型。下载完成后可完全离线朗读，不使用苹果原生语音或收费接口。默认仅使用 Wi-Fi。",
-          [
-            { text: "暂不下载", style: "cancel" },
-            { text: "下载并开始", onPress: () => { void startOfflineTts(); } },
-          ],
-        );
-      } catch (error) {
-        Alert.alert("离线听书", error instanceof Error ? error.message : "无法检查本地语音模型。");
-      }
+      await startOfflineTts();
     };
     const stopOfflineTts = () => {
       ttsAutoResumeRef.current = false;
       ttsAutoResumeChapterRef.current = null;
       ttsAutoAdvanceReadyRef.current = false;
       ttsGenerationIdRef.current += 1;
+      ttsRequestControllerRef.current?.abort();
+      ttsRequestControllerRef.current = null;
       setTtsGenerating(false);
       getOfflineAudioPlaybackController().clearQueue();
       ttsBookIdRef.current = null;
@@ -2078,18 +2077,26 @@ export default function App() {
     };
     const previewTtsVoice = async (name: string, voiceId: number) => {
       try {
-        const ready = await isKokoroModelDownloaded();
-        if (!ready) {
-          Alert.alert("音色试听", "请先点击听书按钮下载中文语音模型。");
+        const apiKey = await SecureStore.getItemAsync(GEMINI_TTS_API_KEY_STORAGE_KEY);
+        if (!apiKey) {
+          configureGeminiTts(() => { void previewTtsVoice(name, voiceId); });
           return;
         }
         const previewId = ++ttsGenerationIdRef.current;
+        ttsRequestControllerRef.current?.abort();
+        const requestController = new AbortController();
+        ttsRequestControllerRef.current = requestController;
         setTtsGenerating(false);
         ttsBookIdRef.current = null;
         ttsChapterIndexRef.current = null;
         const controller = getOfflineAudioPlaybackController();
         controller.clearQueue();
-        const uri = await synthesizeOfflineSegment(`你好，我是${name}。`, { speakerId: voiceId });
+        const uri = await synthesizeGeminiTtsBatch(
+          [{ text: `你好，我是${name}。`, speakerId: voiceId, style: "Warm, natural Mandarin Chinese voice sample." }],
+          [{ speakerId: voiceId, voice: getGeminiVoiceName(voiceId) }],
+          apiKey,
+          requestController.signal,
+        );
         if (previewId !== ttsGenerationIdRef.current) return;
         await controller.start([{
           uri,
@@ -2097,31 +2104,19 @@ export default function App() {
           chapterTitle: `${name} · 音色试听`,
           segmentIndex: 0,
         }]);
-        // Do not let a cancelled preview finish or mutate a newer chapter queue.
         if (previewId !== ttsGenerationIdRef.current) return;
         controller.finishQueue();
         controller.setSpeed(ttsSpeed);
-        setTtsMessage(`正在试听${name}的${voiceLabel(voiceId)}`);
+        setTtsMessage(`正在试听${name} · ${voiceLabel(voiceId)}`);
       } catch (error) {
-        Alert.alert("音色试听", error instanceof Error ? error.message : "试听失败。");
+        Alert.alert("Gemini 音色试听", error instanceof Error ? error.message : "试听失败。");
+      } finally {
+        ttsRequestControllerRef.current = null;
       }
     };
     const restartOfflineTts = async () => {
-      try {
-        const ready = await isKokoroModelDownloaded();
-        if (!ready) {
-          Alert.alert("离线听书", "请先点击听书按钮下载中文多角色语音模型。");
-          return;
-        }
-        await startOfflineTts();
-      } catch (error) {
-        Alert.alert("离线听书", error instanceof Error ? error.message : "无法检查本地语音模型。");
-      }
-    };
-    const setTtsCellular = async (allowed: boolean) => {
-      setTtsCellularAllowed(allowed);
-      setOfflineTtsCellularDownloadsAllowed(allowed);
-      await AsyncStorage.setItem(TTS_CELLULAR_ALLOWED_STORAGE_KEY, allowed ? "1" : "0");
+      if (ttsGenerating) return;
+      await startOfflineTts();
     };
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: readerBackground }]}>
@@ -2311,7 +2306,7 @@ export default function App() {
                 elevation: 8,
               }}>
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <Text style={{ color: readerTheme === "night" ? "#F0F0E8" : "#30362D", fontSize: 15, fontWeight: "800" }}>离线多角色听书</Text>
+                  <Text style={{ color: readerTheme === "night" ? "#F0F0E8" : "#30362D", fontSize: 15, fontWeight: "800" }}>Gemini 在线多角色听书</Text>
                   <Pressable onPress={() => setTtsPanelOpen(false)}><Text style={{ color: readerTheme === "night" ? "#C6CBBF" : "#68705F", fontSize: 20 }}>×</Text></Pressable>
                 </View>
                 <Text numberOfLines={2} style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 11, lineHeight: 16, marginBottom: 8 }}>
@@ -2369,7 +2364,7 @@ export default function App() {
                 </ScrollView>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                   <Pressable onPress={() => void restartOfflineTts()}><Text style={{ color: "#829575", fontSize: 11, fontWeight: "700" }}>重新生成本章</Text></Pressable>
-                  <Pressable onPress={() => void setTtsCellular(!ttsCellularAllowed)}><Text style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 10 }}>{ttsCellularAllowed ? "允许蜂窝下载" : "仅 Wi-Fi 下载"}</Text></Pressable>
+                  <Pressable onPress={() => configureGeminiTts()}><Text style={{ color: readerTheme === "night" ? "#C2C9BB" : "#73796D", fontSize: 10 }}>{geminiTtsConfigured ? "Gemini 已连接 · 更换密钥" : "连接 Gemini"}</Text></Pressable>
                   <Pressable onPress={stopOfflineTts}><Text style={{ color: "#B56F62", fontSize: 11 }}>停止</Text></Pressable>
                   <Pressable onPress={() => {
                     const enabled = !ttsAutoNextChapter;
